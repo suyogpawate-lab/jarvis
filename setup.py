@@ -7,7 +7,7 @@ JARVIS first-run setup.
     python setup.py --status        # show what is configured (secrets are masked)
 
 What it configures
-    keys      AI provider keys (Groq required, others optional)
+    keys      AI provider keys (Groq, Gemini, Anthropic and OmniRoute required; search keys optional)
     gmail     Gmail account(s) + App Password, tested against Gmail before saving
     whatsapp  links your WhatsApp account to the local bridge (pairing code or QR)
     contacts  syncs your phone contacts and an optional "priority people" list
@@ -200,11 +200,14 @@ def test_groq_key(key):
         return None, f"could not reach Groq ({exc})"
 
 
-OPTIONAL_KEYS = [
+REQUIRED_KEYS = [
     ("GEMINI_API_KEYS", "Gemini API key(s), comma-separated"),
-    ("ANTHROPIC_API_KEYS", "Anthropic API key(s), comma-separated"),
+    ("ANTHROPIC_API_KEYS", "Anthropic (Claude) API key(s), comma-separated"),
     ("OMNIROUTE_BASE_URL", "OmniRoute base URL (default http://127.0.0.1:20128/v1)"),
     ("OMNIROUTE_API_KEY", "OmniRoute API key"),
+]
+
+OPTIONAL_KEYS = [
     ("BRAVE_SEARCH_API_KEY", "Brave Search API key"),
     ("BING_SEARCH_API_KEY", "Bing Search API key"),
     ("VERIPHONE_API_KEY", "Veriphone API key (phone lookup)"),
@@ -241,7 +244,20 @@ def step_keys(env):
     elif not current:
         warn("No Groq key set - JARVIS will not be available.")
 
-    if yes_no("Configure optional providers / search keys?", default=False):
+    info("Gemini, Anthropic and OmniRoute are also required for full JARVIS.")
+    for var, label in REQUIRED_KEYS:
+        secret = var.endswith("KEY") or var.endswith("KEYS")
+        have = env.get(var)
+        shown = f" (currently {mask(have) if secret else have})" if have else ""
+        value = ask(f"{label}{shown} - Enter to keep current", secret=secret)
+        if value:
+            env.set(var, value)
+            env.save()
+        elif not have and var != "OMNIROUTE_BASE_URL":
+            warn(f"{var} not set - JARVIS will not work fully without it.")
+    ok("Provider keys saved.")
+
+    if yes_no("Configure optional search keys (Brave, Bing, Veriphone)?", default=False):
         for var, label in OPTIONAL_KEYS:
             secret = var.endswith("KEY") or var.endswith("KEYS")
             have = env.get(var)
@@ -576,6 +592,8 @@ def show_status():
     for var in ("GEMINI_API_KEYS", "ANTHROPIC_API_KEYS", "OMNIROUTE_API_KEY"):
         if env.get(var):
             ok(f"{var}: {mask(env.get(var))}")
+        else:
+            warn(f"{var}: NOT SET (required)")
 
     accounts = gmail_accounts(env)
     if accounts:

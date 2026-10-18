@@ -31,7 +31,7 @@ configuration with `python setup.py --status`.
 
 | Part | What it does |
 |------|--------------|
-| keys | Groq API key(s) (tested before saving) plus optional Gemini, Anthropic, OmniRoute and search keys |
+| keys | **Required:** Groq (tested before saving), Gemini, Anthropic and OmniRoute keys. Optional: Brave, Bing and Veriphone search keys |
 | gmail | Your Gmail address and an [App Password](https://myaccount.google.com/apppasswords), tested against Gmail |
 | whatsapp | Links your account with an 8-character pairing code (or QR) |
 | contacts | Syncs phone contacts and an optional "priority people" list |
