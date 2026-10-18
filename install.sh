@@ -42,7 +42,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y python git curl jq tmux termux-api nodejs mpv ollama python-onnxruntime libjpeg-turbo \
+pkg install -y python git curl jq tmux termux-api nodejs mpv ollama python-onnxruntime libjpeg-turbo rust binutils \
     python-numpy libxml2 libxslt clang make pkg-config
 
 if [ "$WITH_VOICE" -eq 1 ]; then
