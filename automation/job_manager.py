@@ -1,4 +1,5 @@
 from jarvis_env import TERMUX_BASH
+from android.command_guard import check as guard_check
 """
 JARVIS background job manager.
 """
@@ -109,6 +110,10 @@ class JobManager:
             return {
                 "error": "Empty command."
             }
+
+        verdict = guard_check(command)
+        if verdict:
+            return {"error": verdict}
 
         job_id = (
             "job-"

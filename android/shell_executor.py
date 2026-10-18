@@ -1,4 +1,5 @@
 from jarvis_env import TERMUX_BASH
+from android.command_guard import check as guard_check
 """
 JARVIS shell execution layer.
 """
@@ -18,6 +19,10 @@ class ShellExecutor:
 
         if not command:
             return "[ERROR] Empty shell command."
+
+        verdict = guard_check(command)
+        if verdict:
+            return verdict
 
         try:
             process = subprocess.run(
