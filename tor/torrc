@@ -1,0 +1,7 @@
+DataDirectory /data/data/com.termux/files/home/jarvis/runtime/tor/data
+SocksPort 127.0.0.1:9150
+ControlPort 127.0.0.1:9151
+CookieAuthentication 1
+Log notice file /data/data/com.termux/files/home/jarvis/runtime/tor/tor.log
+
+DNSPort 127.0.0.1:9153

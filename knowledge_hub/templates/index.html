@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS Knowledge Hub</title>
+<style>
+body{font:16px system-ui;max-width:850px;margin:30px auto;padding:0 16px;background:#10151d;color:#e8edf5}
+h1{color:#7dd3fc}section{background:#1b2532;padding:18px;margin:16px 0;border-radius:12px}
+input,button{font:inherit;padding:10px;margin:5px 0;max-width:100%}
+button{background:#0284c7;color:white;border:0;border-radius:7px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#cbd5e1}
+.item{border-top:1px solid #344155;padding:10px 0}
+small{color:#94a3b8}
+</style>
+</head>
+<body>
+<h1>JARVIS Knowledge Hub</h1>
+<p>Upload documents for searchable, local reference.</p>
+<section>
+<h2>Add a document</h2>
+<form id="upload">
+<input type="file" name="file" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png" required>
+<button>Upload and index</button>
+</form>
+<pre id="uploadStatus"></pre>
+</section>
+<section>
+<h2>Search documents</h2>
+<form id="search">
+<input name="query" placeholder="Search your documents" required>
+<button>Search</button>
+</form>
+<div id="results"></div>
+</section>
+<section>
+<h2>Indexed documents</h2>
+<button onclick="loadDocs()">Refresh list</button>
+<div id="docs"></div>
+</section>
+<script>
+const el=id=>document.getElementById(id);
+el("upload").onsubmit=async e=>{
+ e.preventDefault(); el("uploadStatus").textContent="Indexing…";
+ const r=await fetch("/api/upload",{method:"POST",body:new FormData(e.target)});
+ const d=await r.json();
+ el("uploadStatus").textContent=JSON.stringify(d,null,2);
+ if(r.ok) loadDocs();
+};
+el("search").onsubmit=async e=>{
+ e.preventDefault();
+ const query=new FormData(e.target).get("query");
+ const r=await fetch("/api/search",{method:"POST",
+  headers:{"Content-Type":"application/json"},body:JSON.stringify({query})});
+ const d=await r.json(); el("results").replaceChildren();
+ if(!d.results?.length){el("results").textContent="No matching passages.";return;}
+ for(const x of d.results){
+  const div=document.createElement("div");div.className="item";
+  const title=document.createElement("strong");title.textContent=x.name;
+  const pre=document.createElement("pre");pre.textContent=x.content;
+  div.append(title,pre);el("results").append(div);
+ }
+};
+async function loadDocs(){
+ const r=await fetch("/api/documents");const docs=await r.json();
+ el("docs").replaceChildren();
+ for(const d of docs){
+  const div=document.createElement("div");div.className="item";
+  div.textContent=`${d.name} — ${d.chunks} chunks`;
+  el("docs").append(div);
+ }
+}
+loadDocs();
+</script>
+</body>
+</html>

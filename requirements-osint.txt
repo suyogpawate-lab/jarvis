@@ -1,0 +1,4 @@
+# Only needed by the SIGIT tool cloned into osint/data/sigit
+email-validator
+googlesearch-python
+lxml

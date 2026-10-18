@@ -1,0 +1,5 @@
+# Optional wake-word / microphone support (installed by install.sh --with-voice)
+# On Termux install `python-numpy` and `portaudio` with pkg first.
+numpy
+openwakeword
+sounddevice

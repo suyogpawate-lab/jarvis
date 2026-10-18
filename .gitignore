@@ -1,0 +1,96 @@
+# ───────── Secrets / local configuration ─────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# personal data: contacts synced from your phone, priority list, WhatsApp session
+/contacts.json
+config/contacts.json
+priority_contacts.txt
+/auth/
+
+# ───────── Python ─────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# ───────── Runtime state / logs ─────────
+tmp/
+.tts_tmp/
+.server/
+logs/
+*.log
+*.pid
+*.lock
+ui_events.jsonl
+data/
+memory/*.db
+*.db
+*.sqlite
+*.sqlite3
+
+# ───────── Backups & scratch copies made while patching ─────────
+backups/
+reports/
+*.bak
+*.orig
+*.pre_*
+*.before_*
+*.pre-*
+*.pre.*
+
+# ───────── Downloads / large binaries / models ─────────
+downloads
+downloads/
+*.bin
+*.gguf
+*.onnx
+*.zip
+*.tar.gz
+voice/models/
+voice/runtime/
+models/
+.cache/
+
+# ───────── Build artifacts ─────────
+build/
+dist/
+*.o
+*.a
+*.so
+# whisper.cpp is cloned and built by install.sh --with-voice (at ~/whisper.cpp)
+whisper.cpp/
+
+# ───────── Tor (keys, cookies, consensus cache) ─────────
+runtime/
+tor/data/
+tor/*.log
+
+# ───────── WhatsApp (Baileys session + deps) ─────────
+whatsapp/auth*/
+whatsapp/data/
+whatsapp/node_modules/
+whatsapp/*.log
+
+# ───────── Node deps ─────────
+node_modules/
+packages/node_modules/
+
+# ───────── OSINT / knowledge-hub runtime data ─────────
+osint/data/
+knowledge_hub/uploads/
+knowledge_hub/images/
+knowledge_hub/*.before_*
+
+# ───────── OS / editor ─────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

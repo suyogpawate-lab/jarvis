@@ -1,0 +1,14 @@
+requests
+openai
+edge-tts
+rich
+Flask
+Werkzeug
+pypdf
+numpy
+openwakeword
+sounddevice
+email-validator
+googlesearch-python
+lxml
+
