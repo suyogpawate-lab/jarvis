@@ -27,6 +27,7 @@ from pathlib import Path
 import requests
 
 from core import Jarvis
+from android.command_guard import handle_user_reply as handle_guard_reply
 from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
@@ -702,6 +703,10 @@ def handle_prompt(prompt):
 
     if not prompt:
         return None, False
+
+    guard_reply = handle_guard_reply(prompt)
+    if guard_reply is not None:
+        return guard_reply, False
 
     # ----------------------------------------------------------
     # Local Android actions (no LLM)

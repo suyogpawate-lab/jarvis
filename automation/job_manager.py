@@ -111,7 +111,7 @@ class JobManager:
                 "error": "Empty command."
             }
 
-        verdict = guard_check(command)
+        verdict = guard_check(command, kind="job")
         if verdict:
             return {"error": verdict}
 

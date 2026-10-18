@@ -5,9 +5,9 @@ terminal UI (or by voice) and it can reason, run shell commands, control the
 phone through Termux:API, read and send Gmail, send and read WhatsApp messages,
 watch notifications and search the web.
 
-> **JARVIS can run commands on your phone.** Only a short list of read-only commands
-> runs on its own; anything else waits for your approval (`python jarvis_approve.py`). This is a
-> safety net, not a sandbox, so don't give it access to anything you can't afford to lose.
+> **JARVIS can run commands on your phone.** Risky commands (deleting files, killing
+> processes, uninstalling, touching secrets) pause until you type `approve <code>` in JARVIS.
+> This is a safety net, not a sandbox, so don't give it access to anything you can't afford to lose.
 
 ## Install
 
