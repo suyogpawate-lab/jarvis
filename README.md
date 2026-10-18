@@ -15,7 +15,7 @@ You need [Termux](https://f-droid.org/packages/com.termux/) and the
 
 ```bash
 pkg install -y git
-git clone https://github.com/suyogpawate-lab/jarvis ~/jarvis
+git clone https://github.com/suyogpawate-lab/jarvis
 cd ~/jarvis
 bash install.sh            
 ```
