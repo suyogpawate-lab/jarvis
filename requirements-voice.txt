@@ -3,3 +3,6 @@
 numpy
 openwakeword
 sounddevice
+tqdm
+scikit-learn
+scipy
