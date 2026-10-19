@@ -39,7 +39,7 @@ HARD_DENY = [
 # allowed only after you approve
 RISKY = [
     # Shell composition can hide additional commands from simple word matching.
-    (r"`|\$\(|\$\{[^}]+\}|(?:&&|\|\||[;|])|\n|\r", "shell composition or expansion"),
+    (r"`|\$\(|\$\{[^}]+\}|<\(|(?:&&|\|\||[;&|])|\n|\r", "shell composition or expansion"),
     (r"(?<![<>=])>(?![=>])", "shell output redirection can overwrite files"),
     (r"\b(?:python(?:\d+(?:\.\d+)?)?|node|ruby|perl|php)\b[^;&|]*\s(?:-c|-e|--eval)\b", "executes inline interpreter code"),
     (r"\b(?:bash|sh|zsh)\s+-c\b", "executes a shell command string"),
