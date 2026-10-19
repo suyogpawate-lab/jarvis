@@ -62,13 +62,13 @@ Secrets and personal state belong in local, git-ignored files such as `.env`, `c
 From `~/jarvis`, start the main terminal interface:
 
 ```bash
-python jarvis_ui.py
+jarvis
 ```
 
 Or start the simpler command-line interface:
 
 ```bash
-python jarvis.py
+jarvis-cli
 ```
 
 Type a request and press **Enter**. The UI shows JARVIS's standby, listening, thinking, speaking and alert states. The plain CLI prints responses and accepts typed or available voice input. Type `exit` or `quit` to leave the CLI; in the UI, use `/q`, `/quit`, `/exit` or **Ctrl-C**.
