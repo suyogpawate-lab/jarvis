@@ -1,3 +1,6 @@
+# Core JARVIS Python dependencies.
+# Native/Android-sensitive features belong in the optional requirements files;
+# install their Termux packages with pkg before enabling those features.
 requests
 openai
 edge-tts
@@ -5,10 +8,3 @@ rich
 Flask
 Werkzeug
 pypdf
-numpy
-openwakeword
-sounddevice
-email-validator
-googlesearch-python
-lxml
-
