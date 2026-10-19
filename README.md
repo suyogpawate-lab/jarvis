@@ -63,6 +63,18 @@ The installer adds these aliases to `~/.bashrc` (without appending a duplicate m
 | `omni` | Run the OmniRoute daemon script |
 | `rag` | Start the knowledge hub in the background |
 
+### Localhost service addresses
+
+Start each service with its alias before opening its local URL. These addresses work on the same Android device:
+
+| Service | Local URL | Purpose |
+|---|---|---|
+| Knowledge hub (RAG) | [http://127.0.0.1:8766](http://127.0.0.1:8766) | Open the knowledge hub web interface |
+| WhatsApp bridge | [http://127.0.0.1:23841/status](http://127.0.0.1:23841/status) | Check bridge status and WhatsApp connection |
+| OmniRoute | [http://127.0.0.1:20128](http://127.0.0.1:20128) | Local API base URL; it is an API service, not a web dashboard |
+
+Equivalent `localhost` URLs are `http://localhost:8766`, `http://localhost:23841/status`, and `http://localhost:20128`. These services bind to loopback, so they are intended for access from the device itself, not other devices on your Wi-Fi. A service URL will not respond until that service is running.
+
 After installation, load the aliases in your **current** Termux session with:
 
 ```bash
