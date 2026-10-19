@@ -84,6 +84,34 @@ fi
 mkdir -p data logs voice/models
 ok "Runtime folders ready (data/, logs/)."
 
+# ───────────────────────── shell aliases ─────────────────────────
+info "Configuring JARVIS shell aliases..."
+BASHRC="$HOME/.bashrc"
+ALIAS_START="# >>> JARVIS aliases (managed by install.sh) >>>"
+ALIAS_END="# <<< JARVIS aliases (managed by install.sh) <<<"
+if ! grep -Fq "$ALIAS_START" "$BASHRC" 2>/dev/null; then
+    cat >> "$BASHRC" <<EOF
+
+$ALIAS_START
+alias jarvis='python "$ROOT/jarvis_ui.py"'
+alias jarvis-cli='python "$ROOT/jarvis.py"'
+alias olser='nohup ollama serve > /dev/null 2>&1 &'
+alias wa='nohup bash "$ROOT/whatsapp_daemon.sh" > /dev/null 2>&1 &'
+alias omni='bash "$ROOT/omniroute_daemon.sh"'
+alias rag='nohup python "$ROOT/knowledge_hub/app.py" > /dev/null 2>&1 &'
+$ALIAS_END
+EOF
+    ok "Added JARVIS aliases to $BASHRC."
+else
+    ok "JARVIS aliases already exist in $BASHRC; leaving the block unchanged."
+fi
+# This loads aliases in the installer's shell. A child script cannot modify
+# its parent interactive shell, so users may need to run: source ~/.bashrc
+if [ -r "$BASHRC" ]; then
+    # shellcheck disable=SC1090
+    source "$BASHRC"
+fi
+
 # ───────────────────────── WhatsApp bridge ─────────────────────────
 info "Installing WhatsApp bridge packages..."
 if [ -d whatsapp/node_modules/@whiskeysockets/baileys ] && [ -d whatsapp/node_modules/qrcode-terminal ]; then
