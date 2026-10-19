@@ -1,8 +1,13 @@
-# Optional wake-word / microphone support (installed by install.sh --with-voice)
-# On Termux install `python-numpy` and `portaudio` with pkg first.
+# Optional voice / wake-word dependencies.
+#
+# Termux setup (before pip):
+#   pkg install python-numpy portaudio python-onnxruntime
+#
+# sounddevice may need a Termux-compatible build and working microphone
+# permissions. openwakeword's transitive ML dependencies may not all publish
+# Android/Termux wheels; if installation fails, keep voice disabled rather than
+# allowing optional voice packages to break the core JARVIS install.
 numpy
 openwakeword
 sounddevice
 tqdm
-scikit-learn
-scipy
