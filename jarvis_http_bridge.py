@@ -121,7 +121,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type"
+            "Content-Type, X-Token"
         )
         self.send_header(
             "Access-Control-Allow-Methods",
