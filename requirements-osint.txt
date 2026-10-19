@@ -1,4 +1,5 @@
-# Only needed by the SIGIT tool cloned into osint/data/sigit
+# Optional dependencies used by the SIGIT / OSINT tools only.
+# The core JARVIS runtime does not import these directly.
 email-validator
 googlesearch-python
 lxml
