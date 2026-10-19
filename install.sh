@@ -8,6 +8,22 @@
 #
 # Safe to re-run: it only installs what is missing and never touches your
 # .env, WhatsApp session, contacts or memory.
+
+echo "[*] Checking Device Environment..."
+
+# Read the native Android build property
+ANDROID_API_LEVEL=$(getprop ro.build.version.sdk)
+
+if [ -n "$ANDROID_API_LEVEL" ]; then
+    
+    export ANDROID_API_LEVEL
+    echo "[+] Found Android API Level: $ANDROID_API_LEVEL"
+else
+    # Fallback option if getprop fails or if you're testing inside a container
+    export ANDROID_API_LEVEL=24
+    echo "[-] Warning: Could not resolve Android API level natively. FALLBACK TO 24"
+fi
+
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
