@@ -50,6 +50,27 @@ bash whatsapp_daemon.sh        # WhatsApp bridge (keep it in tmux: tmux new -d -
 python jarvis_http_bridge.py   # optional HTTP API on 127.0.0.1:21339
 ```
 
+### Shell shortcuts
+
+The installer adds these aliases to `~/.bashrc` (without appending a duplicate managed block on repeated installs):
+
+| Command | Action |
+|---|---|
+| `jarvis` | Start the terminal UI |
+| `jarvis-cli` | Start the plain command-line assistant |
+| `olser` | Start `ollama serve` in the background |
+| `wa` | Start the WhatsApp bridge in the background |
+| `omni` | Run the OmniRoute daemon script |
+| `rag` | Start the knowledge hub in the background |
+
+After installation, load the aliases in your **current** Termux session with:
+
+```bash
+source ~/.bashrc
+```
+
+New Termux shells load `~/.bashrc` automatically. The installer sources it for its own process, but a child installer cannot change the parent shell that launched it.
+
 ## Notes
 
 - The HTTP bridge requires an `X-Token` header matching `JARVIS_HTTP_TOKEN` in `.env`, and listens on localhost only.
