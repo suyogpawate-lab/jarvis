@@ -10,7 +10,7 @@ def _groq_api_keys():
     raw = os.getenv("GROQ_API_KEYS", "")
     keys = [
         item.strip()
-        for item in raw.replace("\\n", ",").replace(",", " ").split()
+        for item in raw.replace(",", " ").split()
         if item.strip()
     ]
 
