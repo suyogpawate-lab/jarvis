@@ -262,6 +262,7 @@ These services bind to loopback and are intended for use **on the Android device
 | Service | Local URL | What it is for |
 |---|---|---|
 | Knowledge Hub | [http://127.0.0.1:8766](http://127.0.0.1:8766) | Local document upload/search UI |
+| JARVIS Web | [http://127.0.0.1:8765](http://127.0.0.1:8765) | Web UI like terminal UI |
 | WhatsApp bridge | [http://127.0.0.1:23841/status](http://127.0.0.1:23841/status) | JSON connection status for the linked WhatsApp session |
 | OmniRoute | [http://127.0.0.1:20128](http://127.0.0.1:20128) | Local API base; not a web dashboard |
 | JARVIS HTTP bridge (optional) | [http://127.0.0.1:21339/health](http://127.0.0.1:21339/health) | Health endpoint for the optional HTTP API |
@@ -311,39 +312,10 @@ Useful checks:
 ## Data and privacy notes
 
 - Conversation/memory data, logs, local document indexes, and WhatsApp message/session data may contain personal information. Keep the device secure.
-- `.env`, contact files, WhatsApp authentication and runtime data are intended to stay local and are git-ignored.
+- `.env`, contact files, WhatsApp authentication and runtime data are intended to stay local and are local, not on the internet or any cloud.
 - Gmail uses IMAP/SMTP with an App Password.
 - The HTTP bridge requires an `X-Token` header for protected routes and binds to localhost only.
 
-
-## Uploaded application and utility files
-
-The following files are included in the repository:
-
-- `install.sh` — Termux installer for the JARVIS environment. Supports optional voice setup and skipping OSINT/setup stages; see the script's help text before running.
-- `jarvis.py` — Main JARVIS application entry point, shared prompt handler, and local Android command routing.
-- `fast_agent.py` — FastAgent provider and request-routing implementation, including Groq plus optional Gemini and Anthropic/Claude fallback providers. Configure credentials through environment variables; do not put API keys in source code.
-- `jarvis_ui.py` — Rich terminal-based JARVIS interface with animated presence states, themes, prompt history, scrolling, and approval controls.
-- `jarvis_web.py` — Web interface/server component.
-- `web/index.html` — Front-end page for the web interface.
-- `scripts/capture_apps.py` — Utility for capturing installed-app information.
-- `android/command_guard.py` — Android command-guard utility.
-
-
-
-### FastAgent provider configuration
-
-`fast_agent.py` reads provider credentials from environment variables:
-
-- Groq: `GROQ_API_KEYS` or `GROQ_API_KEY`; optional model override: `JARVIS_FAST_MODEL`.
-- Gemini: `GEMINI_API_KEYS` or `GEMINI_API_KEY`; optional model override: `GEMINI_MODEL`.
-- Anthropic/Claude: `ANTHROPIC_API_KEYS` or `ANTHROPIC_API_KEY`; optional model override: `CLAUDE_MODEL`.
-
-For each provider, the plural variable accepts comma-separated keys and is preferred when multiple keys are configured. Keep all keys in your local environment or ignored configuration files. Provider availability, model names, quotas, and network access affect whether requests succeed.
-
-### File placement
-
-Keep the HTML page at `web/index.html`; the web component expects front-end assets to be organized under the `web/` directory. The app-capture helper belongs under `scripts/`, and the command guard belongs under `android/`.
 
 ### Installer notes
 
