@@ -5,13 +5,13 @@ Run   : python jarvis_ui.py        (the plain CLI is still: python jarvis.py)
 Typing = LISTENING, JARVIS working = THINKING, reply/TTS = SPEAKING, error = ALERT.
 Preview a mode: /listening /thinking /speaking /alert /standby   |   /q or Ctrl-C quits.
 Themes: /theme cycles, or /theme emerald|arc|solar|nebula|ghost|plasma|eclipse|pearl|magma|crystal|prism|reactor|radar|atom|hex|warp|storm (saved to data/theme.txt,
-        or set JARVIS_THEME=emerald (or another listed theme) before running).
+        or set JARVIS_THEME=globe before running).
 Keys  : ←/→ move the cursor (Ctrl/Alt+←/→ by word)  Home/End or Ctrl-A/E jump  Del deletes forward
         ↑/↓ recall earlier prompts (Ctrl-P / Ctrl-N always do);  while a long reply is showing,
         ↑/↓ scroll it instead (Ctrl+↑/↓ always scroll).  PgUp/PgDn scroll a page.
 Printed output from jarvis.py's modules goes to ~/jarvis/data/ui.log so it can't corrupt the screen.
 """
-import os, sys, time, json, math, random, threading, select, textwrap, shutil, subprocess
+import os, re, sys, time, json, math, random, threading, select, textwrap, shutil, subprocess
 from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
@@ -31,6 +31,7 @@ STATES = ["standby", "listening", "thinking", "speaking", "alert"]
 # ───────────────────────── connect to Jarvis ─────────────────────────
 BRAIN = None      # the imported jarvis.py module (set in main)
 BRAIN_ERR = ""
+WEB_URL = ""      # e.g. ":8765" once jarvis_web is serving (shown in the prompt box)
 
 
 def set_state(state, log=None):
@@ -251,6 +252,81 @@ def submit():
     threading.Thread(target=work, args=(text,), daemon=True).start()
 
 
+def web_submit(text):
+    """Same pipeline as submit(), for text sent from the web UI (jarvis_web.py)."""
+    text = (text or "").strip()
+    if not text:
+        return "empty"
+    cmd = text[1:].lower() if text.startswith("/") else text.lower()
+    if cmd in ("q", "quit", "exit"):
+        return "ignored"                      # the web page must not shut JARVIS down
+    if text.startswith("/") and (cmd == "theme" or cmd.startswith("theme ")):
+        cycle_theme(cmd[5:].strip())
+        return "ok"
+    if text.startswith("/") and cmd in STATES:
+        set_local(cmd)
+        return "ok"
+    if S["busy"]:
+        return "busy"
+    S["busy"] = True
+    S["reply"] = ""
+    threading.Thread(target=work, args=(text,), daemon=True).start()
+    return "ok"
+
+
+# ───────────────────────── approve / deny buttons ─────────────────────────
+_pend = {"t": 0.0, "items": [], "sig": None}
+
+
+def pending_items(force=False):
+    """Things waiting for Approve/Deny: risky shell commands (command_guard) and WhatsApp group sends."""
+    now = time.time()
+    if not force and now - _pend["t"] < 0.4:
+        return _pend["items"]
+    items = []
+    try:
+        from android import command_guard
+        items += [dict(w, kind="shell") for w in command_guard.waiting()]
+    except Exception:
+        pass
+    rp = S.get("reply") or ""
+    if "[WHATSAPP_GROUP_CONFIRMATION]" in rp and "WAITING_FOR_CONFIRMATION" in rp:
+        g = re.search(r"GROUP: (.*)", rp)
+        m = re.search(r"MESSAGE: (.*?)\nSTATUS:", rp, re.S)
+        items.append({"kind": "wa", "code": "", "expires": 0, "reason": "send a WhatsApp group message",
+                      "command": f"{g.group(1).strip() if g else '?'}: {m.group(1).strip() if m else ''}"})
+    sig = tuple((i["kind"], i["code"]) for i in items)
+    if sig != _pend["sig"]:
+        _pend["sig"] = sig
+        S["pc"] = 1                          # Deny is pre-selected: Approve needs a deliberate move
+    _pend["t"], _pend["items"] = now, items
+    return items
+
+
+def decide(item, approve):
+    """Send the same text you would have typed: 'approve <code>' / 'deny <code>' (WhatsApp: yes / no)."""
+    if item["kind"] == "wa":
+        return web_submit("yes" if approve else "no")
+    return web_submit(f"{'approve' if approve else 'deny'} {item['code']}")
+
+
+def approval_box():
+    items = pending_items()
+    it, sel = items[0], S.get("pc", 1)
+    head = Text(no_wrap=True, overflow="ellipsis")
+    head.append(f"⚠ {it['reason']}", style="bold #ffb02e")
+    if len(items) > 1:
+        head.append(f"  (+{len(items) - 1} more)", style=DIM)
+    cmd = Text(" ".join(it["command"].split()), style="bright_white", no_wrap=True, overflow="ellipsis")
+    btn = Text(no_wrap=True, overflow="ellipsis")
+    btn.append(" Approve ", style="bold black on #3fbf6f" if sel == 0 else "#3fbf6f")
+    btn.append("  ")
+    btn.append(" Deny ", style="bold white on #d64545" if sel == 1 else "#d64545")
+    btn.append("   ←/→ or Tab choose · Enter confirm", style=DIM)
+    return Panel(Group(head, cmd, btn), box=box.ROUNDED, padding=(0, 1), border_style="#ffb02e",
+                 title=Text(" APPROVAL NEEDED ", style="bold #ffb02e"), title_align="left")
+
+
 _esc = [0]
 _seq = [""]
 
@@ -358,6 +434,8 @@ def handle_seq(seq):
             scroll_by(-1)
         else:
             hist_next()
+    elif key in ("C", "D") and not buf and pending_items():
+        S["pc"] = 0 if key == "D" else 1      # ← Approve   → Deny
     elif key == "C":
         S["cur"] = _word_right(buf, cur) if word else min(len(buf), cur + 1)
     elif key == "D":
@@ -392,7 +470,13 @@ def handle_key(ch):
     if ch == "\x1b":
         _esc[0] = 1
         return
+    if ch == "\t" and not S["buf"] and pending_items():
+        S["pc"] = 1 - S.get("pc", 1)
+        return
     if ch in ("\r", "\n"):
+        if not S["buf"] and pending_items(True):
+            decide(pending_items()[0], S.get("pc", 1) == 0)
+            return
         submit()
         return
     if ch == "\x03":
@@ -914,452 +998,3 @@ def draw_storm(cv, t, now, state):
         x, y = cx, cy
         for s in range(1, 13):
             f = s / 12
-            jit = (rnd.random() - .5) * 2 * R * .12 * (1 - f * .3)
-            nx = cx + R * .96 * f * cos(ang) - jit * sin(ang)
-            ny = cy + R * .96 * f * sin(ang) + jit * cos(ang)
-            cv.line(x, y, nx, ny, 1 - f * .5, 1 - f * .6)
-            x, y = nx, ny
-            if rnd.random() < .18:
-                q = ang + (rnd.random() - .5) * 1.4
-                cv.line(x, y, x + R * .3 * cos(q), y + R * .3 * sin(q), .5, .5)
-
-
-SHAPES = {"reactor": draw_reactor, "radar": draw_radar, "atom": draw_atom, "hex": draw_hex,
-          "warp": draw_warp, "storm": draw_storm}
-
-
-class Cloud:
-    """Braille dust cloud: every dot is one speck; fixed random thresholds make specks drift in/out.
-    Canvas themes (reactor, radar, atom, ...) draw through SHAPES instead."""
-    def __init__(self):
-        self.phase = 0.0
-        self.last = time.time()
-        self.thr = {}
-        self.dots = 0
-        self._gk = None
-        self._g = None
-
-    def _thr(self, w, h):
-        k = (w, h)
-        if k not in self.thr:
-            rnd = random.Random(7)
-            self.thr = {k: [[[rnd.random() for _ in range(8)] for _ in range(w)] for _ in range(h)]}
-        return self.thr[k]
-
-    def _geo(self, w, h):
-        k = (w, h)
-        if self._gk != k:
-            Rr = min(w / 2, h) * 0.96
-            g = []
-            for y in range(h):
-                v = ((y + .5 - h / 2) * 2) / Rr
-                row = []
-                for x in range(w):
-                    u = (x + .5 - w / 2) / Rr
-                    row.append((u, v, math.hypot(u, v), math.atan2(v, u)))
-                g.append(row)
-            self._gk, self._g = k, g
-        return self._g
-
-    def render(self, w, h, state):
-        if w < 8 or h < 3:
-            return Text("")
-        now = time.time()
-        self.phase += (now - self.last) * TSPEED[state]
-        self.last = now
-        t = self.phase
-        if SHAPE in SHAPES:
-            cv = Canvas(w, h)
-            SHAPES[SHAPE](cv, t, now, state)
-            self.dots = cv.n
-            return cv.text(state)
-        thr = self._thr(w, h)
-        br = 1.0
-        if state == "speaking":
-            br = 1 + 0.035 * math.sin(now * 7)
-        elif state == "listening":
-            br = 0.93 + 0.04 * math.sin(now * 2)
-        elif state == "alert":
-            br = 1 + 0.05 * math.sin(now * 14)
-        inv = 1 / br
-        geo = self._geo(w, h)
-        sin, cos, exp = math.sin, math.cos, math.exp
-        out = Text(no_wrap=True)
-        dots = 0
-        for y in range(h):
-            row_t = thr[y]
-            row_g = geo[y]
-            for x in range(w):
-                u0, v0, r0, th0 = row_g[x]
-                r = r0 * inv
-                if r > 1.3:
-                    out.append(" ")
-                    continue
-                u, v, th = u0 * inv, v0 * inv, th0
-                if state == "thinking":
-                    a = t * .9 * (1.2 - min(r, 1))
-                    u, v = u * cos(a) - v * sin(a), u * sin(a) + v * cos(a)
-                    th = th0 + a
-                if SHAPE == "cloud":
-                    re = .86 + .09 * sin(3 * th + t * .5) + .06 * sin(5 * th - t * .7) + .04 * sin(9 * th + t)
-                elif SHAPE == "sun":
-                    re = .46 + .5 * abs(cos(4 * th + t * .2)) ** 6 + .03 * sin(7 * th - t)
-                elif SHAPE == "spiral":
-                    re = .88 + .04 * sin(3 * th + t * .5)
-                elif SHAPE == "plasma":
-                    re = .9 + .015 * sin(6 * th + t)
-                elif SHAPE == "eclipse":
-                    re = .82 + .02 * sin(5 * th - t * .6)
-                elif SHAPE == "magma":
-                    re = .84 + .06 * sin(4 * th + t * .4) + .04 * sin(7 * th - t * .5)
-                elif SHAPE == "crystal":
-                    re = .5 + .42 * abs(cos(3 * th + t * .12)) ** 3
-                elif SHAPE == "prism":
-                    re = .9 + .02 * sin(4 * th + t * .8)
-                elif SHAPE == "pearl":
-                    re = .9
-                else:  # rings, orb
-                    re = .9 + .02 * sin(5 * th + t * .6)
-                mask = (re + .12 - r) / .42
-                if mask <= 0:
-                    out.append(" ")
-                    continue
-                if mask > 1:
-                    mask = 1
-                n = .5 + .5 * (.5 * sin(u * 5.1 + t * .3 + sin(v * 3.3 + t * .2) * 1.7)
-                               + .3 * sin(v * 6.7 - t * .25 + sin(u * 4.1) * 1.3)
-                               + .2 * sin((u + v) * 9.3 + t * .4))
-                rim = exp(-((r - re * .82) / .22) ** 2)
-                wisp = 0.0
-                if SHAPE == "cloud" and u > -.1 and abs(v - .12) < .5:
-                    wisp = exp(-(((u - .52) / .38) ** 2 + ((v - .12 - .14 * sin(u * 6 + t)) / .09) ** 2)) \
-                        * (.55 + .45 * sin(u * 15 + t * 1.3))
-                rip = 0.0
-                if state == "speaking":
-                    rip = .12 * sin(r * 14 - now * 9)
-                elif state == "listening":
-                    rip = .12 * sin(r * 12 + now * 5)
-                ex = 0.0
-                pb = 0.0
-                if SHAPE == "rings":
-                    ex = .6 * exp(-((((r * 4.2 - t * .15) % 1) - .5) / .16) ** 2) + .7 * exp(-(r / .12) ** 2)
-                elif SHAPE == "sun":
-                    ex = .8 * exp(-(r / .3) ** 2)
-                elif SHAPE == "spiral":
-                    ex = .75 * ((cos(2 * th - r * 7 + t * .5) + 1) / 2) ** 3 * exp(-r * 1.2) + .7 * exp(-(r / .12) ** 2)
-                elif SHAPE == "orb":
-                    ex = .45 * exp(-(((u + .25) ** 2 + (v + .25) ** 2) / .1))
-                elif SHAPE == "plasma":
-                    fil = (abs(sin(5 * th + 3 * sin(r * 5 - t * 1.2) + t * .4)) ** 12
-                           + .7 * abs(sin(8 * th - 2 * sin(r * 4 + t) + t * .3)) ** 16)
-                    ex = 1.4 * fil * (1 - r * .45) + .9 * exp(-(r / .16) ** 2) - .25
-                elif SHAPE == "eclipse":
-                    ex = (-.7 * exp(-(r / .52) ** 8) + .9 * exp(-((r - .58) / .07) ** 2)
-                          + .6 * abs(sin(8 * th + t * .5)) ** 6 * exp(-((r - .7) / .18) ** 2))
-                elif SHAPE == "pearl":
-                    pb = .5 + .5 * sin(v * 9 + 1.6 * sin(u * 3 + t * .4) + t * .3)
-                    ex = .55 * pb * pb - .1 + .8 * exp(-(((u + .3) ** 2 + (v + .3) ** 2) / .05))
-                elif SHAPE == "magma":
-                    cc = abs(sin(u * 6 + sin(v * 4 + t * .3) * 1.5 + t * .2)) * abs(sin(v * 6 + sin(u * 4 - t * .25) * 1.5))
-                    ex = 1.2 * min(1.0, cc * 2.5) ** 1.5 - .55 + .9 * exp(-(r / .35) ** 2)
-                elif SHAPE == "crystal":
-                    ex = (1.0 * abs(cos(3 * th + t * .12)) ** 14 * exp(-r * .9)
-                          + .6 * exp(-((r - .34) / .05) ** 2) + .7 * exp(-(r / .12) ** 2))
-                elif SHAPE == "prism":
-                    ex = (-.3 * exp(-(r / .6) ** 4) + .5 * exp(-((r - .82) / .09) ** 2)
-                          + .7 * exp(-(((u + .35) ** 2 + (v + .4) ** 2) / .04)))
-                d = mask * (.16 + .42 * n * n + .5 * rim + .7 * wisp + rip + ex)
-                if state == "alert":
-                    d += .15 * random.random() - .05
-                bits = 0
-                if d > .02:
-                    tc = row_t[x]
-                    for k in range(8):
-                        if d > tc[k]:
-                            bits |= BIT[k]
-                            dots += 1
-                bi = max(0, int(min(1.0, .25 + .5 * d + .6 * wisp) * 9))
-                hi = min(5, int(mask * (.12 + .3 * n) * 12))
-                if RAINBOW:
-                    ci = int((((th0 + 3.14159) / 6.28318) + t * .08 + r * .15) % 1 * 12)
-                elif SHAPE == "pearl":
-                    ci = max(0, min(5, int((pb * .6 + (th0 + 3.14159) / 6.28318 * .4) * 6)))
-                else:
-                    ci = min(5, int(r * 5.5))
-                out.append(chr(0x2800 + bits) if bits else " ", style=_sty(state, bi, hi, ci))
-            out.append("\n")
-        self.dots = dots
-        return out
-
-
-# ───────────────────────── theme cycling (set by config_ui.py) ─────────────────────────
-CYCLE_FILE = os.path.join(HOME, "data", "theme_cycle.json")
-
-
-def load_cycle():
-    """{"on": rotate themes automatically?, "every": seconds, "random": random order?}"""
-    try:
-        with open(CYCLE_FILE) as f:
-            d = json.load(f)
-    except Exception:
-        d = {}
-    try:
-        every = max(5, int(d.get("every", 60)))
-    except Exception:
-        every = 60
-    return {"on": bool(d.get("on", False)), "every": every, "random": bool(d.get("random", False))}
-
-
-def _mtime(p):
-    try:
-        return os.path.getmtime(p)
-    except OSError:
-        return 0.0
-
-
-_cyc = {"cfg": load_cycle(), "t": time.time(), "chk": 0.0, "mt": (_mtime(THEME_FILE), _mtime(CYCLE_FILE))}
-
-
-def cycle_tick():
-    """Call often: reloads theme/cycle settings when config_ui.py saves them, and rotates themes if enabled."""
-    now = time.time()
-    if now - _cyc["chk"] > 1.5:
-        _cyc["chk"] = now
-        mt = (_mtime(THEME_FILE), _mtime(CYCLE_FILE))
-        if mt != _cyc["mt"]:
-            _cyc["mt"] = mt
-            load_theme()
-            _cyc["cfg"] = load_cycle()
-            _cyc["t"] = now
-    c = _cyc["cfg"]
-    if not c["on"] or now - _cyc["t"] < c["every"]:
-        return
-    _cyc["t"] = now
-    if c["random"]:
-        set_theme(random.choice([n for n in THEME_ORDER if n != TH_NAME]), save=False)
-    else:
-        set_theme(THEME_ORDER[(THEME_ORDER.index(TH_NAME) + 1) % len(THEME_ORDER)], save=False)
-
-
-core = Cloud()
-
-
-# ───────────────────────── UI pieces ─────────────────────────
-class Dyn:
-    """Renderable that receives the real width/height of its slot."""
-    def __init__(self, fn):
-        self.fn = fn
-
-    def __rich_console__(self, console, options):
-        yield self.fn(options.max_width, options.height or 12)
-
-
-def grad(txt, c1=None, c2=None):
-    c1, c2 = c1 or GRAD[0], c2 or GRAD[1]
-    t = Text()
-    n = max(1, len(txt) - 1)
-    for i, ch in enumerate(txt):
-        f = i / n
-        c = [int(c1[k] + (c2[k] - c1[k]) * f) for k in range(3)]
-        t.append(ch, style=f"bold rgb({c[0]},{c[1]},{c[2]})")
-    return t
-
-
-def tabs():
-    g = Table.grid(expand=True)
-    for _ in range(4):
-        g.add_column(ratio=1, justify="center")
-    cells = []
-    for s in ("listening", "thinking", "speaking", "alert"):
-        if S["state"] == s:
-            st = "bold white on #d64545" if s == "alert" else f"bold {ON_ACC} on {ACC}"
-        else:
-            st = "#aab0ac"
-        cells.append(Text(f" {s.capitalize()} ", style=st))
-    g.add_row(*cells)
-    return Panel(g, box=box.ROUNDED, border_style="#26292b", style="on #141618", padding=0)
-
-
-def wrap_hard(s, w):
-    return [s[i:i + w] for i in range(0, len(s), w)] or [""]
-
-
-def input_line(w, h):
-    prompt = "› "
-    blink = int(time.time() * 2) % 2 == 0
-    buf = S["buf"]
-    cur = max(0, min(S["cur"], len(buf)))
-    if not buf:
-        t = Text(no_wrap=True, overflow="crop")
-        t.append(prompt, style=f"bold {ACC}")
-        t.append("█" if blink else " ", style=ACC)
-        t.append(" Jarvis is working..." if S["busy"] else " Ask Jarvis anything", style=DIM)
-        return t
-    w = max(4, w)
-    full = prompt + buf + " "              # trailing cell so the cursor can sit after the last char
-    pos = len(prompt) + cur
-    lines = wrap_hard(full, w)
-    cl = pos // w                          # line holding the cursor
-    h = max(1, h)
-    first = max(0, min(cl - h + 1, len(lines) - h)) if len(lines) > h else 0
-    t = Text()
-    for li in range(first, min(len(lines), first + h)):
-        ln = lines[li]
-        base = li * w
-        for ci, chr_ in enumerate(ln):
-            idx = base + ci
-            if idx == pos:
-                t.append(chr_ if chr_ != " " or idx < len(full) - 1 else " ",
-                         style=f"reverse {ACC}" if blink else "bright_white")
-            elif idx < len(prompt):
-                t.append(chr_, style=f"bold {ACC}")
-            else:
-                t.append(chr_, style="bright_white")
-        if li < min(len(lines), first + h) - 1:
-            t.append("\n")
-    return t
-
-
-_wrap = {"k": None, "lines": []}
-
-
-def reply_line(w, h):
-    txt = S["reply"]
-    h = max(1, h)
-    S["rh"] = h
-    if S.get("_rt") != S["reply_t"]:  # new reply: jump to the newest text
-        S["_rt"] = S["reply_t"]
-        S["scroll"] = 0
-    if not txt:
-        S["sc"] = None
-        return Text("…" if S["busy"] else "", style=DIM)
-    shown = txt[:max(0, int((time.time() - S["reply_t"]) * 70))]  # typewriter reveal
-    if _wrap["k"] != (shown, w):
-        lines = []
-        for para in shown.split("\n"):
-            lines += textwrap.wrap(para, max(4, w)) or [""]
-        _wrap["k"], _wrap["lines"] = (shown, w), lines
-    lines = _wrap["lines"]
-    n = len(lines)
-    off = max(0, min(S["scroll"], n - h))
-    S["scroll"] = off
-    end = n - off
-    S["sc"] = (end - h + 1, end, n) if n > h else None
-    return Text("\n".join(lines[end - h:end] if n > h else lines), style=REPLY)
-
-
-def input_box():
-    active = bool(S["buf"]) or S["busy"]
-    return Panel(Dyn(input_line), box=box.ROUNDED, padding=(0, 1),
-                 border_style=ACC if active else EDGE,
-                 title=Text(" YOU ", style=f"bold {ACC}"), title_align="left",
-                 subtitle=Text(f" {TH_NAME} · {_fps['v']:.0f} fps ", style=DIM), subtitle_align="right")
-
-
-def response_box():
-    st = S["state"]
-    border = "#d64545" if st == "alert" else ACC if st == "speaking" else EDGE
-    sc = S.get("sc")
-    sub = Text(f" {sc[0]}-{sc[1]}/{sc[2]}  Ctrl+↑↓ PgUp PgDn ", style=ACC) if sc else None
-    return Panel(Dyn(reply_line), box=box.ROUNDED, padding=(0, 1), border_style=border,
-                 title=Text(" J.A.R.V.I.S. ", style=f"bold {ACC}"), title_align="left",
-                 subtitle=sub, subtitle_align="right")
-
-
-def build():
-    now = time.time()
-    _fps["v"] = _fps["v"] * .9 + (1 / max(now - _fps["t"], 1e-3)) * .1
-    _fps["t"] = now
-    W, H = CON.size
-    parts = []
-    if H >= 30:
-        g = Table.grid(expand=True)
-        g.add_column(ratio=1)
-        g.add_column(justify="right")
-        g.add_row(Text(""),
-                  Text(f" {core.dots:,} specks of dust ", style="#c8cdc9 on #16181a"))
-        parts.append(Layout(g, size=2))
-    parts.append(Layout(tabs(), size=3))
-    parts.append(Layout(Dyn(lambda w, h: core.render(w, h, S["state"])), ratio=1))
-    if W >= 70:  # prompt and response side by side
-        bot = Layout(size=6 if H < 30 else 9)
-        bot.split_row(Layout(input_box(), ratio=1), Layout(response_box(), ratio=1))
-        parts.append(bot)
-    else:  # stacked: prompt, then response below it
-        parts.append(Layout(input_box(), size=3))
-        parts.append(Layout(response_box(), size=5 if H < 30 else 7))
-    lay = Layout()
-    lay.split_column(*parts)
-    return lay
-
-
-CON = Console(file=sys.__stdout__)
-
-
-def cursor(show):
-    """The terminal's own cursor is the white block that sweeps over the screen while it redraws."""
-    try:
-        sys.__stdout__.write("\x1b[?25h" if show else "\x1b[?25l")
-        sys.__stdout__.flush()
-    except Exception:
-        pass
-
-
-def main():
-    import termios, tty, codecs
-    global _ev_pos, BRAIN, BRAIN_ERR
-    print("Starting JARVIS...")
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import jarvis as brain
-        brain.init_services()
-        BRAIN = brain
-    except Exception as e:
-        BRAIN_ERR = f"Could not load jarvis.py: {type(e).__name__}: {e}"
-        print(BRAIN_ERR)
-        time.sleep(2)
-    try:
-        _ev_pos = os.path.getsize(EV_FILE)
-    except OSError:
-        _ev_pos = 0
-    os.makedirs(os.path.join(HOME, "data"), exist_ok=True)
-    logf = open(os.path.join(HOME, "data", "ui.log"), "a", buffering=1)
-    out_o, err_o = sys.stdout, sys.stderr
-    sys.stdout = sys.stderr = logf  # keep module prints off the screen
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    dec = codecs.getincrementaldecoder("utf-8")("ignore")
-    try:
-        tty.setcbreak(fd)
-        threading.Thread(target=speech_watch, daemon=True).start()
-        with Live(get_renderable=build, console=CON, screen=True, refresh_per_second=FPS):
-            last_hide = 0.0
-            while not S["quit"]:
-                if time.time() - last_hide > 0.1:  # keep it hidden, whatever re-shows it
-                    cursor(False)
-                    last_hide = time.time()
-                pump_events()
-                cycle_tick()
-                if S["state"] == "alert" and S["alert_until"] and time.time() > S["alert_until"] and not S["busy"]:
-                    S["alert_until"] = 0.0
-                    settle()
-                if BRAIN is not None and not S["busy"]:
-                    item = BRAIN.pop_notification()
-                    if item:
-                        notify(item)
-                if select.select([fd], [], [], 0.02)[0]:
-                    for ch in dec.decode(os.read(fd, 4096)):
-                        handle_key(ch)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        cursor(True)
-        sys.stdout, sys.stderr = out_o, err_o
-        if BRAIN is not None:
-            BRAIN.shutdown()
-        print("JARVIS OFFLINE")
-
-
-if __name__ == "__main__":
-    main()
