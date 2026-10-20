@@ -84,6 +84,11 @@ fi
 mkdir -p data logs voice/models
 ok "Runtime folders ready (data/, logs/)."
 
+# ───────────────────────── installed apps index ─────────────────────────
+info "Capturing installed apps (data/installed_apps.json)..."
+pkg install -y aapt >/dev/null 2>&1 || warn "aapt unavailable; app names will be derived from package IDs."
+python scripts/capture_apps.py || warn "Could not capture installed apps. Retry: python scripts/capture_apps.py"
+
 # ───────────────────────── shell aliases ─────────────────────────
 info "Configuring JARVIS shell aliases..."
 BASHRC="$HOME/.bashrc"
