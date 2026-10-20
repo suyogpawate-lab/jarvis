@@ -288,7 +288,7 @@ The `/screen` routes accept screen-layout data for integrations. Do not expose t
 
 - `olser` starts `ollama serve` in the background. Install/pull a model separately if you want to use local inference, for example `ollama pull qwen2.5:0.5b`; local-model speed depends on device memory and CPU.
 - `omni` starts the OmniRoute daemon, which prints its API base URL (`http://127.0.0.1:20128`). JARVIS provider configuration uses `OMNIROUTE_BASE_URL` and `OMNIROUTE_API_KEY`.
-- OmniRoute is optional at runtime for some routes, but the current guided setup describes it as part of the full provider configuration. If it fails to install/start, check `omniroute.log` and verify the local endpoint before relying on it.
+- OmniRoute is important[for AI discussion], make sure you configure the providers/models on `http://127.0.0.1:20128`. If it fails to install/start, check `omniroute.log` and verify the local endpoint before relying on it.
 
 ## Troubleshooting
 
