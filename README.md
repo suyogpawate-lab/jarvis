@@ -82,6 +82,22 @@ Type a request and press **Enter**. The UI shows JARVIS's standby, listening, th
 - **Backspace / Delete:** edit text; **Ctrl-U:** clear the input line; **Ctrl-W:** delete the previous word.
 - The UI has visual-only state previews: `/listening`, `/thinking`, `/speaking`, `/alert`, `/standby`.
 
+### Themes and automatic theme cycling
+
+JARVIS includes a terminal theme selector with 17 animated visual themes. From the project directory, run:
+
+```bash
+python config_ui.py
+```
+
+The selector previews the themes, then lets you browse with **Left/Right** (or **A/D**) and save with **Enter**. Press **Q** to quit without saving. Use **C** to enable or disable automatic theme cycling, **Up/Down** to choose the interval (10 seconds to 10 minutes), and **R** to switch between random and sequential order.
+
+The selected theme is saved in `data/theme.txt`; cycling preferences are saved in `data/theme_cycle.json`. A running `jarvis_ui.py` checks for changes and applies them automatically. You can also switch themes from the JARVIS prompt with `/theme` or `/theme nebula` (replace `nebula` with a theme name).
+
+Available themes: `emerald`, `arc`, `solar`, `nebula`, `ghost`, `plasma`, `eclipse`, `pearl`, `magma`, `crystal`, `prism`, `reactor`, `radar`, `atom`, `hex`, `warp`, and `storm`.
+
+The theme selector uses the same `rich` dependency installed by `install.sh`; no separate package installation is normally needed. Run it inside an interactive Termux terminal, not a non-interactive shell.
+
 ## What to ask JARVIS to do
 
 Most tasks are requested in ordinary language. These are examples of supported routes and useful starting prompts; exact results depend on Android permissions, installed apps, configured accounts, network access and running services.
