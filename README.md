@@ -314,3 +314,31 @@ Useful checks:
 - `.env`, contact files, WhatsApp authentication and runtime data are intended to stay local and are git-ignored.
 - Gmail uses IMAP/SMTP with an App Password.
 - The HTTP bridge requires an `X-Token` header for protected routes and binds to localhost only.
+
+
+## Uploaded application and utility files
+
+The following files are included in the repository:
+
+- `install.sh` — Termux installer for the JARVIS environment. Supports optional voice setup and skipping OSINT/setup stages; see the script's help text before running.
+- `jarvis.py` — Main JARVIS application entry point.
+- `jarvis_ui.py` — Terminal-based JARVIS user interface.
+- `jarvis_web.py` — Web interface/server component.
+- `web/index.html` — Front-end page for the web interface.
+- `scripts/capture_apps.py` — Utility for capturing installed-app information.
+- `android/command_guard.py` — Android command-guard utility.
+
+### File placement
+
+Keep the HTML page at `web/index.html`; the web component expects front-end assets to be organized under the `web/` directory. The app-capture helper belongs under `scripts/`, and the command guard belongs under `android/`.
+
+### Installer notes
+
+Run the installer from the JARVIS project directory in Termux:
+
+```bash
+bash install.sh --help
+bash install.sh
+```
+
+The optional `--with-voice`, `--skip-osint`, and `--skip-setup` flags are described in the installer help. Review the script before running it, especially on a new device.
