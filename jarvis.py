@@ -998,3 +998,54 @@ def main():
                     break
 
                 print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                _web_notify(summary)
+
+            prompt = read_prompt()
+
+            if not prompt:
+                continue
+
+            if prompt.lower() in {"exit", "quit"}:
+                shutdown()
+                print("JARVIS OFFLINE")
+                break
+
+            if prompt.lower() in MEMORY_VIEW_COMMANDS:
+                print_memory()
+                continue
+
+            answer, should_speak = handle_prompt(prompt)
+
+            if not answer:
+                continue
+
+            print()
+
+            if parse_discuss_command(prompt):
+                print("--- SYNTHESIS ---")
+                print()
+                print(f"JARVIS >> {answer}")
+            else:
+                print(f"JARVIS > {answer}")
+
+            print()
+
+            if should_speak:
+                speak(answer)
+
+        except KeyboardInterrupt:
+            shutdown()
+            print("\nJARVIS OFFLINE")
+            break
+
+        except EOFError:
+            shutdown()
+            print("\nJARVIS OFFLINE")
+            break
+
+        except Exception as exc:
+            print(f"\n[FATAL ERROR] {exc}\n")
+
+
+if __name__ == "__main__":
+    main()
