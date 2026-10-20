@@ -97,8 +97,7 @@ ALIAS_END="# <<< JARVIS aliases (managed by install.sh) <<<"
 if ! grep -Fq "$ALIAS_START" "$BASHRC" 2>/dev/null; then
     cat >> "$BASHRC" <<EOF
 
-$ALIAS_START
-alias jarvis='python "$ROOT/jarvis_ui.py"'
+$ALIAS_STARTalias jarvis='python "$ROOT/jarvis_ui.py"'
 alias jarvis-cli='python "$ROOT/jarvis.py"'
 alias olser='nohup ollama serve > /dev/null 2>&1 &'
 alias wa='nohup bash "$ROOT/whatsapp_daemon.sh" > /dev/null 2>&1 &'
@@ -197,8 +196,7 @@ fi
 warn "For notifications, contacts and battery info install the 'Termux:API' app (F-Droid) and grant it permissions."
 
 # ───────────────────────── guided setup ─────────────────────────
-if [ "$RUN_SETUP" -eq 1 ] && [ -t 0 ]; then
-    info "Starting guided setup (API keys, Gmail, WhatsApp, contacts)..."
+if [ "$RUN_SETUP" -eq 1 ] && [ -t 0 ]; then    info "Starting guided setup (API keys, Gmail, WhatsApp, contacts)..."
     python setup.py
 else
     info "Install finished. Run the guided setup with:  python setup.py"
