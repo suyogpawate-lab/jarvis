@@ -97,8 +97,7 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({"ok": bool(ui.set_theme(str(data.get("name", ""))))}))
         if self.path == "/api/decide":
             act, kind, code = data.get("action"), data.get("kind"), str(data.get("code", ""))
-            ok = act in ("approve", "deny") and any(
-                i["kind"] == kind and i["code"] == code for i in ui.pending_items(True)
+            ok = act in ("approve", "deny") and any(                i["kind"] == kind and i["code"] == code for i in ui.pending_items(True)
                 if kind == "wa" or re.fullmatch(r"[0-9a-f]{4}", code))
             if not ok:
                 return self._send(409, '{"result":"not pending"}')
