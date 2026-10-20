@@ -97,8 +97,7 @@ reactor(cv,t,now,st){const cx=cv.DW/2,cy=cv.DH/2,R=mn(cv.DW,cv.DH)/2*.94,pulse=s
  for(let i=0;i<120;i++){const a=PI2*i/120-t*.03,r=R*(1+.05*((i*7)%5)/5);cv.dot(cx+r*cos(a),cy+r*sin(a),.25,.1)}
  for(const[off,span,rf,k,th]of[[0,1,.79,1,3],[2.3,.62,.79,1,3],[4.1,.36,.79,1,3],[1,1.1,.63,-1.4,2],[4,.7,.63,-1.4,2],[.5,.5,.93,.6,2]]){const a0=off+t*k;for(let j=0;j<th;j++)cv.arc(cx,cy,R*rf+(j-th/2)*.9,a0,a0+span,1,.85)}
  const cr=R*(.09+.025*pulse);cv.disc(cx,cy,cr,d2=>1-.35*d2/(cr*cr+1e-6),1);
- cv.arc(cx,cy,R*.17,0,PI2,.6+.3*pulse,.95);cv.arc(cx,cy,R*.22,0,PI2,.25,.8);
- if(st==='speaking'){const rp=mod(now*.7,1);cv.arc(cx,cy,R*(.2+.8*rp),0,PI2,(1-rp)*.8,.9)}
+ cv.arc(cx,cy,R*.17,0,PI2,.6+.3*pulse,.95);cv.arc(cx,cy,R*.22,0,PI2,.25,.8); if(st==='speaking'){const rp=mod(now*.7,1);cv.arc(cx,cy,R*(.2+.8*rp),0,PI2,(1-rp)*.8,.9)}
  if(st==='alert')for(let i=0;i<40;i++){const a=Math.random()*PI2,r=R*Math.random();cv.dot(cx+r*cos(a),cy+r*sin(a),.5,.5)}},
 radar(cv,t,now,st){const cx=cv.DW/2,cy=cv.DH/2,R=mn(cv.DW,cv.DH)/2*.94;
  for(const rf of[.25,.5,.75,1])cv.arc(cx,cy,R*rf,0,PI2,rf===1?.6:.3,1-rf*.6);
@@ -197,8 +196,7 @@ function frame(){
  document.querySelectorAll('#tabs span').forEach(e=>{const on=e.dataset.s===st;e.className=on?'on '+st:''});
  $('in').classList.toggle('act',!!$('q').value||S.busy);$('out').className='p'+(st==='alert'?' al':st==='speaking'?' sp':'');
  $('go').disabled=S.busy;
- const pn=S.pending||[],p0=pn[0];$('ap').hidden=!p0;
- if(p0){const k=p0.kind+p0.code;if($('ap').dataset.k!==k){$('ap').dataset.k=k;$('apr').textContent='⚠ '+p0.reason+(pn.length>1?'  (+'+(pn.length-1)+' more)':'');$('apc').textContent=p0.command;$('apy').disabled=$('apn').disabled=false}
+ const pn=S.pending||[],p0=pn[0];$('ap').hidden=!p0; if(p0){const k=p0.kind+p0.code;if($('ap').dataset.k!==k){$('ap').dataset.k=k;$('apr').textContent='⚠ '+p0.reason+(pn.length>1?'  (+'+(pn.length-1)+' more)':'');$('apc').textContent=p0.command;$('apy').disabled=$('apn').disabled=false}
   $('apt').textContent=p0.expires?'expires in '+mx(0,Math.round(p0.expires-Date.now()/1000))+'s':''}
  requestAnimationFrame(frame)}
 
