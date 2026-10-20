@@ -496,41 +496,75 @@ def ensure_whatsapp_daemon():
 # LOCAL ANDROID ROUTER (NO LLM LATENCY)
 # ==============================================================
 # Exact device actions are handled before CommandDispatcher/Groq.
-# Add aliases here as needed. Package IDs are checked against the
-# installed package list before attempting to launch an app.
+# App names are resolved from data/installed_apps.json (written by install.sh via
+# scripts/capture_apps.py: real launcher name, shortforms, package ID). Optional personal
+# nicknames live in data/app_nicknames.json, e.g. {"yt": "youtube"}. Nothing is hardcoded here.
 
-ANDROID_APP_ALIASES = {
-    "yt": ("com.google.android.youtube", "com.google.android.youtube"),
-    "youtube": ("com.google.android.youtube", "com.google.android.youtube"),
-    "chrome": ("com.android.chrome", "com.google.android.chrome"),
-    "google chrome": ("com.android.chrome", "com.google.android.chrome"),
-    "google": ("com.google.android.googlequicksearchbox",),
-    "gmail": ("com.google.android.gm",),
-    "maps": ("com.google.android.apps.maps",),
-    "google maps": ("com.google.android.apps.maps",),
-    "play store": ("com.android.vending",),
-    "playstore": ("com.android.vending",),
-    "settings": ("com.android.settings",),
-    "camera": ("com.android.camera2", "com.google.android.GoogleCamera"),
-    "photos": ("com.google.android.apps.photos",),
-    "google photos": ("com.google.android.apps.photos",),
-    "files": ("com.google.android.documentsui", "com.google.android.apps.nbu.files"),
-    "google files": ("com.google.android.apps.nbu.files",),
-    "whatsapp": ("com.whatsapp",),
-    "telegram": ("org.telegram.messenger",),
-    "instagram": ("com.instagram.android",),
-    "facebook": ("com.facebook.katana",),
-    "messenger": ("com.facebook.orca",),
-    "spotify": ("com.spotify.music",),
-    "discord": ("com.discord",),
-    "reddit": ("com.reddit.frontpage",),
-    "tiktok": ("com.zhiliaoapp.musically",),
-    "netflix": ("com.netflix.mediaclient",),
-    "amazon": ("com.amazon.mShop.android.shopping",),
-    "chatgpt": ("com.openai.chatgpt",),
-    "ollama": ("com.termux",),
-    "termux": ("com.termux",),
-}
+APPS_FILE = Path(__file__).resolve().parent / "data" / "installed_apps.json"
+NICKNAMES_FILE = Path(__file__).resolve().parent / "data" / "app_nicknames.json"
+_apps_cache = {"mt": None, "apps": []}
+
+
+def _norm(text):
+    return re.sub(r"[^a-z0-9]+", " ", str(text).lower()).strip()
+
+
+def _load_apps():
+    """Installed-app index, reloaded whenever the file changes."""
+    import json
+    try:
+        mt = APPS_FILE.stat().st_mtime
+        if _apps_cache["mt"] != mt:
+            data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+            _apps_cache["apps"] = [a for a in data.get("apps", []) if a.get("package")]
+            _apps_cache["mt"] = mt
+    except Exception:
+        _apps_cache["apps"], _apps_cache["mt"] = [], None
+    return _apps_cache["apps"]
+
+
+def _nicknames():
+    import json
+    try:
+        return {_norm(k): v for k, v in json.loads(NICKNAMES_FILE.read_text(encoding="utf-8")).items()}
+    except Exception:
+        return {}
+
+
+def _resolve_app(query, explicit):
+    """Typed app name -> candidate package IDs, from installed_apps.json.
+    Bare names only match exactly (name, shortform, package ID). With an explicit
+    open/launch/start/run, a unique partial match of the app's name is also accepted."""
+    apps = _load_apps()
+    q = _norm(_nicknames().get(_norm(query), query))
+    if not apps or not q:
+        return []
+
+    def pick(found):  # user-installed, launchable apps first
+        found = sorted(found, key=lambda a: (a.get("launchable") is False, bool(a.get("system"))))
+        return [a["package"] for a in found]
+
+    named = [a for a in apps if q == _norm(a["name"]) or q in {_norm(x) for x in a.get("short", [])}]
+    if named:
+        return pick(named)
+    ids = [a for a in apps if q == _norm(a["package"]) or q == _norm(a["package"].rsplit(".", 1)[-1])]
+    if len(ids) == 1:
+        return pick(ids)
+    if not explicit or len(q) < 3:
+        return []
+    part = [a for a in apps if a.get("launchable") is not False and q in _norm(a["name"])]
+    for group in ([a for a in part if _norm(a["name"]).startswith(q)], part):
+        if len(group) == 1:
+            return pick(group)
+    inside = [a for a in apps if a.get("launchable") is not False and len(_norm(a["name"])) >= 4
+              and re.search(rf"\b{re.escape(_norm(a['name']))}\b", q)]   # "google chrome" -> Chrome
+    if inside:
+        best = max(len(_norm(a["name"])) for a in inside)
+        inside = [a for a in inside if len(_norm(a["name"])) == best]
+        if len(inside) == 1:
+            return pick(inside)
+    return []
+
 
 ANDROID_SETTINGS = {
     "wifi": "android.settings.WIFI_SETTINGS",
@@ -614,9 +648,17 @@ def handle_local_android_command(prompt):
     app_text = re.sub(r"^(?:open|launch|start|run)\s+", "", text).strip()
     app_text = re.sub(r"^(?:the\s+)", "", app_text)
     app_text = re.sub(r"\s+app$", "", app_text)
-    candidates = ANDROID_APP_ALIASES.get(app_text)
+    explicit = bool(re.match(r"^(?:open|launch|start|run)\s+", text))
+    candidates = None
+    if re.fullmatch(r"[a-z0-9][a-z0-9 ._-]{0,39}", app_text):
+        candidates = tuple(_resolve_app(app_text, explicit)) or None
+        if candidates is None and explicit and len(_norm(app_text)) >= 3:
+            q = _norm(app_text)
+            many = [a["name"] for a in _load_apps() if a.get("launchable") is not False and q in _norm(a["name"])]
+            if len(many) > 1:                 # several apps match: ask instead of guessing
+                return "Which app did you mean: " + ", ".join(sorted(set(many))[:6]) + "?"
 
-    # For unknown names, attempt a conservative package-name match.
+    # Not in the index (new install, or index not built yet): conservative live package-ID match.
     # Never fuzzy-match a normal sentence to an installed app.
     if candidates is None and re.fullmatch(r"[a-z0-9][a-z0-9 ._-]{0,39}", app_text):
         packages = _android_package_ids()
@@ -637,7 +679,8 @@ def handle_local_android_command(prompt):
                 continue
         return (
             f"I couldn't launch {app_text} locally. "
-            "It may not be installed, or its package ID may need an alias."
+            "It may not be installed, or data/installed_apps.json may be outdated "
+            "(refresh it with: python scripts/capture_apps.py)."
         )
 
     return None
@@ -845,6 +888,15 @@ voice_command_queue = queue.Queue()
 voice_listener = None
 
 
+def _web_notify(summary):
+    """Show a notification in the web UI too (no-op if jarvis_ui is unavailable)."""
+    try:
+        import jarvis_ui
+        jarvis_ui.notify(summary)
+    except Exception:
+        pass
+
+
 def init_services():
     global notification_watcher, voice_listener
 
@@ -902,6 +954,7 @@ def read_prompt():
         summary = pop_notification()
         if summary is not None:
             print(f"\\nJARVIS [NOTIFICATIONS] > {summary}")
+            _web_notify(summary)
             print("YOU  > ", end="", flush=True)
 
         ready, _, _ = select.select([sys.stdin], [], [], 0.25)
@@ -920,6 +973,14 @@ def main():
 
     init_services()
 
+    try:
+        import jarvis_ui, jarvis_web
+        url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
+        if url:
+            print(f"Web UI: {url}")
+    except Exception as exc:
+        print(f"[WEB UI DISABLED] {exc}")
+
     print("JARVIS ONLINE")
     print("Type '/memory' to inspect memory.")
     print("Type 'exit' to quit.")
@@ -937,53 +998,3 @@ def main():
                     break
 
                 print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
-
-            prompt = read_prompt()
-
-            if not prompt:
-                continue
-
-            if prompt.lower() in {"exit", "quit"}:
-                shutdown()
-                print("JARVIS OFFLINE")
-                break
-
-            if prompt.lower() in MEMORY_VIEW_COMMANDS:
-                print_memory()
-                continue
-
-            answer, should_speak = handle_prompt(prompt)
-
-            if not answer:
-                continue
-
-            print()
-
-            if parse_discuss_command(prompt):
-                print("--- SYNTHESIS ---")
-                print()
-                print(f"JARVIS >> {answer}")
-            else:
-                print(f"JARVIS > {answer}")
-
-            print()
-
-            if should_speak:
-                speak(answer)
-
-        except KeyboardInterrupt:
-            shutdown()
-            print("\nJARVIS OFFLINE")
-            break
-
-        except EOFError:
-            shutdown()
-            print("\nJARVIS OFFLINE")
-            break
-
-        except Exception as exc:
-            print(f"\n[FATAL ERROR] {exc}\n")
-
-
-if __name__ == "__main__":
-    main()
