@@ -1557,15 +1557,6 @@ Rules:
         # ======================================================
         # WHATSAPP WIDE-SPECTRUM NORMALIZATION ROUTE
         #
-        # Literal message examples:
-        #
-        #   wa send Rahul "I'll call you later"
-        #   wa send Bonnet Kitchen 'is this group really dead'
-        #   whatsapp send Rahul "hello"
-        #   message Rahul "hello"
-        #   send Rahul on WhatsApp "hello"
-        #   send WhatsApp message to Rahul: "hello"
-        #
         # Quoted content is treated as the exact outgoing message.
         # It is NOT rewritten by Groq.
         # ======================================================
@@ -1674,15 +1665,15 @@ Rules:
         # WHATSAPP SHORT-FORM AUTO DETECTION
         #
         # Supported:
-        #   whatsapp Rahul asking about the physics notes
-        #   whatsapp Rahul saying I'll send them tonight
-        #   wa Rahul asking if he has the notes
-        #   message Rahul saying I'll call later
-        #   msg Rahul asking about the meeting
+        #   whatsapp <name> asking about the physics notes
+        #   whatsapp <name> saying I'll send them tonight
+        #   wa <name> asking if he has the notes
+        #   message <name> saying I'll call later
+        #   msg <name> asking about the meeting
         #
         # Short "ask/tell" forms:
-        #   ask Rahul about the physics notes
-        #   tell Rahul I'll send the notes tonight
+        #   ask <name> about the physics notes
+        #   tell <name> I'll send the notes tonight
         #
         # These are intentionally handled locally before the general
         # routing/AI path.
@@ -1692,7 +1683,7 @@ Rules:
         # WHATSAPP UNQUOTED MULTI-WORD GROUP ROUTE
         #
         # Example:
-        #   wa send Bonnet Kitchen asking if this group is REALLY dead
+        #   wa send <wagroup> asking if this group is REALLY dead
         #
         # Resolve the longest leading group name first. Everything
         # after the resolved group name becomes the outgoing message.
@@ -1890,9 +1881,9 @@ Rules:
         # ======================================================
         #
         # Examples:
-        #   Ask Rahul on WhatsApp if he can send me the physics notes.
+        #   Ask <name> on WhatsApp if he can send me the physics notes.
         #   Tell Mom on WhatsApp that I'll be home late.
-        #   Message Rahul on WhatsApp asking whether the meeting is still on.
+        #   Message <name> on WhatsApp asking whether the meeting is still on.
         #
         # The request is sent to Groq for composition.
         # The generated message is then sent by the existing
@@ -1912,7 +1903,7 @@ Rules:
         )
 
         # Form B:
-        #   Ask Rahul if he can send me the notes on WhatsApp.
+        #   Ask <name> if he can send me the notes on WhatsApp.
         if not whatsapp_intent_match:
             whatsapp_intent_match = re.search(
                 r"^\s*"
@@ -1952,8 +1943,8 @@ Rules:
                 return f"[ERROR] WHATSAPP_SEND failed: {exc}"
 
         # Form C:
-        #   Send a message to SuyogPawate asking about physics notes in WhatsApp.
-        #   Send a WhatsApp message to Rahul asking if he has the notes.
+        #   Send a message to <name> asking about physics notes in WhatsApp.
+        #   Send a WhatsApp message to <name> asking if he has the notes.
         #
         # Groq composes the natural outgoing message.
         # WhatsAppManager/Baileys performs the actual send.
@@ -2000,7 +1991,7 @@ Rules:
                 return f"[ERROR] WHATSAPP_SEND failed: {exc}"
 
         # Form C:
-        #   send a message to SuyogPawate asking about physics notes in whatsapp
+        #   send a message to <name> asking about physics notes in whatsapp
         whatsapp_send_about_match = re.fullmatch(
             r"\s*(?:send|message|msg)\s+"
             r"(?:a\s+)?message\s+to\s+"
@@ -2067,8 +2058,7 @@ Rules:
         # ======================================================
         #
         # Retrieval stays entirely local.
-        # Analysis retrieves locally first, then sends the
-        # normalized notification data to Groq.
+        # Analysis retrieves locally first, then sends the normalized notification data to Groq.
         #
         if self._looks_like_notification_analysis(text):
             return self._notification_analysis(text)
