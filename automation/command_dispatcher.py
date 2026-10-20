@@ -1003,7 +1003,8 @@ STRICT OUTPUT RULES:
 
                 if next_run:
                     when = datetime.fromtimestamp(
-                        float(next_run)
+                        float(next_run),
+                        self.automation.timezone,
                     ).strftime("%Y-%m-%d %H:%M:%S")
 
                     lines.append(
@@ -1176,14 +1177,18 @@ STRICT OUTPUT RULES:
                 return "[ERROR] Hour must be between 0 and 23."
 
             # Resolve the requested time to its next calendar occurrence.
-            now = datetime.now()
+            now = datetime.now(self.automation.timezone)
             target = now.replace(
                 hour=hour, minute=minute, second=0, microsecond=0
             )
             if day_hint == "tomorrow":
-                target = datetime.fromtimestamp(target.timestamp() + 86400)
+                target = (target.replace(tzinfo=None) + timedelta(days=1)).replace(
+                    tzinfo=self.automation.timezone
+                )
             elif target <= now:
-                target = datetime.fromtimestamp(target.timestamp() + 86400)
+                target = (target.replace(tzinfo=None) + timedelta(days=1)).replace(
+                    tzinfo=self.automation.timezone
+                )
 
             error = _set_android_clock_intent(
                 "android.intent.action.SET_ALARM",
