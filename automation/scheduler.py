@@ -9,11 +9,71 @@ Timezone-aware version.
 
 import json
 import os
+import subprocess
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, time as datetime_time, timezone as datetime_timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def _resolve_timezone(requested=None):
+    """Resolve an IANA timezone, preferring explicit JARVIS configuration."""
+    candidates = []
+    if requested:
+        candidates.append(str(requested).strip())
+    else:
+        for value in (os.environ.get("JARVIS_TIMEZONE"), os.environ.get("TZ")):
+            if value:
+                value = value.strip()
+                if value.startswith(":"):
+                    value = value[1:]
+                if value and value not in candidates:
+                    candidates.append(value)
+
+    for candidate in candidates:
+        marker = "/zoneinfo/"
+        if marker in candidate:
+            candidate = candidate.split(marker, 1)[1]
+        try:
+            return candidate, ZoneInfo(candidate)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            if requested:
+                raise ValueError(
+                    f"Invalid IANA timezone {requested!r}. "
+                    "Use a name such as Europe/London or America/New_York."
+                )
+
+    # Android exposes the device's configured IANA timezone here.
+    try:
+        result = subprocess.run(
+            ["/system/bin/getprop", "persist.sys.timezone"],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            check=False,
+        )
+        name = result.stdout.strip()
+        if name:
+            return name, ZoneInfo(name)
+    except (OSError, subprocess.SubprocessError, ZoneInfoNotFoundError, ValueError):
+        pass
+
+    # Unix-like systems commonly link /etc/localtime to a zoneinfo file.
+    try:
+        localtime_path = os.path.realpath("/etc/localtime")
+        marker = "/zoneinfo/"
+        if marker in localtime_path:
+            name = localtime_path.split(marker, 1)[1]
+            return name, ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        pass
+
+    # Last resort: use the platform's local offset, never assume a country.
+    # Set JARVIS_TIMEZONE to an IANA name for DST-safe behaviour when the
+    # platform does not expose its timezone identifier.
+    local_tz = datetime.now().astimezone().tzinfo or datetime_timezone.utc
+    return "LOCAL", local_tz
 
 
 class AutomationScheduler:
@@ -22,16 +82,10 @@ class AutomationScheduler:
         self,
         callback,
         base_dir="data/automations",
-        timezone="Asia/Kolkata",
+        timezone=None,
     ):
         self.callback = callback
-        self.timezone_name = str(timezone)
-
-        try:
-            self.timezone = ZoneInfo(self.timezone_name)
-        except Exception:
-            self.timezone_name = "Asia/Kolkata"
-            self.timezone = ZoneInfo("Asia/Kolkata")
+        self.timezone_name, self.timezone = _resolve_timezone(timezone)
 
         self.base_dir = os.path.join(os.path.dirname(__file__), "..", "data", "automations")
         os.makedirs(self.base_dir, exist_ok=True)
@@ -121,6 +175,8 @@ class AutomationScheduler:
         run_at,
         repeat_seconds=None,
         description=None,
+        repeat_mode=None,
+        repeat_at=None,
     ):
         automation_id = (
             "auto-" + uuid.uuid4().hex[:8]
@@ -140,6 +196,8 @@ class AutomationScheduler:
                 if repeat_seconds
                 else None
             ),
+            "repeat_mode": repeat_mode,
+            "repeat_at": repeat_at,
             "status": "SCHEDULED",
             "created_at": time.time(),
             "last_run": None,
@@ -187,9 +245,48 @@ class AutomationScheduler:
         return self.schedule(
             command=command,
             run_at=run_at.timestamp(),
-            repeat_seconds=86400,
             description=description,
+            repeat_mode="daily",
+            repeat_at=f"{int(hour):02d}:{int(minute):02d}",
         )
+
+    def _next_repeat_time(self, automation, now=None):
+        """Compute an interval or local-calendar recurrence."""
+        now = time.time() if now is None else float(now)
+        previous = automation.get("next_run")
+
+        if automation.get("repeat_mode") == "daily" and previous is not None:
+            scheduled = datetime.fromtimestamp(float(previous), self.timezone)
+            hour, minute = map(
+                int, str(automation.get("repeat_at", "00:00")).split(":", 1)
+            )
+            local_date = scheduled.date() + timedelta(days=1)
+
+            # Use calendar days plus the saved wall-clock time, not 86400
+            # seconds, so recurring tasks do not drift at DST boundaries.
+            while True:
+                local_candidate = datetime.combine(
+                    local_date,
+                    datetime_time(hour=hour, minute=minute),
+                    tzinfo=self.timezone,
+                )
+                next_run = local_candidate.timestamp()
+                if next_run > now:
+                    return next_run
+                local_date += timedelta(days=1)
+
+        repeat_seconds = automation.get("repeat_seconds")
+        if repeat_seconds:
+            next_run = (
+                float(previous) + float(repeat_seconds)
+                if previous is not None
+                else now + float(repeat_seconds)
+            )
+            while next_run <= now:
+                next_run += float(repeat_seconds)
+            return next_run
+
+        return None
 
     # ----------------------------------------------------------
     # CONTROL
@@ -239,35 +336,11 @@ class AutomationScheduler:
                 automation.get("run_count", 0) + 1
             )
 
-            repeat_seconds = automation.get(
-                "repeat_seconds"
-            )
-
-            if repeat_seconds:
-                # Keep the recurring schedule tied to the
-                # previous scheduled time instead of execution
-                # time, preventing cumulative drift.
-                previous = automation.get(
-                    "next_run"
-                )
-
-                if previous:
-                    next_run = (
-                        float(previous)
-                        + float(repeat_seconds)
-                    )
-
-                    while next_run <= time.time():
-                        next_run += float(
-                            repeat_seconds
-                        )
-                else:
-                    next_run = (
-                        time.time()
-                        + float(repeat_seconds)
-                    )
-
-                automation["next_run"] = next_run
+            if (
+                automation.get("repeat_seconds")
+                or automation.get("repeat_mode") == "daily"
+            ):
+                automation["next_run"] = self._next_repeat_time(automation)
                 automation["status"] = "SCHEDULED"
 
             else:
@@ -280,15 +353,11 @@ class AutomationScheduler:
             )
             automation["last_run"] = time.time()
 
-            repeat_seconds = automation.get(
-                "repeat_seconds"
-            )
-
-            if repeat_seconds:
-                automation["next_run"] = (
-                    time.time()
-                    + float(repeat_seconds)
-                )
+            if (
+                automation.get("repeat_seconds")
+                or automation.get("repeat_mode") == "daily"
+            ):
+                automation["next_run"] = self._next_repeat_time(automation)
                 automation["status"] = "SCHEDULED"
             else:
                 automation["next_run"] = None
