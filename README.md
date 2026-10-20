@@ -321,12 +321,25 @@ Useful checks:
 The following files are included in the repository:
 
 - `install.sh` — Termux installer for the JARVIS environment. Supports optional voice setup and skipping OSINT/setup stages; see the script's help text before running.
-- `jarvis.py` — Main JARVIS application entry point.
-- `jarvis_ui.py` — Terminal-based JARVIS user interface.
+- `jarvis.py` — Main JARVIS application entry point, shared prompt handler, and local Android command routing.
+- `fast_agent.py` — FastAgent provider and request-routing implementation, including Groq plus optional Gemini and Anthropic/Claude fallback providers. Configure credentials through environment variables; do not put API keys in source code.
+- `jarvis_ui.py` — Rich terminal-based JARVIS interface with animated presence states, themes, prompt history, scrolling, and approval controls.
 - `jarvis_web.py` — Web interface/server component.
 - `web/index.html` — Front-end page for the web interface.
 - `scripts/capture_apps.py` — Utility for capturing installed-app information.
 - `android/command_guard.py` — Android command-guard utility.
+
+
+
+### FastAgent provider configuration
+
+`fast_agent.py` reads provider credentials from environment variables:
+
+- Groq: `GROQ_API_KEYS` or `GROQ_API_KEY`; optional model override: `JARVIS_FAST_MODEL`.
+- Gemini: `GEMINI_API_KEYS` or `GEMINI_API_KEY`; optional model override: `GEMINI_MODEL`.
+- Anthropic/Claude: `ANTHROPIC_API_KEYS` or `ANTHROPIC_API_KEY`; optional model override: `CLAUDE_MODEL`.
+
+For each provider, the plural variable accepts comma-separated keys and is preferred when multiple keys are configured. Keep all keys in your local environment or ignored configuration files. Provider availability, model names, quotas, and network access affect whether requests succeed.
 
 ### File placement
 
