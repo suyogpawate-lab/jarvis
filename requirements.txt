@@ -8,3 +8,6 @@ rich
 Flask
 Werkzeug
 pypdf
+
+# IANA timezone database for portable timezone support.
+tzdata
