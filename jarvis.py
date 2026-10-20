@@ -745,7 +745,8 @@ def handle_prompt(prompt):
     if not prompt:
         return None, False
 
-    guard_reply = handle_guard_reply(prompt)    if guard_reply is not None:
+    guard_reply = handle_guard_reply(prompt)
+    if guard_reply is not None:
         return guard_reply, False
 
     # ----------------------------------------------------------
