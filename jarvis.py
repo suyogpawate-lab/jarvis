@@ -247,7 +247,6 @@ def print_memory():
             print(
                 f"- {topic}: {summary}"
             )
-
     else:
 
         print("(empty)")
@@ -497,8 +496,7 @@ def ensure_whatsapp_daemon():
 # ==============================================================
 # Exact device actions are handled before CommandDispatcher/Groq.
 # App names are resolved from data/installed_apps.json (written by install.sh via
-# scripts/capture_apps.py: real launcher name, shortforms, package ID). Optional personal
-# nicknames live in data/app_nicknames.json, e.g. {"yt": "youtube"}. Nothing is hardcoded here.
+# scripts/capture_apps.py: real launcher name, shortforms, package ID). Optional personal# nicknames live in data/app_nicknames.json, e.g. {"yt": "youtube"}. Nothing is hardcoded here.
 
 APPS_FILE = Path(__file__).resolve().parent / "data" / "installed_apps.json"
 NICKNAMES_FILE = Path(__file__).resolve().parent / "data" / "app_nicknames.json"
@@ -747,8 +745,7 @@ def handle_prompt(prompt):
     if not prompt:
         return None, False
 
-    guard_reply = handle_guard_reply(prompt)
-    if guard_reply is not None:
+    guard_reply = handle_guard_reply(prompt)    if guard_reply is not None:
         return guard_reply, False
 
     # ----------------------------------------------------------
@@ -997,4 +994,54 @@ def main():
                 if summary is None:
                     break
 
-                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)                _web_notify(summary)
+
+            prompt = read_prompt()
+
+            if not prompt:
+                continue
+
+            if prompt.lower() in {"exit", "quit"}:
+                shutdown()
+                print("JARVIS OFFLINE")
+                break
+
+            if prompt.lower() in MEMORY_VIEW_COMMANDS:
+                print_memory()
+                continue
+
+            answer, should_speak = handle_prompt(prompt)
+
+            if not answer:
+                continue
+
+            print()
+
+            if parse_discuss_command(prompt):
+                print("--- SYNTHESIS ---")
+                print()
+                print(f"JARVIS >> {answer}")
+            else:
+                print(f"JARVIS > {answer}")
+
+            print()
+
+            if should_speak:
+                speak(answer)
+
+        except KeyboardInterrupt:
+            shutdown()
+            print("\nJARVIS OFFLINE")
+            break
+
+        except EOFError:
+            shutdown()
+            print("\nJARVIS OFFLINE")
+            break
+
+        except Exception as exc:
+            print(f"\n[FATAL ERROR] {exc}\n")
+
+
+if __name__ == "__main__":
+    main()
