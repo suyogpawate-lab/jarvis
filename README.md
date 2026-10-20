@@ -96,8 +96,6 @@ The selected theme is saved in `data/theme.txt`; cycling preferences are saved i
 
 Available themes: `emerald`, `arc`, `solar`, `nebula`, `ghost`, `plasma`, `eclipse`, `pearl`, `magma`, `crystal`, `prism`, `reactor`, `radar`, `atom`, `hex`, `warp`, and `storm`.
 
-The theme selector uses the same `rich` dependency installed by `install.sh`; no separate package installation is normally needed. Run it inside an interactive Termux terminal, not a non-interactive shell.
-
 ## What to ask JARVIS to do
 
 Most tasks are requested in ordinary language. These are examples of supported routes and useful starting prompts; exact results depend on Android permissions, installed apps, configured accounts, network access and running services.
@@ -132,9 +130,9 @@ A normal web search gathers a small set of results and asks the fast agent to su
 Examples:
 
 ```text
-Ask Rahul on WhatsApp if he can send me the physics notes.
+Ask <name> on WhatsApp if he can send me the physics notes.
 Tell Mom on WhatsApp that I'll be home late.
-wa send Rahul "I'll call you later"
+wa send <name> "I'll call you later"
 call Rahul
 ```
 
