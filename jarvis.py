@@ -247,6 +247,7 @@ def print_memory():
             print(
                 f"- {topic}: {summary}"
             )
+
     else:
 
         print("(empty)")
@@ -496,7 +497,8 @@ def ensure_whatsapp_daemon():
 # ==============================================================
 # Exact device actions are handled before CommandDispatcher/Groq.
 # App names are resolved from data/installed_apps.json (written by install.sh via
-# scripts/capture_apps.py: real launcher name, shortforms, package ID). Optional personal# nicknames live in data/app_nicknames.json, e.g. {"yt": "youtube"}. Nothing is hardcoded here.
+# scripts/capture_apps.py: real launcher name, shortforms, package ID). Optional personal
+# nicknames live in data/app_nicknames.json, e.g. {"yt": "youtube"}. Nothing is hardcoded here.
 
 APPS_FILE = Path(__file__).resolve().parent / "data" / "installed_apps.json"
 NICKNAMES_FILE = Path(__file__).resolve().parent / "data" / "app_nicknames.json"
@@ -995,7 +997,8 @@ def main():
                 if summary is None:
                     break
 
-                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)                _web_notify(summary)
+                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                _web_notify(summary)
 
             prompt = read_prompt()
 
