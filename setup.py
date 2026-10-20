@@ -49,6 +49,62 @@ PRIORITY_PATH = ROOT / "priority_contacts.txt"
 USE_COLOR = sys.stdout.isatty()
 
 
+def detect_system_timezone():
+    """Return the device's IANA timezone name without asking the user."""
+    # Android/Termux exposes the canonical zone ID, unlike date +%Z,
+    # which returns abbreviations such as IST that are ambiguous worldwide.
+    commands = []
+    getprop = shutil.which("getprop")
+    if getprop:
+        commands.append([getprop, "persist.sys.timezone"])
+    if Path("/system/bin/getprop").is_file():
+        commands.append(["/system/bin/getprop", "persist.sys.timezone"])
+
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=2, check=False
+            )
+            name = result.stdout.strip()
+            if result.returncode == 0 and re.fullmatch(
+                r"[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*", name
+            ) and "/" in name:
+                return name
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    # On Unix, /etc/localtime is often a symlink into the IANA zoneinfo tree.
+    try:
+        localtime = os.path.realpath("/etc/localtime")
+        marker = "/zoneinfo/"
+        if marker in localtime:
+            name = localtime.split(marker, 1)[1]
+            if re.fullmatch(r"[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*", name):
+                return name
+    except OSError:
+        pass
+
+    # Respect a platform-provided TZ identifier only after checking system data.
+    name = os.environ.get("TZ", "").strip().lstrip(":")
+    if "/" in name and re.fullmatch(r"[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*", name):
+        return name
+    return None
+
+
+def sync_system_timezone(env):
+    """Persist the automatically detected system zone for JARVIS components."""
+    name = detect_system_timezone()
+    if name:
+        if env.get("JARVIS_TIMEZONE") != name:
+            env.set("JARVIS_TIMEZONE", name)
+            env.save()
+        os.environ["JARVIS_TIMEZONE"] = name
+        info(f"System timezone detected automatically: {name}")
+        return name
+    warn("Could not identify the system's IANA timezone; JARVIS will use its runtime local-time fallback.")
+    return None
+
+
 # ─────────────────────────── small UI helpers ───────────────────────────
 
 def _c(code, text):
@@ -660,6 +716,9 @@ def main():
     info("Press Enter to skip any question. Ctrl-C quits (finished parts stay saved).")
 
     env = EnvFile(ENV_PATH)
+    # Keep JARVIS aligned with the device timezone automatically. No prompt
+    # or manual timezone configuration is required.
+    sync_system_timezone(env)
     try:
         for name in chosen:
             STEPS[name](env)
