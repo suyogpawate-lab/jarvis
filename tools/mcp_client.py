@@ -274,7 +274,7 @@ def _log_failure(name, message):
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         with (log_dir / "mcp.log").open("a", encoding="utf-8") as log:
-            log.write(f"[MCP] {name}: {message}\\n")
+            log.write(f"[MCP] {name}: {message}\n")
     except OSError:
         pass
 
