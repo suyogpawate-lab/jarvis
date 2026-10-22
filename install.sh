@@ -143,6 +143,28 @@ if command -v omniroute >/dev/null 2>&1; then
     bash omniroute_daemon.sh || warn "Could not start OmniRoute."
 fi
 
+# ───────────────────────── sqlmap (core runtime only) ─────────────────────────
+info "Setting up sqlmap core files..."
+SQLMAP_DIR="$ROOT/security/sqlmap-dev"
+SQLMAP_SPARSE_PATHS=(/sqlmap.py /LICENSE /lib/ /plugins/ /data/ /thirdparty/ /tamper/)
+if git -C "$SQLMAP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$SQLMAP_DIR" pull --ff-only || warn "sqlmap update failed; keeping the existing checkout."
+    git -C "$SQLMAP_DIR" sparse-checkout set --no-cone "${SQLMAP_SPARSE_PATHS[@]}" \
+        || warn "Could not refresh sqlmap's core-only sparse checkout."
+elif [ -e "$SQLMAP_DIR" ]; then
+    warn "$SQLMAP_DIR exists but is not a Git checkout; leaving it untouched."
+else
+    mkdir -p "$(dirname "$SQLMAP_DIR")"
+    if git clone --depth 1 --filter=blob:none --sparse \
+        https://github.com/sqlmapproject/sqlmap.git "$SQLMAP_DIR"; then
+        git -C "$SQLMAP_DIR" sparse-checkout set --no-cone "${SQLMAP_SPARSE_PATHS[@]}" \
+            || warn "sqlmap cloned, but core-only sparse checkout failed."
+        ok "sqlmap core runtime installed at security/sqlmap-dev."
+    else
+        warn "Could not fetch sqlmap. Retry: bash install.sh --skip-setup"
+    fi
+fi
+
 # ───────────────────────── OSINT tools ─────────────────────────
 if [ "$WITH_OSINT" -eq 1 ]; then
     info "Fetching OSINT tools..."
