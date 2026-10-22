@@ -5,7 +5,10 @@ import importlib.util
 import os
 import shutil
 import socket
+from pathlib import Path
 from urllib.parse import urlparse
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def _check(name, status, detail):
@@ -60,7 +63,7 @@ def run_doctor(section="all"):
     if section in {"all", "voice"}:
         for name, path in (("Needle runner", "voice/android-arm64/needle"),
                            ("Whistle model", "voice/whistle.cact")):
-            rows.append(_check(name, "ok" if os.path.isfile(path) else "missing",
+            rows.append(_check(name, "ok" if (ROOT / path).is_file() else "missing",
                                path))
         try:
             importlib.util.find_spec("openwakeword")
@@ -71,7 +74,7 @@ def run_doctor(section="all"):
             rows.append(_check("OpenWakeWord", "unavailable", "optional dependency missing"))
 
     if section in {"all", "mcp"}:
-        rows.append(_check("MCP", "configured" if os.path.isfile("config/mcp_servers.json") else "unknown",
+        rows.append(_check("MCP", "configured" if (ROOT / "config/mcp_servers.json").is_file() else "unknown",
                            "server config presence only; connection is not probed"))
 
     return rows
