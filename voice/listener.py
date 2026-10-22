@@ -43,6 +43,7 @@ class WhistleWakeListener:
         self.model_path = self.project_root / "whistle.cact"
         self.needle = self.project_root / "android-arm64" / "needle"
         self._wake_model = None
+        self.log_path = self.runtime / "listener.log"
 
         # Don't trigger on (or transcribe) JARVIS's own spoken replies.
         try:
@@ -50,6 +51,17 @@ class WhistleWakeListener:
             self._is_speaking = _tts.is_speaking
         except Exception:
             self._is_speaking = lambda: False
+
+    def _log(self, *args, sep=" ", end="\n", flush=True):
+        """Write voice diagnostics to a log instead of corrupting the interactive prompt."""
+        message = sep.join(str(arg) for arg in args)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            self.runtime.mkdir(parents=True, exist_ok=True)
+            with self.log_path.open("a", encoding="utf-8") as log:
+                log.write(f"[{timestamp}] {message}{end}")
+        except OSError:
+            pass
 
     def start(self):
         for path in (self.model_path, self.needle):
@@ -68,7 +80,7 @@ class WhistleWakeListener:
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self.thread.start()
-        print("[VOICE] Listener thread launched; wake phrase: Hey Jarvis", flush=True)
+        self._log("[VOICE] Listener thread launched; wake phrase: Hey Jarvis", flush=True)
         return self
 
     def stop(self):
@@ -128,7 +140,7 @@ class WhistleWakeListener:
             )
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "")[-500:]
-                print(f"[VOICE STT ERROR] Needle exited {result.returncode}: {detail}", flush=True)
+                self._log(f"[VOICE STT ERROR] Needle exited {result.returncode}: {detail}", flush=True)
                 return ""
 
             # Parse clean JSON first; tolerate runtime logs around a JSON line.
@@ -146,15 +158,15 @@ class WhistleWakeListener:
                     except json.JSONDecodeError:
                         continue
             if not isinstance(payload, dict):
-                print(f"[VOICE STT ERROR] Could not parse Needle output: {output[-500:]}", flush=True)
+                self._log(f"[VOICE STT ERROR] Could not parse Needle output: {output[-500:]}", flush=True)
                 return ""
             text = str(payload.get("text") or "").strip()
             return self._clean_wake_phrase(text) if text else ""
         except subprocess.TimeoutExpired:
-            print("[VOICE STT ERROR] Needle timed out after 30 seconds.", flush=True)
+            self._log("[VOICE STT ERROR] Needle timed out after 30 seconds.", flush=True)
             return ""
         except Exception as exc:
-            print(f"[VOICE STT ERROR] {type(exc).__name__}: {exc}", flush=True)
+            self._log(f"[VOICE STT ERROR] {type(exc).__name__}: {exc}", flush=True)
             return ""
         finally:
             try:
@@ -175,14 +187,14 @@ class WhistleWakeListener:
                     wakeword_models=["hey_jarvis"],
                     inference_framework=framework,
                 )
-                print(f"[VOICE] OpenWakeWord loaded with {framework} framework", flush=True)
+                self._log(f"[VOICE] OpenWakeWord loaded with {framework} framework", flush=True)
                 break
             except Exception as exc:
-                print(f"[VOICE] {framework} framework unavailable: {exc}", flush=True)
+                self._log(f"[VOICE] {framework} framework unavailable: {exc}", flush=True)
                 continue
         
         if self._wake_model is None:
-            print(
+            self._log(
                 f"[VOICE INIT FAILED] OpenWakeWord: no compatible inference framework\n"
                 "  Install one of: onnx, tflite\n"
                 "  If the wake-word model is missing, download it with:\n"
@@ -219,7 +231,7 @@ class WhistleWakeListener:
                 dtype="int16",
                 blocksize=self.FRAME,
             ) as stream:
-                print("[VOICE] Microphone stream active at 16 kHz mono; say Hey Jarvis.", flush=True)
+                self._log("[VOICE] Microphone stream active at 16 kHz mono; say Hey Jarvis.", flush=True)
                 while self.running:
                     block, overflowed = stream.read(self.FRAME)
                     if not self.running:
@@ -245,7 +257,7 @@ class WhistleWakeListener:
                         # directly; the wake phrase is no longer required.
                         if conversation_until > time.time():
                             if level >= self.RMS_THRESHOLD:
-                                print("[VOICE] Follow-up speech detected; listening...", flush=True)
+                                self._log("[VOICE] Follow-up speech detected; listening...", flush=True)
                                 capturing = True
                                 command_frames = list(preroll)
                                 speech_started = True
@@ -255,7 +267,7 @@ class WhistleWakeListener:
                             continue
                         elif conversation_until:
                             conversation_until = 0.0
-                            print("[VOICE] Conversation timed out; say Hey Jarvis to resume.", flush=True)
+                            self._log("[VOICE] Conversation timed out; say Hey Jarvis to resume.", flush=True)
 
                         try:
                             # OpenWakeWord requires 16 kHz mono signed int16 PCM.
@@ -272,12 +284,12 @@ class WhistleWakeListener:
                         except Exception as e:
                             # Log first occurrence only to avoid spam
                             if not hasattr(self, '_wake_error_logged'):
-                                print(f"[VOICE WARN] Wakeword prediction error: {e}", flush=True)
+                                self._log(f"[VOICE WARN] Wakeword prediction error: {e}", flush=True)
                                 self._wake_error_logged = True
                             continue
 
                         if score >= self.WAKE_THRESHOLD:
-                            print(f"[VOICE] Wake phrase detected (score={score:.3f}); listening...", flush=True)
+                            self._log(f"[VOICE] Wake phrase detected (score={score:.3f}); listening...", flush=True)
                             try:
                                 self._wake_model.reset()
                             except Exception:
@@ -311,18 +323,18 @@ class WhistleWakeListener:
                         if text:
                             if exit_phrase.fullmatch(text.strip()):
                                 conversation_until = 0.0
-                                print("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
+                                self._log("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
                             else:
                                 # Keep listening for follow-ups without another wake phrase.
                                 conversation_until = time.time() + conversation_timeout
-                                print(f"[VOICE] Recognized command: {text}", flush=True)
-                                print(
+                                self._log(f"[VOICE] Recognized command: {text}", flush=True)
+                                self._log(
                                     f"[VOICE] Continuous conversation active for {conversation_timeout:g}s of inactivity.",
                                     flush=True,
                                 )
                                 self.output_queue.put(text)
                         else:
-                            print("[VOICE WARN] No command transcript returned; ready to listen again.", flush=True)
+                            self._log("[VOICE WARN] No command transcript returned; ready to listen again.", flush=True)
 
                         command_frames = []
                         capturing = False
@@ -333,9 +345,9 @@ class WhistleWakeListener:
 
         except Exception as exc:
             if self.running:
-                print(f"[VOICE STREAM ERROR] {exc}", flush=True)
+                self._log(f"[VOICE STREAM ERROR] {exc}", flush=True)
                 if "device" in str(exc).lower() or "portaudio" in str(exc).lower():
-                    print("  No usable microphone through PortAudio. On Termux a common fix is:\n"
+                    self._log("  No usable microphone through PortAudio. On Termux a common fix is:\n"
                           "  pkg install pulseaudio; pulseaudio --start --exit-idle-time=-1;\n"
                           "  pactl load-module module-sles-source   (then: python scripts/test_voice.py mic)",
                           flush=True)
