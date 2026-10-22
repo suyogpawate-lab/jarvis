@@ -240,6 +240,18 @@ bash install.sh --with-voice
 
 This installs OpenWakeWord dependencies and downloads the ARM64 Needle runner and `whistle.cact` model; it no longer builds Whisper.cpp or downloads the Whisper tiny model. Python audio dependencies may still be incompatible with some Android/Termux environments. Grant microphone permission and confirm that the microphone backend works. JARVIS may disable voice input when its listener or model is unavailable. Speech output uses the configured TTS path and may require network access depending on the provider.
 
+The acoustic wake phrase is **“Hey Jarvis”**. The detector consumes 16 kHz mono signed 16-bit PCM frames; Whistle transcribes the captured command after a pause. Run these checks from `~/jarvis`:
+
+```bash
+python scripts/test_voice.py imports
+python scripts/test_voice.py files
+python scripts/test_voice.py mic
+python scripts/test_voice.py stt
+python scripts/test_voice.py wakeword
+```
+
+`wakeword` tests the real acoustic model against the live microphone for up to 15 seconds; say “Hey Jarvis” when prompted. In `jarvis.py`, recognized commands enter the CLI input queue. In `jarvis_ui.py`, the UI polls that same queue and sends recognized commands through its normal response pipeline. Look for `[VOICE] Microphone stream active` in `data/ui.log` when using the UI, then `[VOICE] Wake phrase detected` and `[VOICE] Recognized command` during a successful end-to-end test.
+
 ## Local Knowledge Hub (RAG/document library)
 
 Start the local document web interface:
