@@ -1,5 +1,8 @@
 """Streaming OpenWakeWord + Whistle (Needle) listener for JARVIS."""
-import json\nimport os\nimport re\nimport subprocess
+import json
+import os
+import re
+import subprocess
 import threading
 import time
 import wave
@@ -76,7 +79,7 @@ class WhistleWakeListener:
     def _clean_wake_phrase(text):
         text = text.strip()
         # The acoustic detector already verified "Hey Jarvis".
-        # Remove it if Whisper also recognized it in the command buffer.
+        # Remove it if Whistle also recognized it in the command buffer.
         text = re.sub(
             r"^\s*(?:hey\s+)?jarvis[\s,.:;!?-]*",
             "",
