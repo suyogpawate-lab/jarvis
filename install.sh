@@ -2,7 +2,7 @@
 # JARVIS installer for Termux.
 #
 #   bash install.sh                  core install, then the guided setup
-#   bash install.sh --with-voice     also build whisper.cpp + wake-word packages (heavy)
+#   bash install.sh --with-voice     install Needle + Whistle STT and wake-word packages
 #   bash install.sh --skip-osint     skip the OSINT tools
 #   bash install.sh --skip-setup     don't launch `python setup.py` at the end
 #
@@ -62,7 +62,7 @@ pkg install -y python git curl jq tmux termux-api nodejs mpv ollama python-onnxr
     python-numpy libxml2 libxslt clang make pkg-config
 
 if [ "$WITH_VOICE" -eq 1 ]; then
-    pkg install -y cmake portaudio
+    pkg install -y portaudio
 fi
 
 # ───────────────────────── python packages ─────────────────────────
@@ -183,24 +183,22 @@ fi
 
 # ───────────────────────── voice (optional) ─────────────────────────
 if [ "$WITH_VOICE" -eq 1 ]; then
-    info "Setting up speech recognition (whisper.cpp)..."
-    WHISPER="$HOME/whisper.cpp"       # voice/listener.py looks here
-    if [ ! -d "$WHISPER" ]; then
-        git clone --depth 1 https://github.com/ggml-org/whisper.cpp "$WHISPER"
-    fi
-    if [ ! -x "$WHISPER/build/bin/whisper-cli" ]; then
-        (cd "$WHISPER" && cmake -B build && cmake --build build -j2 --config Release) \
-            || warn "whisper.cpp build failed."
+    info "Setting up local speech recognition (Needle + Whistle)..."
+    # Whistle uses the compact C++ Needle runner; no Whisper.cpp compilation.
+    python -m pip install --upgrade cactus-needle \
+        || warn "Could not install the Needle downloader; check Python/pip."
+    if command -v needle >/dev/null 2>&1; then
+        needle download android-arm64 --out "$ROOT" \
+            || warn "Could not download the Android ARM64 Needle runner."
+        needle download whistle --out "$ROOT" \
+            || warn "Could not download Whistle speech weights."
     else
-        ok "whisper-cli already built."
+        warn "Needle CLI is unavailable. Install cactus-needle, then run: needle download android-arm64 --out \"$ROOT\" && needle download whistle --out \"$ROOT\""
     fi
-    MODEL="voice/models/ggml-tiny.en.bin"
-    if [ ! -f "$MODEL" ]; then
-        curl -L --fail -o "$MODEL" \
-            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin \
-            || warn "Could not download the whisper model."
+    if [ -x "$ROOT/android-arm64/needle" ] && [ -f "$ROOT/whistle.cact" ]; then
+        ok "Whistle STT ready: android-arm64/needle + whistle.cact."
     else
-        ok "Whisper model already present."
+        warn "Whistle files are incomplete. Retry: bash install.sh --with-voice --skip-setup"
     fi
 fi
 
