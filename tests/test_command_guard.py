@@ -31,7 +31,8 @@ class CommandGuardTests(unittest.TestCase):
         code = first.split("approve ", 1)[1].split()[0]
         job_result = command_guard.check(command, kind="job")
         self.assertIn("[NEEDS_APPROVAL]", job_result)
-        self.assertIn("Approved.", command_guard.handle_user_reply("approve " + code))
+        with patch("android.shell_executor.ShellExecutor.execute", return_value="[MOCK EXEC]"):
+            self.assertIn("Approved.", command_guard.handle_user_reply("approve " + code))
         # ShellExecutor consumes the approval; it must not authorize a job.
         job_after_shell_approval = command_guard.check(command, kind="job")
         self.assertIn("[NEEDS_APPROVAL]", job_after_shell_approval)
