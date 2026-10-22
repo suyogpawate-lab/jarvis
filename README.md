@@ -124,6 +124,18 @@ call Rahul
 
 JARVIS can resolve names from Android contacts and send messages through the linked WhatsApp bridge. Unquoted natural-language requests may have a message drafted; when you need the **exact wording**, put it in quotes as in the `wa send` example. Direct messages and group messages have different flows: **group messages require explicit confirmation** before sending. A `call <contact name>` request uses the Termux phone-call integration; verify the resolved contact before proceeding.
 
+#### Conservative WhatsApp auto-replies
+
+The optional direct-message auto-reply worker uses recent chat history and, when allowed, Knowledge Hub search. It sends a reply only when Groq returns a supported answer with confidence at or above the configured threshold and a stated evidence basis. If facts are missing, intent is ambiguous, or a personal decision is required, JARVIS queues a review instead of sending a guess. In the terminal CLI, review prompts show the incoming message and up to two drafts:
+
+```text
+wa-reply <review-id> 1
+wa-reply <review-id> 2
+wa-reply <review-id> skip
+```
+
+Review the draft before approving it. `skip` sends nothing. Messages that need no response are silently skipped. Auto-replies are direct-message only; group messages are not auto-replied to. Replies that require Knowledge Hub attachments are restricted to phone numbers listed in `JARVIS_WA_FILE_CONTACTS` (comma-separated numbers including country code) so private files are not sent to arbitrary contacts. Set `JARVIS_WA_AUTOREPLY=0` to disable the worker.
+
 To link or relink WhatsApp, use `python setup.py whatsapp`. Start the bridge separately if it is not already running:
 
 ```bash
@@ -218,7 +230,7 @@ rag
 nohup python knowledge_hub/app.py > /dev/null 2>&1 &
 ```
 
-Open [http://127.0.0.1:8766](http://127.0.0.1:8766) on the same Android device. Use the page to upload and index `.txt`, `.pdf`, `.docx`, `.jpg`, `.jpeg` or `.png` files, search indexed text, and refresh the document list. PDFs/DOCX files are text-extracted; images are retained and OCR is attempted through Tesseract if available. Uploads are limited to 25 MiB. This is the local knowledge hub interface; its document search is separate from ordinary JARVIS chat unless you explicitly use the relevant integration.
+Open [http://127.0.0.1:8766](http://127.0.0.1:8766) on the same Android device. The upload form accepts an optional display filename; the original file extension is preserved, and re-uploading identical content updates its display name. Text-search indexing is available for `.txt`, `.pdf`, and `.docx`; common images are retained and OCR is attempted through Tesseract if available. Other retained assets include GIFs, common video/audio formats, ZIP, CSV, JSON, Markdown, RTF, PPTX, and XLSX. Non-text assets are discoverable by filename and can be attached by the WhatsApp worker when a contact clearly asks for a matching item and that contact is allowed by `JARVIS_WA_FILE_CONTACTS`. Uploads are limited to 25 MiB. This is the local Knowledge Hub interface; its document search is separate from ordinary JARVIS chat unless you explicitly use the relevant integration.
 
 ## Shell aliases
 
