@@ -63,8 +63,14 @@ def run_doctor(section="all"):
     if section in {"all", "voice"}:
         for name, path in (("Needle runner", "android-arm64/needle"),
                            ("Whistle model", "whistle.cact")):
-            rows.append(_check(name, "ok" if (ROOT / path).is_file() else "missing",
-                               path))
+            asset = ROOT / path
+            if not asset.is_file():
+                status, detail = "missing", path
+            elif name == "Needle runner" and not os.access(asset, os.X_OK):
+                status, detail = "unavailable", path + " (not executable)"
+            else:
+                status, detail = "ok", path
+            rows.append(_check(name, status, detail))
         try:
             importlib.util.find_spec("openwakeword")
             available = importlib.util.find_spec("openwakeword") is not None
