@@ -1067,7 +1067,11 @@ def read_prompt():
         try:
             command = voice_command_queue.get_nowait()
             if command.strip():
-                return command.strip()
+                command = command.strip()
+                # The listener keeps background diagnostics in a log. Show only
+                # the actual transcript here, replacing the waiting input prompt.
+                print(f"\rYOU (VOICE) > {command}\\n", flush=True)
+                return command
         except queue.Empty:
             pass
 
