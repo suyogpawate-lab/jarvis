@@ -22,11 +22,11 @@ Installer options:
 bash install.sh                 # core install and guided setup
 bash install.sh --skip-setup    # install dependencies without launching guided setup
 bash install.sh --skip-osint    # skip optional OSINT tool clones/dependencies
-bash install.sh --with-voice    # also attempt optional wake-word/STT dependencies and whisper.cpp
+bash install.sh --with-voice    # install OpenWakeWord dependencies + Needle/Whistle STT
 bash install.sh --help          # show installer options
 ```
 
-The optional voice build is large and can fail on Android if native dependencies or compatible Python wheels are unavailable. Core JARVIS does not require the optional voice packages.
+The optional voice setup downloads the Android ARM64 Needle runner and Whistle speech model, and installs OpenWakeWord dependencies. Python audio dependencies may still fail on Android if compatible wheels are unavailable. Core JARVIS does not require optional voice packages.
 
 ## First-time setup and configuration
 
@@ -238,7 +238,7 @@ The core installer does not force-install all voice dependencies. To attempt the
 bash install.sh --with-voice
 ```
 
-This attempts to install voice dependencies, build `whisper.cpp`, and download the English tiny Whisper model. On Android, native packages or microphone libraries may not have compatible builds; a failed optional voice install does not mean the text interface itself is unusable. Grant microphone permission and confirm that Termux can record audio. JARVIS may disable voice input when its listener or model is unavailable. Speech output uses the configured TTS path and may require network access depending on the provider.
+This installs OpenWakeWord dependencies and downloads the ARM64 Needle runner and `whistle.cact` model; it no longer builds Whisper.cpp or downloads the Whisper tiny model. Python audio dependencies may still be incompatible with some Android/Termux environments. Grant microphone permission and confirm that the microphone backend works. JARVIS may disable voice input when its listener or model is unavailable. Speech output uses the configured TTS path and may require network access depending on the provider.
 
 ## Local Knowledge Hub (RAG/document library)
 
