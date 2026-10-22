@@ -1015,30 +1015,35 @@ def _show_whatsapp_review_events():
     except Exception:
         return
     for event in events:
-        if event.get("type") != "REPLY_REVIEW":
-            continue
-        review_id = str(event.get("review_id", ""))
-        sender = str(event.get("sender", "Unknown contact"))
-        print(f"\\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
-        print(f"  Message: {event.get('incoming', '')}")
-        print(f"  Why review is needed: {event.get('reason', 'Not enough reliable context.')}")
-        evidence = str(event.get("evidence", "")).strip()
-        if evidence:
-            print(f"  Available evidence: {evidence}")
-        drafts = []
-        if str(event.get("suggested_reply", "")).strip():
-            drafts.append(str(event["suggested_reply"]).strip())
-        drafts.extend(str(x).strip() for x in event.get("alternatives", []) if str(x).strip())
-        for index, draft in enumerate(drafts[:2], 1):
-            print(f"  Draft {index}: {draft}")
-        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2 | wa-reply {review_id} skip")
-        print("  (Only send a draft after reviewing it; 'skip' sends nothing.)")
-
+        if event.get("type") == "REPLY_REVIEW":
+            review_id = str(event.get("review_id", ""))
+            sender = str(event.get("sender", "Unknown contact"))
+            print(f"\\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
+            print(f"  Message: {event.get('incoming', '')}")
+            print(f"  Why review is needed: {event.get('reason', 'Not enough reliable context.')}")
+            evidence = str(event.get("evidence", "")).strip()
+            if evidence:
+                print(f"  Available evidence: {evidence}")
+            drafts = []
+            if str(event.get("suggested_reply", "")).strip():
+                drafts.append(str(event["suggested_reply"]).strip())
+            drafts.extend(str(x).strip() for x in event.get("alternatives", []) if str(x).strip())
+            for index, draft in enumerate(drafts[:2], 1):
+                print(f"  Draft {index}: {draft}")
+            print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2 | wa-reply {review_id} skip")
+            print("  Review the draft before sending; 'skip' sends nothing.")
+        elif event.get("type") == "GROUP_CONFIRMATION":
+            print(
+                f"\\n[JARVIS WHATSAPP] Group message awaits confirmation: "
+                f"{event.get('group_subject') or event.get('chat_jid', 'group')}"
+            )
+            print(f"  Draft: {event.get('suggested_reply', event.get('text', ''))}")
+            print("  Existing group confirmation controls remain available through JARVIS.")
 
 def read_prompt():
-    print("YOU  > ", end="", flush=True)
     while True:
         _show_whatsapp_review_events()
+        print("YOU  > ", end="", flush=True)
         try:
             command = voice_command_queue.get_nowait()
             if command.strip():
@@ -1050,7 +1055,7 @@ def read_prompt():
         if summary is not None:
             print(f"\\nJARVIS [NOTIFICATIONS] > {summary}")
             _web_notify(summary)
-            print("YOU  > ", end="", flush=True)
+            continue
 
         ready, _, _ = select.select([sys.stdin], [], [], 0.25)
         if ready:
