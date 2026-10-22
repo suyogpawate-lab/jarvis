@@ -240,7 +240,7 @@ bash install.sh --with-voice
 
 This installs OpenWakeWord dependencies and downloads the ARM64 Needle runner and `whistle.cact` model; it no longer builds Whisper.cpp or downloads the Whisper tiny model. Python audio dependencies may still be incompatible with some Android/Termux environments. Grant microphone permission and confirm that the microphone backend works. JARVIS may disable voice input when its listener or model is unavailable. Speech output uses the configured TTS path and may require network access depending on the provider.
 
-The acoustic wake phrase is **“Hey Jarvis”**. The detector consumes 16 kHz mono signed 16-bit PCM frames; Whistle transcribes the captured command after a pause. Run these checks from `~/jarvis`:
+The acoustic wake phrase is **“Hey Jarvis”**. After the first recognized command, voice input enters continuous-conversation mode: follow-up speech is captured without another wake phrase, and JARVIS returns to wake-word standby after 20 seconds of inactivity by default. Say **“Goodbye Jarvis”** to end the conversation immediately. Configure the idle window with `JARVIS_CONVERSATION_TIMEOUT` (seconds; minimum 5). JARVIS's own TTS playback keeps the conversation active and is muted from input capture. The detector consumes 16 kHz mono signed 16-bit PCM frames; Whistle transcribes each utterance after a pause. Run these checks from `~/jarvis`:
 
 ```bash
 python scripts/test_voice.py imports
