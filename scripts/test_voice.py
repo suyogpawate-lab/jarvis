@@ -143,39 +143,59 @@ def test_stt():
         return False
 
 
-def test_wakeword():
-    """Test wake-word detection."""
-    print("\nTesting wake-word detection...")
+def test_wakeword(duration=15):
+    """Test the real acoustic Hey Jarvis model against live microphone frames."""
+    print(f"\nTesting acoustic wake-word detection (up to {duration}s)...")
     try:
-        from voice.wakeword import WakeWordDetector
-
-        detector = WakeWordDetector("jarvis")
-
-        tests = [
-            ("jarvis", True),
-            ("hey jarvis", True),
-            ("JARVIS", True),
-            ("jarvis can you help", True),
-            ("please help me", False),
-            ("what is that", False),
-        ]
-
-        all_pass = True
-        for text, expected in tests:
-            result = detector.detect(text)
-            status = "✓" if result == expected else "✗"
-            print(f"  {status} '{text}' -> {result} (expected {expected})")
-            if result != expected:
-                all_pass = False
-
-        return all_pass
+        import numpy as np
+        import sounddevice as sd
+        from openwakeword.model import Model
     except Exception as e:
-        print(f"  ✗ Wake-word test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
+        print(f"  ✗ Required wake-word imports failed: {type(e).__name__}: {e}")
         return False
 
+    model = None
+    for framework in ("onnx", "tflite"):
+        try:
+            model = Model(wakeword_models=["hey_jarvis"], inference_framework=framework)
+            print(f"  ✓ Acoustic model loaded ({framework})")
+            break
+        except Exception as e:
+            print(f"  - {framework} unavailable: {type(e).__name__}: {e}")
+    if model is None:
+        print("  ✗ Could not load the Hey Jarvis acoustic model.")
+        print("    Check the openwakeword model assets and installed ONNX/TFLite runtime.")
+        return False
+
+    threshold = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.50"))
+    print(f"  Say “Hey Jarvis” clearly within {duration} seconds (threshold {threshold:.2f}).")
+    max_score = 0.0
+    try:
+        with sd.InputStream(samplerate=16000, channels=1, dtype='int16', blocksize=1280) as stream:
+            deadline = time.monotonic() + duration
+            last_report = time.monotonic()
+            while time.monotonic() < deadline:
+                block, overflowed = stream.read(1280)
+                frame = np.ascontiguousarray(np.asarray(block, dtype=np.int16).reshape(-1))
+                if frame.size != 1280:
+                    continue
+                scores = model.predict(frame)
+                score = max((float(v) for k, v in scores.items() if "hey_jarvis" in k.lower()), default=0.0)
+                max_score = max(max_score, score)
+                if score >= threshold:
+                    print(f"  ✓ Hey Jarvis detected (score: {score:.3f})")
+                    return True
+                if time.monotonic() - last_report >= 2:
+                    print(f"  Listening... best score so far: {max_score:.3f}")
+                    last_report = time.monotonic()
+        print(f"  ✗ No acoustic detection. Highest score: {max_score:.3f}; threshold: {threshold:.2f}")
+        print("    If the score stays at 0.000, check microphone routing/permissions and model output keys.")
+        return False
+    except Exception as e:
+        print(f"  ✗ Acoustic wake-word test failed: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def test_tts():
     """Test text-to-speech."""
