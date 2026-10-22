@@ -17,7 +17,7 @@ from openwakeword.model import Model
 class WhistleWakeListener:
     RATE = 16000
     FRAME = 1280                 # 80 ms at 16 kHz
-    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.50"))
+    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.40"))
     SILENCE_SECONDS = 0.90
     MAX_COMMAND_SECONDS = 15
     MIN_COMMAND_SECONDS = 0.30
