@@ -16,6 +16,22 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(groq["status"], "configured")
         self.assertNotIn("test-secret", str(rows))
 
+
+    def test_voice_checks_use_root_level_needle_and_whistle_assets(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            needle = root / "android-arm64" / "needle"
+            needle.parent.mkdir()
+            needle.touch()
+            (root / "whistle.cact").touch()
+            with patch("monitoring.doctor.ROOT", root):
+                rows = run_doctor("voice")
+        statuses = {row["name"]: row["status"] for row in rows}
+        self.assertEqual(statuses["Needle runner"], "ok")
+        self.assertEqual(statuses["Whistle model"], "ok")
+
     def test_format_has_summary(self):
         self.assertIn("Summary:", format_doctor("invalid"))
 
