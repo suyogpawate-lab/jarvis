@@ -184,9 +184,10 @@ fi
 # ───────────────────────── voice (optional) ─────────────────────────
 if [ "$WITH_VOICE" -eq 1 ]; then
     info "Setting up local speech recognition (Needle + Whistle)..."
-    # Whistle uses the compact C++ Needle runner; no Whisper.cpp compilation.
+    # Install Needle and prepare the Android ARM64 runtime directory.
     python -m pip install --upgrade cactus-needle \
         || warn "Could not install the Needle downloader; check Python/pip."
+    mkdir -p "$ROOT/android-arm64"
     if command -v needle >/dev/null 2>&1; then
         needle download android-arm64 --out "$ROOT" \
             || warn "Could not download the Android ARM64 Needle runner."
@@ -195,6 +196,23 @@ if [ "$WITH_VOICE" -eq 1 ]; then
     else
         warn "Needle CLI is unavailable. Install cactus-needle, then run: needle download android-arm64 --out \"$ROOT\" && needle download whistle --out \"$ROOT\""
     fi
+    # Some Needle distributions provide a static library; build its shared
+    # companion when present. The normal executable-based STT path still works
+    # if the optional library is not included in the download.
+    if [ -f "$ROOT/android-arm64/libneedle.a" ]; then
+        if command -v clang++ >/dev/null 2>&1; then
+            if clang++ -shared -o "$ROOT/libneedle.so" \
+                -Wl,--whole-archive "$ROOT/android-arm64/libneedle.a" \
+                -Wl,--no-whole-archive; then
+                ok "Built optional libneedle.so."
+            else
+                warn "Could not build libneedle.so; continuing with the Needle executable."
+            fi
+        else
+            warn "clang++ unavailable; skipping optional libneedle.so build."
+        fi
+    fi
+
     if [ -x "$ROOT/android-arm64/needle" ] && [ -f "$ROOT/whistle.cact" ]; then
         ok "Whistle STT ready: android-arm64/needle + whistle.cact."
     else
