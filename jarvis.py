@@ -1006,9 +1006,39 @@ def pop_notification():
         return None
 
 
+def _show_whatsapp_review_events():
+    """Surface uncertain auto-replies in the CLI without interrupting input."""
+    if whatsapp_autoreply is None:
+        return
+    try:
+        events = whatsapp_autoreply.drain_events()
+    except Exception:
+        return
+    for event in events:
+        if event.get("type") != "REPLY_REVIEW":
+            continue
+        review_id = str(event.get("review_id", ""))
+        sender = str(event.get("sender", "Unknown contact"))
+        print(f"\\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
+        print(f"  Message: {event.get('incoming', '')}")
+        print(f"  Why review is needed: {event.get('reason', 'Not enough reliable context.')}")
+        evidence = str(event.get("evidence", "")).strip()
+        if evidence:
+            print(f"  Available evidence: {evidence}")
+        drafts = []
+        if str(event.get("suggested_reply", "")).strip():
+            drafts.append(str(event["suggested_reply"]).strip())
+        drafts.extend(str(x).strip() for x in event.get("alternatives", []) if str(x).strip())
+        for index, draft in enumerate(drafts[:2], 1):
+            print(f"  Draft {index}: {draft}")
+        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2 | wa-reply {review_id} skip")
+        print("  (Only send a draft after reviewing it; 'skip' sends nothing.)")
+
+
 def read_prompt():
     print("YOU  > ", end="", flush=True)
     while True:
+        _show_whatsapp_review_events()
         try:
             command = voice_command_queue.get_nowait()
             if command.strip():
@@ -1074,6 +1104,24 @@ def main():
                 shutdown()
                 print("JARVIS OFFLINE")
                 break
+
+            review_match = re.fullmatch(
+                r"wa-reply\\s+(\\S+)\\s+(1|2|skip|none|no|0)",
+                prompt.strip(),
+                re.IGNORECASE,
+            )
+            if review_match:
+                if whatsapp_autoreply is None:
+                    print("WhatsApp auto-reply worker is not running.")
+                else:
+                    try:
+                        result = whatsapp_autoreply.resolve_reply_review(
+                            review_match.group(1), review_match.group(2)
+                        )
+                        print(f"JARVIS > {result}\\n")
+                    except Exception as exc:
+                        print(f"JARVIS > Could not process reply decision: {exc}\\n")
+                continue
 
             if prompt.lower() in MEMORY_VIEW_COMMANDS:
                 print_memory()
