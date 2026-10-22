@@ -34,13 +34,49 @@ def _exit() -> None:
         _active = max(0, _active - 1)
 
 
+# Interrupt support: the current mpv process and a generation counter, so
+# speech that is still being synthesized when interrupt() is called is dropped.
+_proc = None
+_generation = 0
+
+
+def interrupt() -> None:
+    """Stop whatever is being spoken right now (and any synthesis in flight)."""
+    global _generation, _proc
+    with _lock:
+        _generation += 1
+        proc = _proc
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+
 def is_speaking() -> bool:
     """True while any speech is being synthesized or played."""
     return _active > 0
 
 
+def strip_markdown(text: str) -> str:
+    """Remove markdown symbols so TTS never reads them aloud."""
+    text = str(text)
+    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)         # code blocks
+    text = re.sub(r"`([^`]*)`", r"\1", text)                        # inline code
+    text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", text)           # images
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)            # links -> label
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)               # headings
+    text = re.sub(r"(?m)^\s*[-*+\u2022]\s+", "", text)              # bullets
+    text = re.sub(r"(?m)^\s*>\s?", "", text)                        # quotes
+    text = re.sub(r"(\*{1,3}|_{2,3}|~{2})(?=\S)(.+?)(?<=\S)\1", r"\2", text)  # bold/italic
+    text = re.sub(r"[*#~`|^]", "", text)                             # leftovers
+    text = re.sub(r"(?<!\w)_|_(?!\w)", "", text)                    # stray underscores
+    return text
+
+
 def prepare_text(text: str) -> str:
-    text = re.sub(r"\s+", " ", str(text)).strip()
+    text = strip_markdown(text)
+    text = re.sub(r"\s+", " ", text).strip()
 
     # Remove comma before direct address "sir".
     text = re.sub(r",\s*(sir)\b", r" \1", text, flags=re.IGNORECASE)
@@ -79,23 +115,42 @@ def speak(text: str, wait: bool = True) -> bool:
     if not shutil.which("edge-tts"):
         raise RuntimeError("edge-tts is not installed or is not on PATH.")
 
+    global _proc
+    with _lock:
+        my_generation = _generation
+
     _enter()
     try:
         with tempfile.TemporaryDirectory(prefix="jarvis_tts_") as temp_dir:
             audio = Path(temp_dir) / "speech.mp3"
             asyncio.run(_synthesize(text, audio))
 
-            result = subprocess.run(
-                [
-                    "mpv",
-                    "--no-video",
-                    "--really-quiet",
-                    "--",
-                    str(audio),
-                ],
-                check=False,
-            )
-            return result.returncode == 0
+            # Interrupted while synthesizing: drop it silently.
+            with _lock:
+                if _generation != my_generation:
+                    return True
+                proc = subprocess.Popen(
+                    [
+                        "mpv",
+                        "--no-video",
+                        "--no-terminal",
+                        "--really-quiet",
+                        "--",
+                        str(audio),
+                    ],
+                    # mpv must not read the terminal, or it swallows keystrokes.
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                _proc = proc
+
+            returncode = proc.wait()
+            with _lock:
+                if _proc is proc:
+                    _proc = None
+                interrupted = _generation != my_generation
+            return interrupted or returncode == 0
     finally:
         _exit()
 

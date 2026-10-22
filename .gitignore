@@ -94,3 +94,13 @@ knowledge_hub/*.before_*
 Thumbs.db
 .vscode/
 .idea/
+apps.json
+creds.txt
+.localxpose/
+ip.txt
+*.wav
+*-before*
+apps.json
+whistle.py
+agent-skills
+agent-skills

@@ -3,8 +3,8 @@ set -u
 
 cd "$HOME/jarvis" || exit 1
 
-LOG="$HOME/jarvis/omniroute.log"
-PIDFILE="$HOME/jarvis/omniroute.pid"
+LOG="$HOME/jarvis/logs/omniroute.log"
+PIDFILE="$HOME/jarvis/logs/omniroute.pid"
 
 if [ -f "$PIDFILE" ]; then
     pid="$(cat "$PIDFILE" 2>/dev/null || true)"

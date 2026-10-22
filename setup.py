@@ -3,7 +3,7 @@
 JARVIS first-run setup.
 
     python setup.py                 # full guided setup
-    python setup.py gmail           # just one part: keys | gmail | whatsapp | contacts
+    python setup.py gmail           # just one part: keys | gmail | whatsapp | contacts | apps
     python setup.py --status        # show what is configured (secrets are masked)
 
 What it configures
@@ -11,9 +11,10 @@ What it configures
     gmail     Gmail account(s) + App Password, tested against Gmail before saving
     whatsapp  links your WhatsApp account to the local bridge (pairing code or QR)
     contacts  syncs your phone contacts and an optional "priority people" list
+    apps      scans installed apps (package + name shown on your home screen) into apps.json
 
 Everything personal ends up in files that git ignores:
-    .env, contacts.json, priority_contacts.txt, whatsapp/auth/
+    .env, contacts.json, priority_contacts.txt, apps.json, whatsapp/auth/
 Standard library only, so it runs before any pip install.
 """
 
@@ -45,6 +46,7 @@ WA_AUTH = WA_DIR / "auth"
 WA_PORT = 23841
 CONTACTS_PATH = ROOT / "contacts.json"
 PRIORITY_PATH = ROOT / "priority_contacts.txt"
+APPS_PATH = ROOT / "apps.json"
 
 USE_COLOR = sys.stdout.isatty()
 
@@ -627,6 +629,65 @@ def step_contacts(env):
         ok(f"Saved {len(names)} priority contact(s).")
 
 
+# ───────────────────────────── 5. Installed apps ─────────────────────────────
+
+def ensure_gitignored(filename):
+    """Append `filename` to .gitignore when a .gitignore exists and lacks it."""
+    path = ROOT / ".gitignore"
+    try:
+        if not path.is_file():
+            return
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if filename in (line.strip() for line in lines):
+            return
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(("" if not lines or path.read_text(encoding="utf-8").endswith("\n") else "\n") + filename + "\n")
+        info(f"Added {filename} to .gitignore.")
+    except OSError:
+        pass
+
+
+def step_apps(env):
+    heading("Installed apps")
+    info("Builds apps.json: every launchable app with its package name and the name")
+    info("shown under its icon, so you can say 'open Instagram' or 'open Calculator'.")
+
+    try:
+        from android.android_tools import AndroidTools
+    except Exception as exc:  # noqa: BLE001 - show any import problem plainly
+        fail(f"Could not load the Android tools ({exc}).")
+        return
+
+    if not (shutil.which("aapt") or shutil.which("aapt2")):
+        warn("'aapt' is not installed, so real app names cannot be read (only package names).")
+        if shutil.which("pkg") and yes_no("Install it now? (pkg install aapt)", default=True):
+            if subprocess.run(["pkg", "install", "-y", "aapt"]).returncode == 0:
+                ok("aapt installed.")
+            else:
+                warn("Could not install aapt; continuing with package names only.")
+
+    if APPS_PATH.is_file() and not yes_no("apps.json already exists. Rescan all apps?", default=True):
+        return
+
+    tools = AndroidTools()
+    started = time.time()
+
+    def progress(done, total, package, label):
+        print(f"\r    {done}/{total}  {(label or package)[:40]:<40}", end="", flush=True)
+
+    result = tools.build_app_index(progress=progress)
+    print()
+    if result.get("exit") != 0:
+        fail(result.get("stderr") or "Scan failed.")
+        return
+    ok(f"Saved {result['count']} apps to apps.json in {time.time() - started:.0f}s "
+       f"({result['labelled']} with real names).")
+    if not result["aapt"]:
+        warn("Names came from package IDs only. Install aapt and rerun: python setup.py apps")
+    ensure_gitignored("apps.json")
+    info("New apps are picked up automatically the first time you ask for one that is missing.")
+
+
 # ───────────────────────────── status ─────────────────────────────
 
 def have_module(name):
@@ -673,6 +734,17 @@ def show_status():
     else:
         warn("Contacts: not synced")
 
+    if APPS_PATH.is_file():
+        try:
+            data = json.loads(APPS_PATH.read_text(encoding="utf-8"))
+            apps = data.get("apps", [])
+            named = sum(1 for a in apps if a.get("label"))
+            ok(f"Apps: {len(apps)} indexed ({named} with real names), scanned {data.get('generated', '?')}")
+        except ValueError:
+            warn("apps.json is unreadable - run: python setup.py apps")
+    else:
+        warn("Apps: not scanned - run: python setup.py apps")
+
     heading("Tools")
     for tool in ("node", "npm", "termux-notification-list", "termux-contact-list", "ollama", "mpv", "tmux", "git"):
         (ok if shutil.which(tool) else warn)(f"{tool}: {'found' if shutil.which(tool) else 'missing'}")
@@ -687,6 +759,7 @@ STEPS = {
     "gmail": step_gmail,
     "whatsapp": step_whatsapp,
     "contacts": step_contacts,
+    "apps": step_apps,
 }
 
 
@@ -731,7 +804,7 @@ def main():
     show_status()
     print()
     info("Start JARVIS:   python jarvis_ui.py")
-    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts>")
+    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps>")
     return 0
 
 

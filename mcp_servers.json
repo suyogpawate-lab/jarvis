@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "filesystem": {
+      "enabled": true,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data/data/com.termux/files/home/jarvis/workspace"],
+      "env": {},
+      "tools": ["read_file", "list_directory"]
+    }
+  }
+}

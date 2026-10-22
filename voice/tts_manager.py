@@ -2,7 +2,7 @@ import queue
 import threading
 import time
 
-from voice.tts import speak as edge_speak
+from voice.tts import speak as edge_speak, interrupt as edge_interrupt
 
 
 class TTSManager:
@@ -93,7 +93,8 @@ class TTSManager:
         if not text or not self.running:
             return False
 
-        self.clear()
+        # A new response replaces whatever is still being spoken.
+        self.interrupt()
         chunks = self._chunk_text(text)
         if not chunks:
             return False
@@ -117,6 +118,14 @@ class TTSManager:
 
         self.last_started = time.monotonic()
         return self._speak_with_fallbacks(text, speed)
+
+    def interrupt(self):
+        """Cut off current speech immediately and discard anything queued."""
+        self.clear()
+        try:
+            edge_interrupt()
+        except Exception:
+            pass
 
     def clear(self):
         """Discard pending speech without interrupting Edge's current synthesis."""

@@ -1,11 +1,21 @@
+import jarvis_env
 from jarvis_env import TERMUX_BASH
 """
 JARVIS Android control layer.
 """
 
+import difflib
+import json
+import os
 import re
 import subprocess
 import time
+from datetime import datetime
+from pathlib import Path
+
+# Inventory of installed apps (package, label, common names). Built by
+# `python setup.py apps` and refreshed automatically when an app is missing.
+APPS_JSON = Path(jarvis_env.__file__).resolve().parent / "apps.json"
 
 
 class AndroidTools:
@@ -176,6 +186,10 @@ class AndroidTools:
             if name in package.lower():
                 matches.append(package)
 
+        for package in self._index_lookup(name):
+            if package not in matches:
+                matches.append(package)
+
         if not matches:
             return {
                 "exit": 1,
@@ -190,8 +204,20 @@ class AndroidTools:
         }
 
     def find_launcher_app(self, name):
+        norm = self._normalize_app_name(name)
+        hits = self._index_lookup(norm)
+        if hits:
+            return {"exit": 0, "stdout": "\n".join(hits), "stderr": ""}
+        result = self._find_launcher_app_by_package(name)
+        if result["exit"] != 0 and self._refresh_index_on_miss():
+            hits = self._index_lookup(norm)
+            if hits:
+                return {"exit": 0, "stdout": "\n".join(hits), "stderr": ""}
+        return result
+
+    def _find_launcher_app_by_package(self, name):
         name = self._normalize_app_name(name)
-        packages = self._launcher_packages(refresh=True)
+        packages = self._installed_packages(refresh=True)
 
         if packages is None:
             return {"exit": 1, "stdout": "", "stderr": "Could not list launcher apps."}
@@ -208,6 +234,21 @@ class AndroidTools:
             or (tokens and all(t in pkg.lower() for t in tokens))
         ]
         if not matches:
+            # Fuzzy fallback: compare against each meaningful package segment
+            # (handles typos / speech-to-text errors like "whatsap", "instagrm").
+            generic = {"com", "org", "net", "in", "android", "apps", "app", "google", "www"}
+            scored = []
+            for pkg in packages:
+                segs = [x for x in re.split(r"[._]", pkg.lower()) if x and x not in generic]
+                best = max(
+                    (difflib.SequenceMatcher(None, compact, seg).ratio() for seg in segs),
+                    default=0.0,
+                )
+                if best >= 0.78:
+                    scored.append((best, pkg))
+            if scored:
+                scored.sort(key=lambda t: (-t[0], len(t[1])))
+                return {"exit": 0, "stdout": "\n".join(p for _, p in scored), "stderr": ""}
             return {"exit": 1, "stdout": "", "stderr": f"No launcher app matched '{name}'."}
 
         # Best first: last segment equals the name, then shortest ID.
@@ -252,6 +293,191 @@ class AndroidTools:
         self._lp_cache = (time.time(), packages)
         return packages
 
+    def _installed_packages(self, refresh=False):
+        """Launchable packages; falls back to `pm list packages` if that query is empty."""
+        packages = self._launcher_packages(refresh=refresh)
+        if packages:
+            return packages
+        result = self.list_packages()
+        if result["exit"] == 0:
+            found = [
+                line.removeprefix("package:").strip()
+                for line in result["stdout"].splitlines()
+                if line.strip()
+            ]
+            return found or None
+        return None
+
+    # ------------------------------------------------------------------
+    # Installed-app inventory (apps.json)
+    # ------------------------------------------------------------------
+    _GENERIC_SEGMENTS = {
+        "com", "org", "net", "in", "io", "co", "android", "apps", "app",
+        "google", "www", "mobile", "free", "lite", "main", "client", "release",
+    }
+
+    @staticmethod
+    def _name_key(value):
+        value = re.sub(r"[^\w\s]", " ", str(value or "").casefold())
+        return re.sub(r"\s+", " ", value).strip()
+
+    def _aapt_command(self):
+        cached = getattr(self, "_aapt_cmd", None)
+        if cached is not None:
+            return cached or None
+        result = self._run("command -v aapt || command -v aapt2")
+        found = result["stdout"].splitlines()[0].strip() if result["exit"] == 0 and result["stdout"] else ""
+        self._aapt_cmd = found or False
+        return found or None
+
+    def _app_label(self, package, aapt):
+        """The name shown under the app's icon, read from its APK. None if unavailable."""
+        path = self._run("pm path " + self._quote(package))
+        apks = [l.removeprefix("package:").strip() for l in path["stdout"].splitlines() if l.startswith("package:")]
+        if path["exit"] != 0 or not apks:
+            return None
+        apk = next((a for a in apks if a.endswith("base.apk")), apks[0])
+        result = self._run(
+            self._quote(aapt) + " dump badging " + self._quote(apk) + " 2>/dev/null | grep '^application-label'",
+            timeout=25,
+        )
+        labels = {}
+        for line in result["stdout"].splitlines():
+            m = re.match(r"application-label(?:-([\w-]+))?:'(.*)'\s*$", line.strip())
+            if m and m.group(2).strip():
+                labels[m.group(1) or ""] = m.group(2).strip()
+        for key in ("", "en", "en-US", "en-GB", "en-IN"):
+            if key in labels:
+                return labels[key]
+        return next(iter(labels.values()), None)
+
+    def _make_app_entry(self, package, label):
+        names = []
+
+        def add(value):
+            key = self._name_key(value)
+            if key and key not in names:
+                names.append(key)
+
+        if label:
+            add(label)
+            add(label.replace(" ", ""))
+        for alias, pkg in self.APP_ALIASES.items():
+            if pkg == package:
+                add(alias)
+        tail = package.rsplit(".", 1)[-1]
+        if len(tail) >= 3 and tail.lower() not in self._GENERIC_SEGMENTS:
+            add(tail.replace("_", " "))
+        return {"package": package, "label": label or "", "names": names}
+
+    def load_app_index(self):
+        """Entries from apps.json ([] if missing/unreadable). Re-read when the file changes."""
+        try:
+            mtime = APPS_JSON.stat().st_mtime
+        except OSError:
+            return []
+        cache = getattr(self, "_app_index_cache", None)
+        if cache and cache[0] == mtime:
+            return cache[1]
+        try:
+            data = json.loads(APPS_JSON.read_text(encoding="utf-8"))
+            entries = [e for e in data.get("apps", []) if isinstance(e, dict) and e.get("package")]
+        except (OSError, ValueError, AttributeError):
+            return []
+        self._app_index_cache = (mtime, entries)
+        return entries
+
+    def build_app_index(self, progress=None, incremental=False):
+        """
+        Scan installed launchable apps and write apps.json.
+        incremental=True keeps known apps and only reads labels of newly installed ones.
+        """
+        packages = self._launcher_packages(refresh=True) or self._installed_packages(refresh=True)
+        if not packages:
+            return {"exit": 1, "stderr": "Could not list installed apps."}
+
+        aapt = self._aapt_command()
+        existing = {e["package"]: e for e in self.load_app_index()} if incremental else {}
+
+        entries = []
+        total = len(packages)
+        for i, package in enumerate(packages, 1):
+            old = existing.get(package)
+            if old and (old.get("label") or not aapt):
+                entries.append(old)
+                continue
+            label = self._app_label(package, aapt) if aapt else None
+            entries.append(self._make_app_entry(package, label))
+            if progress:
+                progress(i, total, package, label)
+
+        entries.sort(key=lambda e: (e["label"] or e["package"]).casefold())
+        payload = {
+            "version": 1,
+            "generated": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "labels_from": "aapt" if aapt else "package names and aliases only",
+            "apps": entries,
+        }
+        tmp = APPS_JSON.with_name(APPS_JSON.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+        os.replace(tmp, APPS_JSON)
+        return {
+            "exit": 0,
+            "count": len(entries),
+            "labelled": sum(1 for e in entries if e["label"]),
+            "aapt": bool(aapt),
+            "path": str(APPS_JSON),
+        }
+
+    def _index_lookup(self, name):
+        """Packages matching a spoken/typed app name, best first. [] if none."""
+        key = self._name_key(name)
+        entries = self.load_app_index()
+        if not key or not entries:
+            return []
+        preferred = self.APP_ALIASES.get(self._normalize_app_name(name))
+
+        def order(pkgs):
+            return sorted(pkgs, key=lambda p: (p != preferred, len(p)))
+
+        exact = [e["package"] for e in entries if key in e["names"]]
+        if exact:
+            return order(exact)
+
+        tokens = key.split()
+        if all(len(t) >= 3 for t in tokens):
+            loose = []
+            for e in entries:
+                label_tokens = self._name_key(e["label"]).split()
+                if label_tokens and all(any(lt.startswith(t) for lt in label_tokens) for t in tokens):
+                    loose.append((len(e["label"]), e["package"]))
+            if loose:
+                return order([p for _, p in sorted(loose)])
+
+        if len(key) >= 4:
+            scored = []
+            for e in entries:
+                best = max(
+                    (difflib.SequenceMatcher(None, key, n).ratio() for n in e["names"]),
+                    default=0.0,
+                )
+                if best >= 0.84:
+                    scored.append((-best, len(e["package"]), e["package"]))
+            if scored:
+                return [p for _, _, p in sorted(scored)]
+        return []
+
+    def _refresh_index_on_miss(self):
+        """After a failed lookup, pick up newly installed apps (cheap, at most once every 20 seconds)."""
+        if not APPS_JSON.exists():
+            return False
+        if time.time() - getattr(self, "_last_index_refresh", 0) < 20:
+            return False
+        self._last_index_refresh = time.time()
+        return self.build_app_index(incremental=True).get("exit") == 0
+
     @staticmethod
     def _normalize_app_name(name):
         name = re.sub(r"\s+", " ", str(name or "").strip().casefold())
@@ -284,7 +510,12 @@ class AndroidTools:
         if not norm:
             return {"exit": 1, "stdout": "", "stderr": "No application specified."}
 
-        installed = self._launcher_packages()
+        if not self.looks_like_package_id(raw):
+            hits = self._index_lookup(norm)
+            if hits:
+                return {"exit": 0, "stdout": hits[0], "stderr": ""}
+
+        installed = self._installed_packages()
 
         alias = self.APP_ALIASES.get(norm)
         if alias:
@@ -317,7 +548,15 @@ class AndroidTools:
             "-p " + self._quote(package)
         )
         output = (result["stdout"] + "\n" + result["stderr"]).strip()
-        if result["exit"] == 0 and self._FAIL_RE.search(output):
+        if result["exit"] != 0 or self._FAIL_RE.search(output):
+            # Fallback: monkey launches the default launcher activity.
+            alt = self._run(
+                "monkey -p " + self._quote(package)
+                + " -c android.intent.category.LAUNCHER 1"
+            )
+            alt_out = (alt["stdout"] + "\n" + alt["stderr"])
+            if alt["exit"] == 0 and "Events injected: 1" in alt_out:
+                return alt
             return {
                 "exit": 1,
                 "stdout": result["stdout"],

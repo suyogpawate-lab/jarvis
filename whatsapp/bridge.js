@@ -42,6 +42,11 @@ function saveIncomingMessages(messages) {
   );
 }
 
+function isDirectJid(jid) {
+  const value = String(jid || "");
+  return value.endsWith("@s.whatsapp.net") || value.endsWith("@lid");
+}
+
 function extractMessageText(message) {
   if (!message) return "";
 
@@ -55,7 +60,7 @@ function extractMessageText(message) {
   ).trim();
 }
 
-function storeIncomingMessage(message) {
+function storeIncomingMessage(message, { historical = false } = {}) {
   const key = message?.key || {};
   const messageId = key.id;
 
@@ -65,6 +70,9 @@ function storeIncomingMessage(message) {
 
   // Ignore WhatsApp Status/Broadcast messages.
   if (chatJid === "status@broadcast") return;
+
+  // DM-only: groups, newsletters and broadcasts are never stored.
+  if (!isDirectJid(chatJid)) return;
 
   const text = extractMessageText(message.message);
 
@@ -80,18 +88,22 @@ function storeIncomingMessage(message) {
     id: messageId,
     chatJid: key.remoteJid || null,
     senderJid: key.participant || key.remoteJid || null,
+    // Phone-number JID when WhatsApp addresses the chat by @lid (if provided).
+    altJid: key.remoteJidAlt || key.senderPn || null,
     fromMe: Boolean(key.fromMe),
     pushName: message.pushName || null,
     text,
     timestamp: Number(message.messageTimestamp || Math.floor(Date.now() / 1000)),
     receivedAt: Date.now(),
-    processed: false,
+    // Own messages and old synced history are kept as chat context only;
+    // they must never trigger an auto-reply.
+    processed: Boolean(key.fromMe) || historical,
   };
 
   messages.push(entry);
 
   // Keep the local queue bounded.
-  const trimmed = messages.slice(-1000);
+  const trimmed = messages.slice(-3000);
 
   saveIncomingMessages(trimmed);
 
@@ -159,11 +171,11 @@ async function connectWhatsApp() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("messages.upsert", ({ messages }) => {
+  sock.ev.on("messages.upsert", ({ messages, type }) => {
     for (const message of messages || []) {
       try {
-        if (message?.key?.fromMe) continue;
-        storeIncomingMessage(message);
+        // "notify" = live message; anything else is offline catch-up/history.
+        storeIncomingMessage(message, { historical: type !== "notify" });
       } catch (error) {
         console.error(
           "[WHATSAPP] Failed to store incoming message:",
@@ -182,8 +194,7 @@ async function connectWhatsApp() {
       );
 
       for (const message of messages) {
-        if (message?.key?.fromMe) continue;
-        storeIncomingMessage(message);
+        storeIncomingMessage(message, { historical: true });
       }
     } catch (error) {
       console.error(
@@ -279,14 +290,14 @@ function sendJson(res, statusCode, data) {
   res.end(body);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
 
     req.on("data", chunk => {
       body += chunk;
 
-      if (body.length > 1024 * 1024) {
+      if (body.length > maxBytes) {
         reject(new Error("Request body too large."));
         req.destroy();
       }
@@ -323,7 +334,8 @@ const server = http.createServer(async (req, res) => {
 
       const messages = loadIncomingMessages()
         .filter(item => !item.processed)
-        .filter(item => item.chatJid !== "status@broadcast")
+        .filter(item => !item.fromMe)
+        .filter(item => isDirectJid(item.chatJid))
         .slice(0, limit);
 
       return sendJson(res, 200, {
@@ -331,6 +343,69 @@ const server = http.createServer(async (req, res) => {
         messages,
         count: messages.length,
       });
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/history")) {
+      const parsed = new URL(req.url, `http://${HOST}:${PORT}`);
+      const chat = String(parsed.searchParams.get("chat") || "");
+      const limitRaw = Number(parsed.searchParams.get("limit") || 12);
+      const limit = Math.max(1, Math.min(limitRaw || 12, 50));
+
+      // `chat` may be a JID or a bare phone number; `name` is a fallback that
+      // matches the contact's WhatsApp display name (needed for @lid chats).
+      const name = String(parsed.searchParams.get("name") || "").trim().toLowerCase();
+      const digitsOf = value => String(value || "").split("@")[0].replace(/\D/g, "");
+      const wanted = digitsOf(chat);
+
+      if (chat.includes("@") && !isDirectJid(chat)) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: "History is only available for direct chats.",
+        });
+      }
+
+      if (!chat && !name) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: "Provide a chat or a contact name.",
+        });
+      }
+
+      const allMessages = loadIncomingMessages();
+
+      let rows = chat
+        ? allMessages.filter(item =>
+            item.chatJid === chat ||
+            (wanted &&
+              (digitsOf(item.chatJid) === wanted || digitsOf(item.altJid) === wanted))
+          )
+        : [];
+
+      if (!rows.length && name) {
+        const chats = new Set(
+          allMessages
+            .filter(item =>
+              !item.fromMe &&
+              isDirectJid(item.chatJid) &&
+              String(item.pushName || "").toLowerCase().includes(name)
+            )
+            .map(item => item.chatJid)
+        );
+        rows = allMessages.filter(item => chats.has(item.chatJid));
+      }
+
+      const messages = rows
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .slice(-limit)
+        .map(item => ({
+          id: item.id,
+          fromMe: item.fromMe,
+          pushName: item.pushName,
+          text: item.text,
+          timestamp: item.timestamp,
+        }));
+
+      return sendJson(res, 200, { ok: true, messages, count: messages.length });
     }
 
     if (req.method === "POST" && req.url === "/messages/ack") {
@@ -443,6 +518,54 @@ const server = http.createServer(async (req, res) => {
           status: "sent",
           to: jid,
         },
+      });
+    }
+
+    if (req.method === "POST" && req.url === "/send-media") {
+      if (!sock || connectionState !== "open") {
+        return sendJson(res, 503, {
+          ok: false,
+          error: "WhatsApp is not connected.",
+        });
+      }
+
+      // base64 payload: ~25 MB file => ~34 MB body.
+      const raw = await readBody(req, 40 * 1024 * 1024);
+      const data = JSON.parse(raw || "{}");
+
+      const to = String(data.to || "").trim();
+      const caption = String(data.caption || "").trim();
+      const fileName = String(data.file_name || "file").trim();
+      const mimetype = String(data.mimetype || "application/octet-stream");
+      const kind = data.kind === "image" ? "image" : "document";
+
+      // Same rule as the rest of the bridge: media goes to DMs only.
+      if (!isDirectJid(to)) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: "Media can only be sent to direct chats.",
+        });
+      }
+
+      const buffer = Buffer.from(String(data.data_base64 || ""), "base64");
+
+      if (!buffer.length) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: "File data is required.",
+        });
+      }
+
+      const content =
+        kind === "image"
+          ? { image: buffer, mimetype, caption: caption || undefined }
+          : { document: buffer, mimetype, fileName, caption: caption || undefined };
+
+      const result = await sock.sendMessage(to, content);
+
+      return sendJson(res, 200, {
+        ok: true,
+        result: { key: result?.key || null, status: "sent", to, kind },
       });
     }
 

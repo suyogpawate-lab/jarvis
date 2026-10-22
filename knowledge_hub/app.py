@@ -1,4 +1,7 @@
+import mimetypes
 import os
+import re
+import shutil
 import sqlite3
 import hashlib
 import zipfile
@@ -11,9 +14,11 @@ from werkzeug.utils import secure_filename
 BASE = Path(__file__).resolve().parent
 UPLOADS = BASE / "uploads"
 IMAGES = BASE / "images"
+DOCS = BASE / "files"  # retained originals of TXT/PDF/DOCX uploads
 DB = BASE / "knowledge.db"
 UPLOADS.mkdir(exist_ok=True)
 IMAGES.mkdir(exist_ok=True)
+DOCS.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
@@ -48,6 +53,11 @@ def init_db():
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+    with connect() as db:
+        cols = [r["name"] for r in db.execute("PRAGMA table_info(documents)")]
+        if "stored_name" not in cols:
+            db.execute("ALTER TABLE documents ADD COLUMN stored_name TEXT")
 
 def extract_text(path):
     ext = path.suffix.lower()
@@ -101,16 +111,26 @@ def index_file(path, original_name):
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     pieces = split_chunks(text)
 
+    stored_name = digest + path.suffix.lower()
+    if not (DOCS / stored_name).exists():
+        shutil.copy2(path, DOCS / stored_name)
+
     with connect() as db:
         existing = db.execute(
             "SELECT id FROM documents WHERE digest=?", (digest,)
         ).fetchone()
         if existing:
+            # Re-uploading an older document backfills its sendable original.
+            db.execute(
+                "UPDATE documents SET stored_name=? "
+                "WHERE id=? AND stored_name IS NULL",
+                (stored_name, existing["id"]),
+            )
             return {"status": "already_exists", "name": original_name}
 
         cur = db.execute(
-            "INSERT INTO documents(name, digest) VALUES (?, ?)",
-            (original_name, digest)
+            "INSERT INTO documents(name, digest, stored_name) VALUES (?, ?, ?)",
+            (original_name, digest, stored_name)
         )
         doc_id = cur.lastrowid
         db.executemany(
@@ -279,6 +299,160 @@ def image_file(image_id):
         return jsonify(error="Stored image file is missing"), 404
 
     return send_file(path, download_name=row["name"], conditional=True)
+
+_STOP = {
+    "the", "and", "for", "you", "your", "can", "could", "would", "please",
+    "send", "share", "give", "get", "have", "has", "that", "this", "with",
+    "from", "pic", "photo", "photos", "picture", "pictures", "image",
+    "images", "file", "files", "doc", "document", "documents", "copy",
+    "bhej", "bhejo", "mujhe", "hai", "kya", "tum", "aap",
+}
+
+_MIME_OVERRIDES = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+def _mime_for(name):
+    ext = Path(name).suffix.lower()
+    return (
+        _MIME_OVERRIDES.get(ext)
+        or mimetypes.guess_type(name)[0]
+        or "application/octet-stream"
+    )
+
+
+def _query_terms(query):
+    words = re.findall(r"\w+", str(query).lower())
+    seen, terms = set(), []
+    for word in words:
+        if len(word) > 2 and word not in _STOP and word not in seen:
+            seen.add(word)
+            terms.append(word)
+    return terms[:8]
+
+
+def _resolve_sendable(db, doc_row):
+    """Map a documents row to (kind, id, stored_path) or None."""
+    if doc_row["stored_name"]:
+        path = DOCS / doc_row["stored_name"]
+        if path.is_file():
+            return "doc", doc_row["id"], path
+    # An image's OCR text lives in documents; its file is in visual_assets.
+    asset = db.execute(
+        "SELECT id, stored_name FROM visual_assets WHERE digest=?",
+        (doc_row["digest"],),
+    ).fetchone()
+    if asset and (IMAGES / asset["stored_name"]).is_file():
+        return "img", asset["id"], IMAGES / asset["stored_name"]
+    return None
+
+
+@app.post("/api/find-files")
+def find_files():
+    """Find retained originals (documents or images) matching a request."""
+    data = request.get_json(silent=True) or {}
+    terms = _query_terms(data.get("query", ""))
+    if not terms:
+        return jsonify(results=[])
+
+    hits = {}  # (kind, id) -> dict
+
+    def add(kind, item_id, name, path, snippet, name_hits, score):
+        entry = hits.setdefault((kind, item_id), {
+            "ref": f"{kind}:{item_id}",
+            "kind": "image" if kind == "img" else "document",
+            "id": item_id,
+            "name": name,
+            "mimetype": _mime_for(name),
+            "size": path.stat().st_size,
+            "snippet": "",
+            "_name_hits": 0,
+            "_score": 0.0,
+        })
+        entry["_name_hits"] = max(entry["_name_hits"], name_hits)
+        entry["_score"] = min(entry["_score"], score)
+        if snippet and not entry["snippet"]:
+            entry["snippet"] = snippet
+
+    with connect() as db:
+        # 1) file-name matches
+        for doc in db.execute(
+            "SELECT id, name, digest, stored_name FROM documents"
+        ).fetchall():
+            n = sum(1 for t in terms if t in doc["name"].lower())
+            if n:
+                found = _resolve_sendable(db, doc)
+                if found:
+                    kind, item_id, path = found
+                    add(kind, item_id, doc["name"], path, "", n, 0.0)
+
+        for img in db.execute(
+            "SELECT id, name, stored_name FROM visual_assets"
+        ).fetchall():
+            n = sum(1 for t in terms if t in img["name"].lower())
+            path = IMAGES / img["stored_name"]
+            if n and path.is_file():
+                add("img", img["id"], img["name"], path, "", n, 0.0)
+
+        # 2) content matches (any term, ranked by bm25)
+        match = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
+        rows = db.execute("""
+            SELECT d.id, d.name, d.digest, d.stored_name,
+                   snippet(chunks, 2, '', '', ' ... ', 24) AS snip,
+                   bm25(chunks) AS score
+            FROM chunks JOIN documents d ON d.id = chunks.document_id
+            WHERE chunks MATCH ?
+            ORDER BY score LIMIT 20
+        """, (match,)).fetchall()
+        for row in rows:
+            found = _resolve_sendable(db, row)
+            if found:
+                kind, item_id, path = found
+                add(kind, item_id, row["name"], path,
+                    (row["snip"] or "")[:200], 0, row["score"])
+
+    ranked = sorted(
+        hits.values(), key=lambda e: (-e["_name_hits"], e["_score"])
+    )[:6]
+    for entry in ranked:
+        entry.pop("_name_hits", None)
+        entry.pop("_score", None)
+    return jsonify(results=ranked)
+
+
+@app.get("/api/file/<kind>/<int:item_id>")
+def file_download(kind, item_id):
+    with connect() as db:
+        if kind == "doc":
+            row = db.execute(
+                "SELECT name, stored_name FROM documents WHERE id=?", (item_id,)
+            ).fetchone()
+            folder = DOCS
+        elif kind == "img":
+            row = db.execute(
+                "SELECT name, stored_name FROM visual_assets WHERE id=?", (item_id,)
+            ).fetchone()
+            folder = IMAGES
+        else:
+            return jsonify(error="Unknown file kind"), 404
+
+    if not row or not row["stored_name"]:
+        return jsonify(error="File not found"), 404
+
+    path = (folder / row["stored_name"]).resolve()
+    if folder.resolve() not in path.parents or not path.is_file():
+        return jsonify(error="Stored file is missing"), 404
+
+    return send_file(
+        path, download_name=row["name"], mimetype=_mime_for(row["name"])
+    )
+
 
 @app.get("/health")
 def health():

@@ -4,6 +4,7 @@ JARVIS WhatsApp manager.
 Communicates with the persistent local Baileys bridge.
 """
 
+import base64
 import json
 import re
 import subprocess
@@ -125,8 +126,8 @@ class WhatsAppManager:
     def _resolve_recipient(self, to):
         value = str(to).strip()
 
-        # Already a WhatsApp JID.
-        if value.endswith("@s.whatsapp.net") or value.endswith("@g.us"):
+        # Already a WhatsApp JID (@s.whatsapp.net, @g.us, or @lid).
+        if "@" in value:
             return value
 
         # Direct phone number.
@@ -226,3 +227,111 @@ class WhatsAppManager:
             )
 
         return data["result"]
+
+    def get_history(self, chat_jid, limit=12):
+        """Recent stored messages (both directions) for one direct chat."""
+        response = requests.get(
+            f"{self.base_url}/history",
+            params={"chat": str(chat_jid), "limit": int(limit)},
+            timeout=self.timeout,
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        if not data.get("ok"):
+            raise RuntimeError(
+                data.get("error", "WhatsApp history retrieval failed.")
+            )
+
+        return data.get("messages", [])
+
+    def get_chat_history(self, who, limit=15):
+        """
+        Recent messages (both directions, oldest first) with a contact.
+
+        `who` can be a contact name, a phone number, or a WhatsApp JID.
+        """
+        value = str(who or "").strip()
+        if not value:
+            raise ValueError("A contact name or number is required.")
+
+        chat = ""
+        name = ""
+
+        if "@" in value:
+            chat = value
+        else:
+            digits = self._normalize_number(value)
+            if len(digits) >= 10:
+                chat = digits
+            else:
+                name = value
+                try:
+                    chat = self.resolve_contact(value)
+                except ValueError as exc:
+                    if "Multiple contacts match" in str(exc):
+                        raise
+                except RuntimeError:
+                    pass
+
+        params = {"limit": max(1, min(int(limit), 50))}
+        if chat:
+            params["chat"] = chat
+        if name:
+            params["name"] = name
+
+        response = requests.get(
+            f"{self.base_url}/history",
+            params=params,
+            timeout=self.timeout,
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        if not data.get("ok"):
+            raise RuntimeError(
+                data.get("error", "WhatsApp history retrieval failed.")
+            )
+
+        return data.get("messages", [])
+
+    def send_media(
+        self,
+        to,
+        data,
+        file_name,
+        mimetype="application/octet-stream",
+        caption="",
+        kind="document",
+    ):
+        """Send an image or document (raw bytes) to a direct chat."""
+        if not to:
+            raise ValueError("WhatsApp recipient is required.")
+
+        if not data:
+            raise ValueError("File data is required.")
+
+        response = requests.post(
+            f"{self.base_url}/send-media",
+            json={
+                "to": self._resolve_recipient(to),
+                "data_base64": base64.b64encode(data).decode("ascii"),
+                "file_name": str(file_name),
+                "mimetype": str(mimetype),
+                "caption": str(caption or ""),
+                "kind": "image" if kind == "image" else "document",
+            },
+            timeout=max(self.timeout, 90),
+        )
+
+        response.raise_for_status()
+        payload = response.json()
+
+        if not payload.get("ok"):
+            raise RuntimeError(
+                payload.get("error", "WhatsApp media send failed.")
+            )
+
+        return payload["result"]

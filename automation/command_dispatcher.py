@@ -87,6 +87,10 @@ class CommandDispatcher:
         self.deep_search = DeepSearch(self.search_hub, self.fast_agent)
         self.fast_agent.deep_search = self.deep_search
 
+        # Groq calls WhatsApp through a tool; the dispatcher owns the
+        # actual send (group confirmation gate, contact/group resolution).
+        self.fast_agent.whatsapp_send_handler = self._whatsapp_tool_send
+
 
         # Injected by jarvis.py after the WhatsApp confirmation
         # worker is initialized.
@@ -1144,141 +1148,7 @@ STRICT OUTPUT RULES:
                 return error
             return f"Done, sir. Android Clock was asked to start a reminder timer for {label} ({amount:g} {unit})."
 
-        # --------------------------------------------------
-        # WAKE-UP / ALARM — Android Clock only.
-        # Standard SET_ALARM cannot guarantee a one-time calendar date.
-        # --------------------------------------------------
-        wake_match = re.fullmatch(
-            r"(?:(?:wake\s+me(?:\s+up)?)|"
-            r"(?:set\s+)?(?:an?\s+)?(?:alarm|alm))\s+"
-            r"(?:(today|tomorrow)\s+)?"
-            r"(?:(?:at|for)\s+)?"
-            r"(\d{1,2})(?::(\d{2}))?\s*"
-            r"(am|pm)?"
-            r"(?:\s+(today|tomorrow))?",
-            raw,
-            re.IGNORECASE,
-        )
-        if wake_match:
-            day_hint = (wake_match.group(1) or wake_match.group(5) or "").lower()
-            hour = int(wake_match.group(2))
-            minute = int(wake_match.group(3) or 0)
-            meridiem = wake_match.group(4)
-            if minute > 59:
-                return "[ERROR] Minutes must be between 0 and 59."
-            if meridiem:
-                if not 1 <= hour <= 12:
-                    return "[ERROR] Invalid 12-hour time."
-                if meridiem.lower() == "pm" and hour != 12:
-                    hour += 12
-                elif meridiem.lower() == "am" and hour == 12:
-                    hour = 0
-            elif hour > 23:
-                return "[ERROR] Hour must be between 0 and 23."
-
-            # Resolve the requested time to its next calendar occurrence.
-            now = datetime.now(self.automation.timezone)
-            target = now.replace(
-                hour=hour, minute=minute, second=0, microsecond=0
-            )
-            if day_hint == "tomorrow":
-                target = (target.replace(tzinfo=None) + timedelta(days=1)).replace(
-                    tzinfo=self.automation.timezone
-                )
-            elif target <= now:
-                target = (target.replace(tzinfo=None) + timedelta(days=1)).replace(
-                    tzinfo=self.automation.timezone
-                )
-
-            error = _set_android_clock_intent(
-                "android.intent.action.SET_ALARM",
-                [
-                    ("--ei", "android.intent.extra.alarm.HOUR", hour),
-                    ("--ei", "android.intent.extra.alarm.MINUTES", minute),
-                    ("--es", "android.intent.extra.alarm.MESSAGE", "JARVIS wake-up"),
-                    ("--ez", "android.intent.extra.alarm.SKIP_UI", "true"),
-                ],
-            )
-            if error:
-                return error
-            return f"Done, sir. Android Clock was asked to set an alarm for {target.strftime('%I:%M %p').lstrip('0')} on {target.strftime('%A, %B %d')}."
-
-        # --------------------------------------------------
-        # RECURRING REMINDERS — do not substitute an internal job.
-        # A reliable Clock recurrence needs repeat-day extras in the
-        # format accepted by the device's Clock app.
-        # --------------------------------------------------
-        daily_match = re.fullmatch(
-            r"every\s+(?:day|morning|evening|night)\s+at\s+"
-            r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?"
-            r"(?:\s*[,;]?\s*(?:to|that|remind\s+me\s+to)?\s*(.+))?",
-            raw,
-            re.IGNORECASE,
-        )
-        if daily_match:
-            return (
-                "[ERROR] No recurring alarm was created. This Clock app's "
-                "repeat-day support has not been verified for Termux intents. "
-                "Please configure the repeat days in Android Clock."
-            )
-
-        # --------------------------------------------------
-        # ONE-TIME CLOCK REMINDER — Android Clock alarm only.
-        # --------------------------------------------------
-        clock_match = re.fullmatch(
-            r"(?:(?:remind\s+me\s+)?(?:(today|tomorrow)\s+)?at|"
-            r"remind\s+me\s+at)\s+"
-            r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?"
-            r"(?:\s+(today|tomorrow))?"
-            r"(?:\s+(?:to|that|remind\s+me\s+to)\s+(.+))?",
-            raw,
-            re.IGNORECASE,
-        )
-        if clock_match:
-            day_hint = (clock_match.group(1) or clock_match.group(5) or "").lower()
-            hour = int(clock_match.group(2))
-            minute = int(clock_match.group(3) or 0)
-            meridiem = clock_match.group(4)
-            label = (clock_match.group(6) or "JARVIS reminder").strip()
-
-            if minute > 59:
-                return "[ERROR] Minutes must be between 0 and 59."
-            if meridiem:
-                if not 1 <= hour <= 12:
-                    return "[ERROR] Invalid 12-hour time."
-                if meridiem.lower() == "pm" and hour != 12:
-                    hour += 12
-                elif meridiem.lower() == "am" and hour == 12:
-                    hour = 0
-            elif hour > 23:
-                return "[ERROR] Hour must be between 0 and 23."
-
-            # Resolve the requested time to its next calendar occurrence.
-            now = datetime.now(self.automation.timezone)
-            target = now.replace(
-                hour=hour, minute=minute, second=0, microsecond=0
-            )
-            if day_hint == "tomorrow":
-                target = (target.replace(tzinfo=None) + timedelta(days=1)).replace(
-                    tzinfo=self.automation.timezone
-                )
-            elif target <= now:
-                target = (target.replace(tzinfo=None) + timedelta(days=1)).replace(
-                    tzinfo=self.automation.timezone
-                )
-
-            error = _set_android_clock_intent(
-                "android.intent.action.SET_ALARM",
-                [
-                    ("--ei", "android.intent.extra.alarm.HOUR", hour),
-                    ("--ei", "android.intent.extra.alarm.MINUTES", minute),
-                    ("--es", "android.intent.extra.alarm.MESSAGE", label),
-                    ("--ez", "android.intent.extra.alarm.SKIP_UI", "true"),
-                ],
-            )
-            if error:
-                return error
-            return f"Done, sir. Android Clock was asked to set a reminder for {label} at {target.strftime('%I:%M %p').lstrip('0')} on {target.strftime('%A, %B %d')}."
+        # Alarms and clock reminders are handled by the set_alarm tool in fast_agent.py.
 
         return None
 
@@ -1486,6 +1356,63 @@ Rules:
             message=message,
         )
 
+    def _whatsapp_tool_send(self, to, message):
+        """
+        Tool entry point used by Groq (FastAgent `whatsapp_send`).
+
+        Returns a JSON-serialisable dict. Group sends are never sent here:
+        they are queued for YES/NO confirmation, and `final_reply` carries
+        the exact confirmation block the UI/CLI expects.
+        """
+        recipient = str(to or "").strip()
+        text = str(message or "").strip()
+
+        if not recipient:
+            return {"ok": False, "error": "WhatsApp recipient is required."}
+        if not text:
+            return {"ok": False, "error": "WhatsApp message is required."}
+
+        label = recipient
+        target = recipient
+
+        # Named recipient may be a group: resolve once, then send by JID.
+        if not recipient.endswith("@g.us"):
+            try:
+                group = self.autonomous.whatsapp.resolve_group(recipient)
+            except Exception:
+                group = None
+            if group and group.get("jid"):
+                label = group.get("subject", recipient)
+                target = str(group["jid"]).strip()
+
+        try:
+            result = self._whatsapp_send(to=target, message=text)
+        except Exception as exc:
+            return {"ok": False, "error": f"WhatsApp send failed: {exc}"}
+
+        if isinstance(result, dict) and result.get("pending"):
+            shown = result.get("message", text)
+            return {
+                "ok": True,
+                "status": "WAITING_FOR_CONFIRMATION",
+                "final_reply": (
+                    "[WHATSAPP_GROUP_CONFIRMATION]\n"
+                    f"GROUP: {label}\n"
+                    f"MESSAGE: {shown}\n"
+                    "STATUS: WAITING_FOR_CONFIRMATION\n"
+                    "TYPE YES TO SEND OR NO TO CANCEL."
+                ),
+            }
+
+        info = result if isinstance(result, dict) else {}
+        return {
+            "ok": True,
+            "status": "SENT",
+            "to": info.get("to") or label,
+            "message": text,
+            "id": info.get("id") or info.get("key"),
+        }
+
     def dispatch(self, text, conversation=None):
         text = str(text).strip()
         original_text = text
@@ -1555,496 +1482,11 @@ Rules:
             return result
 
         # ======================================================
-        # WHATSAPP WIDE-SPECTRUM NORMALIZATION ROUTE
-        #
-        # Literal message examples:
-        #
-        #   wa send Rahul "I'll call you later"
-        #   wa send Bonnet Kitchen 'is this group really dead'
-        #   whatsapp send Rahul "hello"
-        #   message Rahul "hello"
-        #   send Rahul on WhatsApp "hello"
-        #   send WhatsApp message to Rahul: "hello"
-        #
-        # Quoted content is treated as the exact outgoing message.
-        # It is NOT rewritten by Groq.
+        # WHATSAPP
+        # No regex routes here on purpose. Groq handles WhatsApp
+        # requests through the `whatsapp_send` tool (FastAgent),
+        # which calls _whatsapp_tool_send() (defined above).
         # ======================================================
-
-        whatsapp_literal_match = re.fullmatch(
-            r"\s*"
-            r"(?:whatsapp|wa|message|msg|send|ask)"
-            r"\s+"
-            r"(?:send\s+)?"
-            r"(?:whatsapp\s+message\s+to\s+ask\s+)?"
-            r"(.+?)"
-            r"(?:\s+on\s+whatsapp|\s+in\s+whatsapp)?"
-            r"\s*[:\-]?\s*"
-            r"(['\"])(.*?)\2"
-            r"\s*",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if whatsapp_literal_match:
-            recipient = whatsapp_literal_match.group(1).strip()
-            message = whatsapp_literal_match.group(3).strip()
-
-            # Remove common trailing command words that can otherwise
-            # become part of the recipient.
-            recipient = re.sub(
-                r"\s+(?:on|in)\s+whatsapp$",
-                "",
-                recipient,
-                flags=re.IGNORECASE,
-            ).strip()
-
-            # If the recipient accidentally starts with "to ", normalize it.
-            recipient = re.sub(
-                r"^to\s+",
-                "",
-                recipient,
-                flags=re.IGNORECASE,
-            ).strip()
-
-            if recipient and message:
-                try:
-                    result = self._whatsapp_send(
-                        to=recipient,
-                        message=message,
-                    )
-
-                    return (
-                        "[WHATSAPP_SEND]\n"
-                        "STATUS: SENT\n"
-                        f"TO: {result.get('to')}\n"
-                        f"MESSAGE: {message}\n"
-                        f"ID: {result.get('id') or result.get('key')}"
-                    )
-
-                except Exception as exc:
-                    return (
-                        f"[ERROR] WHATSAPP_SEND failed: {exc}"
-                    )
-
-        # Alternative natural literal form:
-        #
-        #   send a WhatsApp message to Rahul saying "hello"
-        #   send a WhatsApp message to Rahul with message "hello"
-        #
-        whatsapp_literal_natural = re.fullmatch(
-            r"\s*"
-            r"(?:send|message|msg|ask)\s+"
-            r"(?:a\s+)?"
-            r"whatsapp\s+message\s+to+\sask\s+"
-            r"(.+?)\s+"
-            r"(?:saying|say|ask|with\s+message|that\s+says)"
-            r"\s*[:\-]?\s*"
-            r"(['\"])(.*?)\2"
-            r"\s*",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if whatsapp_literal_natural:
-            recipient = whatsapp_literal_natural.group(1).strip()
-            message = whatsapp_literal_natural.group(3).strip()
-
-            try:
-                result = self._whatsapp_send(
-                    to=recipient,
-                    message=message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    "STATUS: SENT\n"
-                    f"TO: {result.get('to')}\n"
-                    f"MESSAGE: {message}\n"
-                    f"ID: {result.get('id') or result.get('key')}"
-                )
-
-            except Exception as exc:
-                return (
-                    f"[ERROR] WHATSAPP_SEND failed: {exc}"
-                )
-
-        # ======================================================
-        # ======================================================
-        # ============================================================
-        # WHATSAPP SHORT-FORM AUTO DETECTION
-        #
-        # Supported:
-        #   whatsapp Rahul asking about the physics notes
-        #   whatsapp Rahul saying I'll send them tonight
-        #   wa Rahul asking if he has the notes
-        #   message Rahul saying I'll call later
-        #   msg Rahul asking about the meeting
-        #
-        # Short "ask/tell" forms:
-        #   ask Rahul about the physics notes
-        #   tell Rahul I'll send the notes tonight
-        #
-        # These are intentionally handled locally before the general
-        # routing/AI path.
-        # ============================================================
-
-        # ======================================================
-        # WHATSAPP UNQUOTED MULTI-WORD GROUP ROUTE
-        #
-        # Example:
-        #   wa send Bonnet Kitchen asking if this group is REALLY dead
-        #
-        # Resolve the longest leading group name first. Everything
-        # after the resolved group name becomes the outgoing message.
-        # _whatsapp_send() enforces the group confirmation gate.
-        # ======================================================
-
-        whatsapp_unquoted_group = re.fullmatch(
-            r"\s*(?:wa|whatsapp)\s+"
-            r"(?:send\s+)?"
-            r"(.+?)"
-            r"\s*",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-
-        if whatsapp_unquoted_group:
-            body = whatsapp_unquoted_group.group(1).strip()
-            words = body.split()
-
-            for i in range(len(words), 1, -1):
-                candidate = " ".join(words[:i]).strip()
-                message = " ".join(words[i:]).strip()
-
-                if not message:
-                    continue
-
-                try:
-                    group = self.autonomous.whatsapp.resolve_group(candidate)
-                except Exception:
-                    continue
-
-                try:
-                    # The unquoted group command expresses an intent,
-                    # not necessarily the final wording. Let Groq compose
-                    # the outgoing message before confirmation.
-                    composed_message = self.fast_agent.generate_whatsapp_message(
-                        group.get("subject", candidate),
-                        message,
-                    )
-
-                    result = self._whatsapp_send(
-                        to=str(group["jid"]).strip(),
-                        message=composed_message,
-                    )
-
-                    if isinstance(result, dict) and result.get("pending"):
-                        return (
-                            "[WHATSAPP_GROUP_CONFIRMATION]\n"
-                            f"GROUP: {group.get('subject', candidate)}\n"
-                            f"MESSAGE: {result.get('message', composed_message)}\n"
-                            "STATUS: WAITING_FOR_CONFIRMATION\n"
-                            "TYPE YES TO SEND OR NO TO CANCEL."
-                        )
-
-                    return (
-                        "[WHATSAPP_SEND]\n"
-                        "STATUS: SENT\n"
-                        f"TO: {group.get('subject', candidate)}\n"
-                        f"MESSAGE: {message}\n"
-                        f"ID: {result.get('id') or result.get('key')}"
-                    )
-
-                except Exception as exc:
-                    return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        whatsapp_short_match = re.fullmatch(
-            r"\s*"
-            r"(?:whatsapp|wa|message|msg)\s+"
-            r"(.+?)\s+"
-            r"(?:asking|ask|saying|say|telling|tell)\s+"
-            r"(.+?)"
-            r"\s*",
-            text,
-            re.IGNORECASE,
-        )
-
-        if whatsapp_short_match:
-            recipient = whatsapp_short_match.group(1).strip()
-            intent = whatsapp_short_match.group(2).strip()
-
-            try:
-                message = self.fast_agent.generate_whatsapp_message(
-                    recipient,
-                    intent,
-                )
-
-                result = self._whatsapp_send(
-                    recipient,
-                    message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    f"To: {recipient}\n"
-                    f"Message: {message}\n"
-                    f"{result}"
-                )
-
-            except Exception as exc:
-                return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        # Explicit "ask/tell <person> ..." shorthand.
-        #
-        # Only treat it as WhatsApp when the phrase contains a
-        # message-oriented continuation such as "about", "if",
-        # "whether", "that", or "to".
-        ask_tell_whatsapp_match = re.fullmatch(
-            r"\s*"
-            r"(?:ask|tell)\s+"
-            r"([A-Za-z][A-Za-z0-9_.'-]*(?:\s+[A-Za-z][A-Za-z0-9_.'-]*){0,2})\s+"
-            r"((?:about|if|whether|that|to)\s+.+?)"
-            r"\s*",
-            text,
-            re.IGNORECASE,
-        )
-
-        if ask_tell_whatsapp_match:
-            recipient = ask_tell_whatsapp_match.group(1).strip()
-            intent = ask_tell_whatsapp_match.group(2).strip()
-
-            try:
-                message = self.fast_agent.generate_whatsapp_message(
-                    recipient,
-                    intent,
-                )
-
-                result = self._whatsapp_send(
-                    recipient,
-                    message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    f"To: {recipient}\n"
-                    f"Message: {message}\n"
-                    f"{result}"
-                )
-
-            except Exception as exc:
-                return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        # WHATSAPP HARD ROUTE
-        # ======================================================
-        #
-        # DIRECT:
-        #   Send WhatsApp to Rahul saying I'll be home at 6.
-        #
-        # GENERATED:
-        #   Ask Rahul on WhatsApp if he can send me the physics notes.
-        #
-        # Groq only composes generated messages.
-        # WhatsAppManager/Baileys performs the actual send.
-
-        whatsapp_match = re.search(
-            r"\b(?:send|message|tell|say)\b.*?\bwhatsapp\b"
-            r".*?\bto\s+(.+?)\s+"
-            r"(?:saying|say|that\s+says|with\s+message)\s+(.+)$"
-            r"|\bwhatsapp\b.*?\b(?:send|message)\b"
-            r".*?\bto\s+(.+?)\s+"
-            r"(?:saying|say|that\s+says|with\s+message)\s+(.+)$",
-            text,
-            re.IGNORECASE,
-        )
-
-        if whatsapp_match:
-            recipient = (
-                whatsapp_match.group(1)
-                or whatsapp_match.group(3)
-            ).strip()
-
-            message = (
-                whatsapp_match.group(2)
-                or whatsapp_match.group(4)
-            ).strip()
-
-            try:
-                result = self._whatsapp_send(
-                    to=recipient,
-                    message=message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    "STATUS: SENT\n"
-                    f"TO: {result.get('to')}\n"
-                    f"MESSAGE: {message}\n"
-                    f"ID: {result.get('id') or result.get('key')}"
-                )
-
-            except Exception as exc:
-                return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        # ======================================================
-        # WHATSAPP NATURAL-LANGUAGE MESSAGE GENERATION
-        # ======================================================
-        #
-        # Examples:
-        #   Ask Rahul on WhatsApp if he can send me the physics notes.
-        #   Tell Mom on WhatsApp that I'll be home late.
-        #   Message Rahul on WhatsApp asking whether the meeting is still on.
-        #
-        # The request is sent to Groq for composition.
-        # The generated message is then sent by the existing
-        # WhatsAppManager/Baileys transport.
-
-        # Form A:
-        #   Ask Rahul on WhatsApp if he can send me the notes.
-        whatsapp_intent_match = re.search(
-            r"^\s*"
-            r"(?:ask|tell|message|msg)\s+"
-            r"(.+?)\s+"
-            r"on\s+whatsapp\s+"
-            r"(?:if|whether|that|to|about|asking|saying)\s+"
-            r"(.+?)\s*$",
-            text,
-            re.IGNORECASE,
-        )
-
-        # Form B:
-        #   Ask Rahul if he can send me the notes on WhatsApp.
-        if not whatsapp_intent_match:
-            whatsapp_intent_match = re.search(
-                r"^\s*"
-                r"(?:ask|tell|message|msg)\s+"
-                r"(.+?)\s+"
-                r"(?:if|whether|that|to|about|asking|saying)\s+"
-                r"(.+?)\s+"
-                r"on\s+whatsapp\s*$",
-                text,
-                re.IGNORECASE,
-            )
-
-        if whatsapp_intent_match:
-            recipient = whatsapp_intent_match.group(1).strip()
-            intent = whatsapp_intent_match.group(2).strip()
-
-            try:
-                message = self.fast_agent.generate_whatsapp_message(
-                    recipient=recipient,
-                    intent=intent,
-                )
-
-                result = self._whatsapp_send(
-                    to=recipient,
-                    message=message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    "STATUS: SENT\n"
-                    f"TO: {result.get('to')}\n"
-                    f"MESSAGE: {message}\n"
-                    f"ID: {result.get('id') or result.get('key')}"
-                )
-
-            except Exception as exc:
-                return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        # Form C:
-        #   Send a message to SuyogPawate asking about physics notes in WhatsApp.
-        #   Send a WhatsApp message to Rahul asking if he has the notes.
-        #
-        # Groq composes the natural outgoing message.
-        # WhatsAppManager/Baileys performs the actual send.
-
-        whatsapp_send_intent_match = re.search(
-            r"^\s*"
-            r"(?:send|message|msg)\s+"
-            r"(?:a\s+)?"
-            r"(?:whatsapp\s+)?"
-            r"(?:message\s+)?"
-            r"to\s+"
-            r"(.+?)\s+"
-            r"(?:asking|ask|saying|say|about|whether|if)\s+"
-            r"(.+?)\s+"
-            r"(?:in|on)\s+whatsapp\s*$",
-            text,
-            re.IGNORECASE,
-        )
-
-        if whatsapp_send_intent_match:
-            recipient = whatsapp_send_intent_match.group(1).strip()
-            intent = whatsapp_send_intent_match.group(2).strip()
-
-            try:
-                message = self.fast_agent.generate_whatsapp_message(
-                    recipient=recipient,
-                    intent=intent,
-                )
-
-                result = self._whatsapp_send(
-                    to=recipient,
-                    message=message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    "STATUS: SENT\n"
-                    f"TO: {result.get('to')}\n"
-                    f"MESSAGE: {message}\n"
-                    f"ID: {result.get('id') or result.get('key')}"
-                )
-
-            except Exception as exc:
-                return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        # Form C:
-        #   send a message to SuyogPawate asking about physics notes in whatsapp
-        whatsapp_send_about_match = re.fullmatch(
-            r"\s*(?:send|message|msg)\s+"
-            r"(?:a\s+)?message\s+to\s+"
-            r"(.+?)\s+"
-            r"(?:asking|ask|saying|say)\s+"
-            r"(.+?)\s+"
-            r"(?:in|on)\s+whatsapp\s*",
-            text,
-            re.IGNORECASE,
-        )
-
-        if whatsapp_send_about_match:
-            recipient = whatsapp_send_about_match.group(1).strip()
-            intent = whatsapp_send_about_match.group(2).strip()
-
-            try:
-                message = self.fast_agent.generate_whatsapp_message(
-                    recipient=recipient,
-                    intent=intent,
-                )
-
-                result = self._whatsapp_send(
-                    to=recipient,
-                    message=message,
-                )
-
-                return (
-                    "[WHATSAPP_SEND]\n"
-                    "STATUS: SENT\n"
-                    f"TO: {result.get('to')}\n"
-                    f"MESSAGE: {message}\n"
-                    f"ID: {result.get('id') or result.get('key')}"
-                )
-
-            except Exception as exc:
-                return f"[ERROR] WHATSAPP_SEND failed: {exc}"
-
-        if re.search(
-            r"\bwhatsapp\b.*\b(?:send|message|say|tell)\b"
-            r"|\b(?:send|message|say|tell)\b.*\bwhatsapp\b",
-            text,
-            re.IGNORECASE,
-        ):
-            return self.autonomous.run(text)
 
         # ======================================================
         # ANDROID AI EXPLANATION
