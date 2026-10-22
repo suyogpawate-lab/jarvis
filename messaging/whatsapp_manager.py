@@ -321,7 +321,7 @@ class WhatsAppManager:
                 "file_name": str(file_name),
                 "mimetype": str(mimetype),
                 "caption": str(caption or ""),
-                "kind": "image" if kind == "image" else "document",
+                "kind": kind if kind in {"image", "video", "audio"} else "document",
             },
             timeout=max(self.timeout, 90),
         )
