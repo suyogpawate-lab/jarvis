@@ -250,7 +250,7 @@ def _register_server_tools(server):
 
         with _count_lock:
             if _tool_count >= MAX_TOOLS:
-                print(f"[JARVIS MCP] tool cap ({MAX_TOOLS}) reached; skipping {name}")
+                _log_failure("registry", f"tool cap ({MAX_TOOLS}) reached; skipping {name}")
                 break
             _tool_count += 1
 
@@ -303,7 +303,7 @@ def _boot(name, config):
         server.start()
         _servers.append(server)
         count = _register_server_tools(server)
-        print(f"[JARVIS MCP] {name}: {count} tool(s) ready")
+        _log_failure(name, f"{count} tool(s) ready")
     except Exception as exc:
         server.stop()
         _log_failure(name, f"failed to start: {type(exc).__name__}: {exc}")
@@ -316,7 +316,7 @@ def start_all_async():
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
-        print(f"[JARVIS MCP] bad config {CONFIG_PATH}: {exc}")
+        _log_failure("config", f"bad config {CONFIG_PATH}: {exc}")
         return
 
     for name, config in (data.get("servers") or {}).items():
