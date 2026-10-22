@@ -30,7 +30,7 @@ class WhistleWakeListener:
     SILENCE_SECONDS = 0.90
     MAX_COMMAND_SECONDS = 15
     MIN_COMMAND_SECONDS = 0.30
-    RMS_THRESHOLD = 420
+    RMS_THRESHOLD = 450
 
     def __init__(self, output_queue, chunk_seconds=5, threads=4):
         self.output_queue = output_queue
@@ -202,7 +202,7 @@ class WhistleWakeListener:
         speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
         conversation_timeout = max(
-            5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
+            5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "15"))
         )
         conversation_until = 0.0
         max_frames = int(self.MAX_COMMAND_SECONDS * self.RATE / self.FRAME)
