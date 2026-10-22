@@ -14,6 +14,8 @@ import json
 import os
 import queue
 import re
+import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -737,8 +739,43 @@ class WhatsAppAutoReplyWorker:
             meta = item["meta"]
             try:
                 data = self._hub_download(item["ref"])
+                file_name = meta["name"]
                 mimetype = meta.get("mimetype", "application/octet-stream")
-                suffix = Path(meta["name"]).suffix.lower()
+                suffix = Path(file_name).suffix.lower()
+                gif_playback = False
+
+                # WhatsApp's animated-GIF presentation uses an MP4 video.
+                # Convert locally when ffmpeg is available; otherwise send the
+                # original GIF as a document rather than failing the attachment.
+                if suffix == ".gif":
+                    try:
+                        with tempfile.TemporaryDirectory(prefix="jarvis-wa-media-") as temp_dir:
+                            source = Path(temp_dir) / "source.gif"
+                            converted = Path(temp_dir) / "animated.mp4"
+                            source.write_bytes(data)
+                            result = subprocess.run(
+                                [
+                                    "ffmpeg", "-y", "-i", str(source),
+                                    "-movflags", "faststart",
+                                    "-pix_fmt", "yuv420p",
+                                    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                                    "-an", str(converted),
+                                ],
+                                capture_output=True,
+                                timeout=30,
+                                check=False,
+                            )
+                            if result.returncode == 0 and converted.is_file():
+                                converted_data = converted.read_bytes()
+                                if converted_data:
+                                    data = converted_data
+                                    file_name = f"{Path(file_name).stem}.mp4"
+                                    mimetype = "video/mp4"
+                                    gif_playback = True
+                    except (OSError, subprocess.SubprocessError):
+                        pass
+
+                suffix = Path(file_name).suffix.lower()
                 if mimetype.startswith("video/") and suffix != ".gif":
                     media_kind = "video"
                 elif mimetype.startswith("audio/"):
@@ -747,17 +784,19 @@ class WhatsAppAutoReplyWorker:
                     media_kind = "image"
                 else:
                     media_kind = "document"
+
                 self.whatsapp.send_media(
                     chat_jid,
                     data,
-                    meta["name"],
+                    file_name,
                     mimetype,
                     item.get("caption", ""),
                     media_kind,
+                    gif_playback=gif_playback,
                 )
                 sent += 1
                 print(
-                    f"[WHATSAPP AUTO] Sent file: {meta['name']}",
+                    f"[WHATSAPP AUTO] Sent file: {file_name}",
                     flush=True,
                 )
             except Exception as exc:
