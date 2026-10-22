@@ -17,9 +17,8 @@ import sounddevice as sd
 # Suppress only that specific warning; all other warnings remain visible.
 warnings.filterwarnings(
     "ignore",
-    message=r"Unsupported platform \(android\).*ONNX Runtime supports Linux, macOS, AIX and Windows platforms, only\\.",
+    message=r"Unsupported platform \(android\).*",
     category=UserWarning,
-    module=r"onnxruntime\\.capi\\.onnxruntime_validation",
 )
 from openwakeword.model import Model
 
