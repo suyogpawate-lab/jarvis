@@ -69,8 +69,10 @@ def _policy():
     return os.environ.get("JARVIS_SHELL_POLICY", "strict").strip().lower()
 
 
-def _hash(command):
-    return sha256(command.strip().encode("utf-8")).hexdigest()
+def _hash(command, kind="shell"):
+    # A shell approval must not authorize the same text through a job/MCP path.
+    payload = str(kind).strip().lower() + "\\0" + command.strip()
+    return sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _load():
@@ -127,7 +129,7 @@ def check(command, kind="shell"):
     if not reason:
         return None
 
-    digest = _hash(command)
+    digest = _hash(command, kind)
     data = _purge(_load())
 
     for code, entry in list(data.items()):
