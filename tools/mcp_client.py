@@ -63,6 +63,7 @@ class MCPServer:
         self._pending = {}
         self._pending_lock = threading.Lock()
         self._write_lock = threading.Lock()
+        self._stderr_log = None
 
     # ---- process + transport -------------------------------------------
 
@@ -72,11 +73,16 @@ class MCPServer:
         for key, value in self.env.items():
             env[key] = os.path.expandvars(str(value))
 
+        log_dir = ROOT / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self._stderr_log = (log_dir / f"mcp-{self.name}.stderr.log").open(
+            "a", encoding="utf-8"
+        )
         self.proc = subprocess.Popen(
             [executable] + self.args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=self._stderr_log,
             text=True,
             encoding="utf-8",
             bufsize=1,
@@ -99,8 +105,18 @@ class MCPServer:
         if self.proc and self.proc.poll() is None:
             try:
                 self.proc.terminate()
+                self.proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+        if self._stderr_log:
+            try:
+                self._stderr_log.close()
             except Exception:
                 pass
+            self._stderr_log = None
 
     def _send(self, message):
         with self._write_lock:
