@@ -484,9 +484,9 @@ class WhatsAppAutoReplyWorker:
                 "function": {
                     "name": "find_files",
                     "description": (
-                        "Search the owner's local Knowledge Hub for a "
-                        "photo or document the contact asked for. "
-                        "Returns candidate files with a ref."
+                        "Search the owner's local Knowledge Hub for a matching document, "
+                        "image, GIF, video, audio file, or other retained asset. "
+                        "Returns candidate assets with a ref."
                     ),
                     "parameters": {
                         "type": "object",
@@ -505,9 +505,9 @@ class WhatsAppAutoReplyWorker:
                 "function": {
                     "name": "attach_file",
                     "description": (
-                        "Attach one file from find_files to your reply. "
+                        "Attach one asset from find_files to your reply. "
                         "Only use a ref returned by find_files, and only "
-                        "when the contact clearly asked for that file."
+                        "when the contact clearly asked for that asset."
                     ),
                     "parameters": {
                         "type": "object",
