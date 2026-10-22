@@ -251,16 +251,23 @@ class WhatsAppAutoReplyWorker:
 
         return "\n".join(lines)
 
-    def drain_events(self):
-        """Return queued UI events without printing from the worker thread."""
+    def drain_events(self, event_type=None):
+        """Return queued UI events, optionally preserving events of other types."""
         events = []
+        preserved = []
 
         while True:
             try:
-                events.append(self._events.get_nowait())
+                event = self._events.get_nowait()
             except queue.Empty:
                 break
+            if event_type is None or event.get("type") == event_type:
+                events.append(event)
+            else:
+                preserved.append(event)
 
+        for event in preserved:
+            self._events.put(event)
         return events
 
     def prepare_explicit_group_message(self, recipient, message):
