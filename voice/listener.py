@@ -1,7 +1,5 @@
-"""Streaming OpenWakeWord + Whisper listener for JARVIS."""
-import os
-import re
-import subprocess
+"""Streaming OpenWakeWord + Whistle (Needle) listener for JARVIS."""
+import json\nimport os\nimport re\nimport subprocess
 import threading
 import time
 import wave
@@ -13,7 +11,7 @@ import sounddevice as sd
 from openwakeword.model import Model
 
 
-class WhisperWakeListener:
+class WhistleWakeListener:
     RATE = 16000
     FRAME = 1280                 # 80 ms at 16 kHz
     WAKE_THRESHOLD = 0.50
@@ -29,10 +27,9 @@ class WhisperWakeListener:
         self.thread = None
         self.root = Path(__file__).resolve().parent
         self.runtime = self.root / "runtime"
-        self.model_path = self.root / "models" / "ggml-tiny.en.bin"
-        self.whisper = (
-            Path.home() / "whisper.cpp" / "build" / "bin" / "whisper-cli"
-        )
+        self.project_root = self.root.parent
+        self.model_path = self.project_root / "whistle.cact"
+        self.needle = self.project_root / "android-arm64" / "needle"
         self._wake_model = None
 
         # Don't trigger on (or transcribe) JARVIS's own spoken replies.
@@ -43,9 +40,17 @@ class WhisperWakeListener:
             self._is_speaking = lambda: False
 
     def start(self):
-        for path in (self.model_path, self.whisper):
-            if not path.exists():
-                raise RuntimeError(f"Required voice file not found: {path}")
+        for path in (self.model_path, self.needle):
+            if not path.is_file():
+                raise RuntimeError(
+                    f"Required Whistle voice file not found: {path}. "
+                    "Run: bash install.sh --with-voice"
+                )
+        if not os.access(self.needle, os.X_OK):
+            raise RuntimeError(
+                f"Needle runner is not executable: {self.needle}. "
+                f"Run: chmod +x {self.needle}"
+            )
 
         self.runtime.mkdir(parents=True, exist_ok=True)
         self.running = True
@@ -89,8 +94,7 @@ class WhisperWakeListener:
         wav_path = self.runtime / "_command_stream.wav"
         env = os.environ.copy()
         env["LD_LIBRARY_PATH"] = (
-            str(self.whisper.parent) + ":" +
-            env.get("LD_LIBRARY_PATH", "")
+            str(self.needle.parent) + ":" + env.get("LD_LIBRARY_PATH", "")
         )
 
         try:
@@ -103,30 +107,24 @@ class WhisperWakeListener:
 
             result = subprocess.run(
                 [
-                    str(self.whisper), "-m", str(self.model_path),
-                    "-f", str(wav_path), "-t", str(self.threads),
-                    "-nt",  # no timestamps
-                    "-np",  # no progress (stdout corruption)
+                    str(self.needle), "--model", str(self.model_path),
+                    "--audio", str(wav_path),
                 ],
                 capture_output=True,
                 text=True,
                 env=env,
-                timeout=45,
+                timeout=30,
             )
             if result.returncode != 0:
                 return ""
 
-            # Parse whisper.cpp output with no timestamps: just the text
-            output = (result.stdout or "").strip()
-            text = output.strip()
-            # Ignore common silence/music placeholders.
-            if text.lower() in {
-                "", "[blank_audio]", "[blank audio]", "[inaudible]",
-                "(inaudible)", "[music playing]",
-                "(speaking in foreign language)",
-            }:
+            # Needle/Whistle emits one JSON object, including timing metadata.
+            try:
+                payload = json.loads((result.stdout or "").strip())
+            except json.JSONDecodeError:
                 return ""
-            return self._clean_wake_phrase(text)
+            text = str(payload.get("text") or "").strip()
+            return self._clean_wake_phrase(text) if text else ""
         except Exception:
             return ""
         finally:
