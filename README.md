@@ -184,6 +184,26 @@ These let you run a shell command, start/manage background jobs, inspect job out
 
 **Safety approvals:** with the default strict shell policy, some risky shell operations are paused and not executed until you approve them from the interactive JARVIS terminal. Follow the exact response, for example `approve ab12` or `deny ab12`. Codes expire after 10 minutes. Do not approve a command unless you understand its effect. The approval system is not a sandbox; `JARVIS_SHELL_POLICY=off` disables this guard and is not recommended.
 
+### sqlmap security testing tool
+
+JARVIS can invoke the upstream [sqlmap](https://github.com/sqlmapproject/sqlmap) CLI directly, without having an LLM rewrite its arguments. The installer fetches a sparse checkout containing the core runtime only: `sqlmap.py`, `lib/`, `plugins/`, `data/`, `thirdparty/`, `tamper/`, and the upstream license. It excludes documentation, tests, demos, and other auxiliary directories.
+
+Examples:
+
+```text
+sqlmap --help
+sqlmap -hh
+sqlmap -u http://127.0.0.1:8080/vuln.php?id=1 --batch --risk=1 --level=1
+```
+
+The last example is for an intentionally vulnerable local lab only. JARVIS's wrapper requires exactly one explicit `-u/--url` or `-d/--direct` target, rejects indirect target lists/config/request-file sources, and checks the target hostname against `JARVIS_SQLMAP_ALLOWED_HOSTS`. By default, only loopback hosts are allowed. To add a system you own or have explicit permission to test, set a comma-separated allowlist in the project `.env`, for example:
+
+```dotenv
+JARVIS_SQLMAP_ALLOWED_HOSTS=localhost,127.0.0.1,::1,lab.example
+```
+
+Replace `lab.example` with your own authorized lab hostname; do not add public systems without permission. The wrapper passes sqlmap's other CLI options through, including advanced options, and uses `--batch` for non-interactive requests. This hostname check is a guardrail, **not a sandbox**: redirects, DNS changes, and options within sqlmap can affect behavior. Review the target and options before each run. To install or refresh the sparse checkout, run `bash install.sh --skip-setup`. The upstream project's complete option reference is available with `sqlmap -hh` and in its [official usage manual](https://github.com/sqlmapproject/sqlmap/wiki/Usage).
+
 ### Timers, alarms and scheduled automations
 
 Examples of supported timer/alarm phrasing:
