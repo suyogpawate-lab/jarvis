@@ -59,8 +59,7 @@ class WhistleWakeListener:
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self.thread.start()
-        print("[VOICE] Streaming listener starting; wake phrase: Hey Jarvis",
-              flush=True)
+        print("[VOICE] Listener thread launched; wake phrase: Hey Jarvis", flush=True)
         return self
 
     def stop(self):
@@ -189,6 +188,7 @@ class WhistleWakeListener:
                 dtype="int16",
                 blocksize=self.FRAME,
             ) as stream:
+                print("[VOICE] Microphone stream active at 16 kHz mono; say Hey Jarvis.", flush=True)
                 while self.running:
                     block, overflowed = stream.read(self.FRAME)
                     if not self.running:
