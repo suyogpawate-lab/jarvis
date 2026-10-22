@@ -29,11 +29,12 @@ class CommandGuardTests(unittest.TestCase):
         command = "echo safe && echo second"
         first = command_guard.check(command, kind="shell")
         code = first.split("approve ", 1)[1].split()[0]
-        self.assertIn("Approved.", command_guard.handle_user_reply("approve " + code))
         job_result = command_guard.check(command, kind="job")
         self.assertIn("[NEEDS_APPROVAL]", job_result)
-        shell_result = command_guard.check(command, kind="shell")
-        self.assertIsNone(shell_result)
+        self.assertIn("Approved.", command_guard.handle_user_reply("approve " + code))
+        # ShellExecutor consumes the approval; it must not authorize a job.
+        job_after_shell_approval = command_guard.check(command, kind="job")
+        self.assertIn("[NEEDS_APPROVAL]", job_after_shell_approval)
 
     def test_hard_deny_cannot_be_approved(self):
         result = command_guard.check("mkfs /dev/null", kind="shell")
