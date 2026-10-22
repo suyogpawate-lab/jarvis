@@ -17,7 +17,7 @@ class FastAgent:
         self.api_keys = [k.strip() for k in raw_groq_keys.replace("\n", ",").split(",") if k.strip()]
         self.current_key_index = 0
 
-        # Provider-local five-key fallback chains.
+        # Provider-local API-key fallback chains.
         # Keys are supplied through environment variables.
         self.gemini_api_keys = self._load_provider_keys(
             "GEMINI_API_KEYS",
@@ -70,7 +70,7 @@ class FastAgent:
     @staticmethod
     def _load_provider_keys(list_env, single_env):
         """
-        Load at most five API keys for one provider.
+        Load every configured API key for one provider.
 
         Preferred:
             PROVIDER_API_KEYS=key1,key2,key3,key4,key5
@@ -91,7 +91,7 @@ class FastAgent:
             if single:
                 keys = [single]
 
-        return keys[:5]
+        return keys
 
     def _provider_keys(self, provider):
         if provider == "gemini":
@@ -131,7 +131,7 @@ class FastAgent:
         timeout=30,
     ):
         """
-        Gemini provider with the same five-key fallback architecture
+        Gemini provider with the same provider-key fallback architecture
         used by the existing Groq implementation.
         """
 
