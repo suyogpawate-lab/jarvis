@@ -154,7 +154,7 @@ class WhistleWakeListener:
                 pass
 
     def _loop(self):
-        # Try multiple inference frameworks (ONNX works best on x86, TFLite on ARM/Termux)
+        # Try the Termux-packaged ONNX Runtime first, then TFLite if available.
         frameworks = ["onnx", "tflite"]  # Prefer Termux ONNX Runtime; fall back to TFLite
         self._wake_model = None
         
@@ -220,8 +220,6 @@ class WhistleWakeListener:
                             continue
                         preroll.append(audio)
                         try:
-                            # OpenWakeWord expects float32 in range [-1.0, 1.0]
-                            # Ensure audio is C-contiguous for model compatibility
                             # OpenWakeWord requires 16 kHz mono signed int16 PCM.
                             # 1280 samples is its recommended 80 ms frame size.
                             pcm = np.ascontiguousarray(audio, dtype=np.int16)
