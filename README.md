@@ -276,6 +276,58 @@ The `/screen` routes accept screen-layout data for integrations. Do not expose t
 - `omni` starts the OmniRoute daemon, which prints its API base URL (`http://127.0.0.1:20128`). JARVIS provider configuration uses `OMNIROUTE_BASE_URL` and `OMNIROUTE_API_KEY`.
 - OmniRoute is optional at runtime for some routes, but the current guided setup describes it as part of the full provider configuration. If it fails to install/start, check `omniroute.log` and verify the local endpoint before relying on it.
 
+## Project architecture and source map
+
+The repository is organized as a Python application with optional Android/Termux integrations and a small Node.js WhatsApp bridge. The main execution path is the CLI/UI or an optional local HTTP interface, which delegates requests to the shared dispatcher and its service modules.
+
+| Path | Responsibility |
+|---|---|
+| `jarvis.py` | Main terminal CLI, interactive command loop, memory commands, discussion commands, and service coordination. |
+| `jarvis_ui.py` | Rich terminal interface and input/response presentation. |
+| `core/` | Main `Jarvis` reasoning client and multi-agent discussion coordination. |
+| `automation/command_dispatcher.py` | Parses explicit commands and coordinates abilities, search, local AI, autonomous execution, messaging, and scheduled work. |
+| `agents/` | Fast agent, autonomous execution loop, local Ollama adapter, and provider adapters for Groq, Gemini/Anthropic-compatible APIs, Ollama, and OmniRoute. |
+| `routing/` | Discussion topic classification, model registry/pool, and fast-tool routing helpers. |
+| `android/` | Android app aliases and device actions, shell execution, process/system inspection, and risky-command approval guard. |
+| `config/abilities.json` | Declarative abilities registry used by the dispatcher and reasoning layer. |
+| `memory/` | Personal/project memory, conversation history, episodes, and SQLite-backed storage under local runtime data. |
+| `automation/` | Command dispatch, persistent background jobs, and timezone-aware scheduled automations. |
+| `search/` | Normalized multi-provider search, web-engine/community providers, Tor transport, and adaptive deep-research crawling. |
+| `messaging/` | Android contact lookup, Gmail IMAP/SMTP, WhatsApp orchestration, and WhatsApp-related helpers. |
+| `whatsapp/` | Node.js Baileys bridge, package manifest, and local WhatsApp session integration. |
+| `monitoring/` | System telemetry, notifications, alerts, notification ingestion, and watchers. |
+| `voice/` | Optional wake-word listener, Whisper.cpp speech recognition integration, audio handling, and TTS components. |
+| `knowledge_hub/` | Local Flask document library with SQLite full-text search, supported document extraction, and an upload/search page. |
+| `jarvis_http_bridge.py` | Optional token-protected localhost HTTP bridge for chat and transient screen-state data. |
+| `jarvis_bridge.py`, `jarvis_web.py`, `web/`, `web-ip.py` | Additional bridge/web entry points and web assets; these are separate from the default terminal workflow. |
+| `osint/` | Pluggable OSINT adapters, registry/team orchestration, and result formatting. Optional dependencies are listed separately. |
+| `workers/` | Worker registry and adapters for supported external/local coding or task workers, including OpenCode and OWL integration points. |
+| `tools/` | Tool registry, skill loading, progress reporting, and MCP client integration. |
+| `skills/` | Bundled operational and interface-design skill instructions. |
+| `scripts/` | Voice test, app-inventory capture, and publishing checks. |
+| `install.sh`, `setup.py`, `jarvis_env.py` | Termux installation, guided configuration, and environment loading. |
+| `requirements*.txt`, `packages/` | Core and optional Python dependency lists plus Node package metadata. |
+
+### Request and service flow
+
+1. The CLI/UI receives typed input; the optional voice listener can place a recognized command into the same application flow when its dependencies and model files are available.
+2. `CommandDispatcher` handles explicit slash commands and deterministic local abilities, and initializes the search hub, deep-search engine, local AI adapter, fast agent, autonomous agent, and scheduler.
+3. The fast agent uses the configured Groq API for fast model requests and can use configured provider fallbacks and registered tools. The core reasoning client uses the configured OmniRoute-compatible endpoint. Actual route selection depends on the request, provider configuration, and service availability.
+4. Device actions are implemented through the Android/Termux layer. Risky shell operations are gated by the command guard by default; this guard is a safety check, not a sandbox.
+5. Persistent memory and job/automation state are stored in local runtime data. Gmail and WhatsApp require separately configured credentials/session state; the WhatsApp manager talks to the local Baileys bridge.
+
+### Dependency boundaries
+
+- **Core:** `requirements.txt` contains the primary Python runtime dependencies.
+- **Voice:** `requirements-voice.txt` lists optional wake-word/audio packages. The installer’s `--with-voice` option also attempts to build Whisper.cpp and obtain the English tiny model. This is platform-sensitive on Android and is not required for typed interaction.
+- **OSINT:** `requirements-osint.txt` contains additional optional packages for selected OSINT integrations; some adapters may have their own external tool/runtime requirements.
+- **WhatsApp:** `whatsapp/package.json` and its lockfile define the Node.js Baileys bridge dependencies.
+- **Configuration:** `.env.example` documents provider and integration variables. Use `python setup.py` for guided setup; the real `.env`, account credentials, contact lists, authentication sessions, and runtime databases must remain local.
+
+### Review and verification scope
+
+This README describes the tracked source layout and intended integration boundaries. It does not imply that every optional provider, native Android action, external worker, or account integration has been exercised on every device. Installation success and runtime behavior depend on Termux packages, Android permissions, network access, valid credentials, model files, and optional services. Use the troubleshooting section below to verify each configured integration on the target device.
+
 ## Troubleshooting
 
 Check the current configuration and required tools:
