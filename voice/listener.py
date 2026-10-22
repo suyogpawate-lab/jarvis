@@ -17,7 +17,7 @@ from openwakeword.model import Model
 class WhistleWakeListener:
     RATE = 16000
     FRAME = 1280                 # 80 ms at 16 kHz
-    WAKE_THRESHOLD = 0.50
+    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.50"))
     SILENCE_SECONDS = 0.90
     MAX_COMMAND_SECONDS = 15
     MIN_COMMAND_SECONDS = 0.30
@@ -128,7 +128,11 @@ class WhistleWakeListener:
                 return ""
             text = str(payload.get("text") or "").strip()
             return self._clean_wake_phrase(text) if text else ""
-        except Exception:
+        except subprocess.TimeoutExpired:
+            print("[VOICE STT ERROR] Needle timed out after 30 seconds.", flush=True)
+            return ""
+        except Exception as exc:
+            print(f"[VOICE STT ERROR] {type(exc).__name__}: {exc}", flush=True)
             return ""
         finally:
             try:
@@ -138,7 +142,7 @@ class WhistleWakeListener:
 
     def _loop(self):
         # Try multiple inference frameworks (ONNX works best on x86, TFLite on ARM/Termux)
-        frameworks = ["tflite", "onnx"]  # TFLite first on ARM devices
+        frameworks = ["onnx", "tflite"]  # Prefer Termux ONNX Runtime; fall back to TFLite
         self._wake_model = None
         
         for framework in frameworks:
@@ -204,10 +208,10 @@ class WhistleWakeListener:
                         try:
                             # OpenWakeWord expects float32 in range [-1.0, 1.0]
                             # Ensure audio is C-contiguous for model compatibility
-                            audio_float = np.ascontiguousarray(
-                                audio.astype(np.float32) / 32768.0
-                            )
-                            scores = self._wake_model.predict(audio_float)
+                            # OpenWakeWord requires 16 kHz mono signed int16 PCM.
+                            # 1280 samples is its recommended 80 ms frame size.
+                            pcm = np.ascontiguousarray(audio, dtype=np.int16)
+                            scores = self._wake_model.predict(pcm)
                             score = max(
                                 (
                                     float(v) for k, v in scores.items()
@@ -223,6 +227,11 @@ class WhistleWakeListener:
                             continue
 
                         if score >= self.WAKE_THRESHOLD:
+                            print(f"[VOICE] Wake phrase detected (score={score:.3f}); listening...", flush=True)
+                            try:
+                                self._wake_model.reset()
+                            except Exception:
+                                pass
                             capturing = True
                             command_frames = list(preroll)
                             speech_started = False
@@ -251,7 +260,10 @@ class WhistleWakeListener:
 
                         if text:
                             # Direct to the existing JARVIS queue.
+                            print(f"[VOICE] Recognized command: {text}", flush=True)
                             self.output_queue.put(text)
+                        else:
+                            print("[VOICE WARN] No command transcript returned; ready for another wake phrase.", flush=True)
 
                         command_frames = []
                         capturing = False
