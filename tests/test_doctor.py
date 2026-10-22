@@ -25,12 +25,29 @@ class DoctorTests(unittest.TestCase):
             needle = root / "android-arm64" / "needle"
             needle.parent.mkdir()
             needle.touch()
+            needle.chmod(0o700)
             (root / "whistle.cact").touch()
             with patch("monitoring.doctor.ROOT", root):
                 rows = run_doctor("voice")
         statuses = {row["name"]: row["status"] for row in rows}
         self.assertEqual(statuses["Needle runner"], "ok")
         self.assertEqual(statuses["Whistle model"], "ok")
+
+
+    def test_voice_doctor_flags_non_executable_needle(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            needle = root / "android-arm64" / "needle"
+            needle.parent.mkdir()
+            needle.touch()
+            needle.chmod(0o600)
+            (root / "whistle.cact").touch()
+            with patch("monitoring.doctor.ROOT", root):
+                rows = run_doctor("voice")
+        statuses = {row["name"]: row["status"] for row in rows}
+        self.assertEqual(statuses["Needle runner"], "unavailable")
 
     def test_format_has_summary(self):
         self.assertIn("Summary:", format_doctor("invalid"))
