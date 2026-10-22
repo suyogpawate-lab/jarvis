@@ -540,6 +540,7 @@ const server = http.createServer(async (req, res) => {
       const kind = ["image", "video", "audio"].includes(data.kind)
         ? data.kind
         : "document";
+      const gifPlayback = data.gif_playback === true;
 
       // Same rule as the rest of the bridge: media goes to DMs only.
       if (!isDirectJid(to)) {
@@ -566,7 +567,7 @@ const server = http.createServer(async (req, res) => {
           video: buffer,
           mimetype,
           caption: caption || undefined,
-          gifPlayback: false,
+          gifPlayback,
         };
       } else if (kind === "audio") {
         content = { audio: buffer, mimetype, ptt: false };
