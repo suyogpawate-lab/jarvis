@@ -16,12 +16,15 @@ small{color:#94a3b8}
 </head>
 <body>
 <h1>JARVIS Knowledge Hub</h1>
-<p>Upload documents for searchable, local reference.</p>
+<p>Upload documents for search, plus media and other files that JARVIS can find and share through WhatsApp.</p>
 <section>
 <h2>Add a document</h2>
 <form id="upload">
-<input type="file" name="file" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png" required>
-<button>Upload and index</button>
+<input type="file" name="file" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png,.webp,.bmp,.gif,.mp4,.m4v,.mov,.webm,.mp3,.m4a,.wav,.ogg,.opus,.aac,.flac,.zip,.csv,.json,.md,.rtf,.pptx,.xlsx" required>
+<label for="displayName">Name in Knowledge Hub (optional)</label>
+<input id="displayName" name="display_name" placeholder="e.g. physics-notes.pdf" maxlength="160">
+<small>The uploaded file's extension is preserved. Documents/images may be indexed; other supported assets are retained for sharing.</small>
+<button>Upload</button>
 </form>
 <pre id="uploadStatus"></pre>
 </section>
@@ -34,7 +37,7 @@ small{color:#94a3b8}
 <div id="results"></div>
 </section>
 <section>
-<h2>Indexed documents</h2>
+<h2>Knowledge Hub assets</h2>
 <button onclick="loadDocs()">Refresh list</button>
 <div id="docs"></div>
 </section>
@@ -62,11 +65,16 @@ el("search").onsubmit=async e=>{
  }
 };
 async function loadDocs(){
- const r=await fetch("/api/documents");const docs=await r.json();
+ const [dr,mr,ir]=await Promise.all([
+  fetch("/api/documents"),fetch("/api/media-assets"),fetch("/api/images")
+ ]);
+ const docs=await dr.json(), media=await mr.json(), images=await ir.json();
  el("docs").replaceChildren();
- for(const d of docs){
+ for(const d of [...docs.map(x=>({...x,kind:"Document"})),
+                  ...images.map(x=>({...x,kind:"Image"})),
+                  ...media.map(x=>({...x,kind:"Media"}))]){
   const div=document.createElement("div");div.className="item";
-  div.textContent=`${d.name} — ${d.chunks} chunks`;
+  div.textContent=`${d.name} — ${d.kind}${d.chunks!==undefined ? " — "+d.chunks+" chunks" : ""}`;
   el("docs").append(div);
  }
 }
