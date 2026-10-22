@@ -10,7 +10,8 @@ class DoctorTests(unittest.TestCase):
 
     def test_provider_checks_never_echo_secret(self):
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-secret"}, clear=True):
-            rows = run_doctor("providers")
+            with patch("monitoring.doctor.socket.create_connection", side_effect=OSError("mocked")):
+                rows = run_doctor("providers")
         groq = next(row for row in rows if row["name"] == "Groq")
         self.assertEqual(groq["status"], "configured")
         self.assertNotIn("test-secret", str(rows))
