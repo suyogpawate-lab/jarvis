@@ -108,13 +108,11 @@ def parse_discuss_command(prompt):
     # ----------------------------------------------------------
 
     match = re.match(
-        r"^(?:jarvis[,\s]+)?(?:run\s+)?sqlmap(?:\s+(.*))?$",
-        r"\s+for\s+(\d+)\s*"
-        r"(seconds?|secs?|s|minutes?|mins?|m)\s*$",
+        r"^(?:jarvis[,\\s]+)?(?:run\\s+)?discuss\\s+(.+?)\\s+for\\s+(\\d+)\\s*"
+        r"(seconds?|secs?|s|minutes?|mins?|m)\\s*$",
         text,
         re.IGNORECASE,
     )
-
     if match:
 
         topic = match.group(1).strip()
