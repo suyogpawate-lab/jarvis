@@ -353,6 +353,15 @@ def search():
 
     return jsonify(results=[dict(r) for r in rows])
 
+@app.get("/api/media-assets")
+def media_assets():
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id, name, mimetype, added_at FROM media_assets ORDER BY id DESC"
+        ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
 @app.get("/api/images")
 def images():
     with connect() as db:
