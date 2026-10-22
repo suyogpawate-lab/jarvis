@@ -988,8 +988,8 @@ def init_services():
     ).start()
 
     try:
-        from voice.listener import WhisperWakeListener
-        voice_listener = WhisperWakeListener(voice_command_queue).start()
+        from voice.listener import WhistleWakeListener
+        voice_listener = WhistleWakeListener(voice_command_queue).start()
     except Exception as exc:
         print(f"[VOICE DISABLED] {exc}", flush=True)
 
