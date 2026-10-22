@@ -620,8 +620,8 @@ class WhatsAppAutoReplyWorker:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": (
-                f"Contact: {sender}\\nRecent conversation:\\n{conversation}\\n\\n"
-                f"Latest incoming message(s):\\n{incoming}\\n\\n"
+                f"Contact: {sender}\nRecent conversation:\n{conversation}\n\n"
+                f"Latest incoming message(s):\n{incoming}\n\n"
                 "Classify whether to send a grounded reply, ask the owner, or skip."
             )},
         ]
