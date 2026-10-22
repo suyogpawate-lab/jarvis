@@ -170,7 +170,7 @@ class CommandDispatcher:
 
     def _discussion_duration(self, command):
 
-        if command == "/discuss":
+        if command == "discuss":
             return 60
 
         match = re.fullmatch(
@@ -428,7 +428,7 @@ class CommandDispatcher:
         # DISCUSSION
         # ------------------------------------------------------
 
-        if command.startswith("/discuss"):
+        if command.startswith("discuss"):
 
             duration = self._discussion_duration(
                 command
