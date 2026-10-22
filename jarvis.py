@@ -1018,7 +1018,7 @@ def _show_whatsapp_review_events():
         if event.get("type") == "REPLY_REVIEW":
             review_id = str(event.get("review_id", ""))
             sender = str(event.get("sender", "Unknown contact"))
-            print(f"\\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
+            print(f"\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
             print(f"  Message: {event.get('incoming', '')}")
             print(f"  Why review is needed: {event.get('reason', 'Not enough reliable context.')}")
             evidence = str(event.get("evidence", "")).strip()
@@ -1053,7 +1053,7 @@ def read_prompt():
 
         summary = pop_notification()
         if summary is not None:
-            print(f"\\nJARVIS [NOTIFICATIONS] > {summary}")
+            print(f"\nJARVIS [NOTIFICATIONS] > {summary}")
             _web_notify(summary)
             continue
 
@@ -1111,7 +1111,7 @@ def main():
                 break
 
             review_match = re.fullmatch(
-                r"wa-reply\\s+(\\S+)\\s+(1|2|skip|none|no|0)",
+                r"wa-reply\s+(\S+)\s+(1|2|skip|none|no|0)",
                 prompt.strip(),
                 re.IGNORECASE,
             )
@@ -1123,9 +1123,9 @@ def main():
                         result = whatsapp_autoreply.resolve_reply_review(
                             review_match.group(1), review_match.group(2)
                         )
-                        print(f"JARVIS > {result}\\n")
+                        print(f"JARVIS > {result}\n")
                     except Exception as exc:
-                        print(f"JARVIS > Could not process reply decision: {exc}\\n")
+                        print(f"JARVIS > Could not process reply decision: {exc}\n")
                 continue
 
             if prompt.lower() in MEMORY_VIEW_COMMANDS:
