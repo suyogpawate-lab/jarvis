@@ -166,6 +166,22 @@ JARVIS has persistent personal/project memory and can use relevant stored contex
 
 `/remember` saves personal memory; `/project` saves project memory. `/memory` displays memory, with optional `personal` or `project` filters. `/discuss` starts a multi-agent discussion; a duration suffix such as `/discuss5m` requests a five-minute discussion (duration is capped at one hour).
 
+### Diagnostics and safe routines
+
+Run local diagnostics from the JARVIS command loop:
+
+```text
+/doctor
+/doctor local
+/doctor providers
+/doctor voice
+/doctor mcp
+/routine list
+/routine run device_check
+```
+
+The doctor output hides credential values. Provider status checks whether credentials are configured and separately checks the local OmniRoute TCP endpoint; it does not prove that a remote provider key is valid. The local diagnostic is intended to avoid remote provider calls. The initial `device_check` routine runs the local and provider diagnostic sections in order and stops if a step raises an error. Routine actions are allowlisted in code; they are not arbitrary model-generated shell commands.
+
 ### Shell commands and background jobs
 
 Explicit dispatcher commands include:
