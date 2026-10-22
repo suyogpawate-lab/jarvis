@@ -80,7 +80,7 @@ def test_mic(duration=3):
         )
         print("  Recording... speak now!")
         sd.wait()
-        rms = np.sqrt(np.mean(frames**2))
+        rms = np.sqrt(np.mean(np.asarray(frames, dtype=np.float32) ** 2))
         print(f"  ✓ Recorded {duration}s (RMS: {rms:.0f})")
         return True
     except Exception as e:
