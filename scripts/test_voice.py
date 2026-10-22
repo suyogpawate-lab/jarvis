@@ -10,6 +10,7 @@ Test JARVIS voice components.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -43,26 +44,23 @@ def test_imports():
 
 
 def test_files():
-    """Check that whisper.cpp and the model are present."""
-    print("\nChecking required files...")
-    whisper_bin = Path.home() / "whisper.cpp" / "build" / "bin" / "whisper-cli"
-    model = ROOT / "voice" / "models" / "ggml-tiny.en.bin"
-
-    if whisper_bin.exists():
-        print(f"  ✓ whisper binary: {whisper_bin}")
+    """Check that the Needle runner and Whistle weights are present."""
+    print("\\nChecking required files...")
+    needle_bin = ROOT / "android-arm64" / "needle"
+    model = ROOT / "whistle.cact"
+    if needle_bin.is_file() and os.access(needle_bin, os.X_OK):
+        print(f"  ✓ Needle runner: {needle_bin}")
     else:
-        print(f"  ✗ whisper binary not found: {whisper_bin}")
-        print("    Build it: bash install.sh --with-voice")
+        print(f"  ✗ executable Needle runner not found: {needle_bin}")
+        print("    Install it: bash install.sh --with-voice")
         return False
-
-    if model.exists():
+    if model.is_file():
         size_mb = model.stat().st_size / 1e6
-        print(f"  ✓ whisper model: {model} ({size_mb:.1f} MB)")
+        print(f"  ✓ Whistle model: {model} ({size_mb:.1f} MB)")
     else:
-        print(f"  ✗ whisper model not found: {model}")
+        print(f"  ✗ Whistle model not found: {model}")
         print("    Download it: bash install.sh --with-voice")
         return False
-
     return True
 
 
@@ -91,74 +89,56 @@ def test_mic(duration=3):
 
 
 def test_stt():
-    """Test speech-to-text with a 2-second recording."""
-    print("\nTesting speech-to-text (recording 2s)...")
+    """Record two seconds and transcribe it with Whistle."""
+    print("\\nTesting Whistle speech-to-text (recording 2s)...")
     try:
         import sounddevice as sd
         import numpy as np
         import subprocess
-        from pathlib import Path
-
-        # Record
-        rate = 16000
-        frames = sd.rec(
-            int(2 * rate),
-            samplerate=rate,
-            channels=1,
-            dtype="int16",
-        )
-        print("  Recording... say something!")
-        sd.wait()
-
-        # Save to a temp file in voice runtime directory
-        runtime_dir = Path(__file__).resolve().parent.parent / "voice" / "runtime"
-        runtime_dir.mkdir(parents=True, exist_ok=True)
-        wav_file = runtime_dir / "test_voice.wav"
+        import json
         import wave
 
+        rate = 16000
+        frames = sd.rec(int(2 * rate), samplerate=rate, channels=1, dtype="int16")
+        print("  Recording... say something!")
+        sd.wait()
+        runtime_dir = ROOT / "voice" / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        wav_file = runtime_dir / "test_voice.wav"
         with wave.open(str(wav_file), "wb") as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(rate)
             wav.writeframes(frames.tobytes())
 
-        # Run whisper
-        whisper_bin = Path.home() / "whisper.cpp" / "build" / "bin" / "whisper-cli"
-        model = ROOT / "voice" / "models" / "ggml-tiny.en.bin"
-
-        if not whisper_bin.exists():
-            print(f"  ✗ whisper not found: {whisper_bin}")
+        needle_bin = ROOT / "android-arm64" / "needle"
+        model = ROOT / "whistle.cact"
+        if not needle_bin.is_file() or not model.is_file():
+            print("  ✗ Needle/Whistle files missing. Run: bash install.sh --with-voice")
             return False
-
+        env = os.environ.copy()
+        env["LD_LIBRARY_PATH"] = str(needle_bin.parent) + ":" + env.get("LD_LIBRARY_PATH", "")
         result = subprocess.run(
-            [str(whisper_bin), "-m", str(model), "-f", str(wav_file), "-nt", "-np"],
-            capture_output=True,
-            text=True,
-            timeout=30,
+            [str(needle_bin), "--model", str(model), "--audio", str(wav_file)],
+            capture_output=True, text=True, timeout=30, env=env,
         )
-
         if result.returncode != 0:
-            print(f"  ✗ Whisper failed: {result.stderr}")
+            print(f"  ✗ Whistle failed: {result.stderr}")
             return False
-
-        # Parse output
-        output = result.stdout
-        text = None
-        for line in output.split("\n"):
-            if "[RESULT]" in line or line.strip() and not line.startswith("["):
-                text = line.strip()
-
-        if text:
-            print(f"  ✓ STT result: '{text}'")
+        try:
+            payload = json.loads(result.stdout.strip())
+            transcript = str(payload.get("text") or "").strip()
+        except (json.JSONDecodeError, AttributeError):
+            print(f"  ✗ Could not parse Whistle JSON output:\\n{result.stdout}")
+            return False
+        if transcript:
+            print(f"  ✓ Whistle STT result: '{transcript}'")
             return True
-        else:
-            print(f"  ✗ No speech detected. Output:\n{output}")
-            return False
-
+        print(f"  ✗ No speech detected. Output:\\n{result.stdout}")
+        return False
     except Exception as e:
         print(f"  ✗ STT test failed: {e}")
         import traceback
-
         traceback.print_exc()
         return False
 
