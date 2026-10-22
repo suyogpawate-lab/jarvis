@@ -765,6 +765,28 @@ def handle_prompt(prompt):
         return guard_reply, False
 
     # ----------------------------------------------------------
+    # Explicit sqlmap CLI route (scoped launcher; no LLM rewriting)
+    # ----------------------------------------------------------
+    sqlmap_match = re.match(
+        r"^(?:jarvis[,\\s]+)?(?:run\\s+)?sqlmap(?:\\s+(.*))?$",
+        prompt,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if sqlmap_match:
+        import shlex
+        from security.sqlmap_tool import run_sqlmap
+
+        raw_args = (sqlmap_match.group(1) or "--help").strip()
+        try:
+            sqlmap_args = shlex.split(raw_args)
+            answer = run_sqlmap(sqlmap_args)
+        except Exception as exc:
+            answer = f"[SQLMAP ERROR] {exc}"
+        save_message("user", prompt)
+        save_message("assistant", answer)
+        return answer, False
+
+    # ----------------------------------------------------------
     # Local Android actions (no LLM)
     # ----------------------------------------------------------
 
