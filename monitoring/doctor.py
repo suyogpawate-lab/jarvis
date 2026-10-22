@@ -61,8 +61,8 @@ def run_doctor(section="all"):
             rows.append(_check("OmniRoute endpoint", status, detail))
 
     if section in {"all", "voice"}:
-        for name, path in (("Needle runner", "voice/android-arm64/needle"),
-                           ("Whistle model", "voice/whistle.cact")):
+        for name, path in (("Needle runner", "android-arm64/needle"),
+                           ("Whistle model", "whistle.cact")):
             rows.append(_check(name, "ok" if (ROOT / path).is_file() else "missing",
                                path))
         try:
@@ -90,3 +90,7 @@ def format_doctor(section="all"):
         counts[item["status"]] = counts.get(item["status"], 0) + 1
     lines.append("Summary: " + ", ".join("{} {}".format(n, k) for k, n in sorted(counts.items())))
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    print(format_doctor())
