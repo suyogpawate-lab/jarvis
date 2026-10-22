@@ -66,8 +66,17 @@ class AlertMonitor:
         except Exception:
             return
         pct = data.get("percentage", data.get("level"))
-        status = str(data.get("status") or "").upper()
-        charging = status in ("CHARGING", "FULL") or str(data.get("plugged") or "").upper() not in ("", "UNPLUGGED")
+        status = str(data.get("status") or "").strip().upper()
+        plugged = data.get("plugged")
+        if isinstance(plugged, bool):
+            is_plugged = plugged
+        elif isinstance(plugged, (int, float)):
+            is_plugged = plugged != 0
+        else:
+            is_plugged = str(plugged or "").strip().upper() in {
+                "AC", "USB", "WIRELESS", "PLUGGED", "PLUGGED_IN", "TRUE", "1"
+            }
+        charging = status in ("CHARGING", "FULL") or is_plugged
         if isinstance(pct, (int, float)):
             lvl = 0
             if not charging:
