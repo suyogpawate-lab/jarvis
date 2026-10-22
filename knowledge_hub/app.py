@@ -14,15 +14,24 @@ from werkzeug.utils import secure_filename
 BASE = Path(__file__).resolve().parent
 UPLOADS = BASE / "uploads"
 IMAGES = BASE / "images"
-DOCS = BASE / "files"  # retained originals of TXT/PDF/DOCX uploads
+DOCS = BASE / "files"  # retained originals of searchable documents
+MEDIA = BASE / "media"  # retained non-text assets for sharing
 DB = BASE / "knowledge.db"
 UPLOADS.mkdir(exist_ok=True)
 IMAGES.mkdir(exist_ok=True)
 DOCS.mkdir(exist_ok=True)
+MEDIA.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
-ALLOWED = {".txt", ".pdf", ".docx", ".jpg", ".jpeg", ".png"}
+TEXT_FORMATS = {".txt", ".pdf", ".docx"}
+IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+MEDIA_FORMATS = {
+    ".gif", ".webp", ".bmp", ".mp4", ".m4v", ".mov", ".webm",
+    ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".flac",
+    ".zip", ".csv", ".json", ".md", ".rtf", ".pptx", ".xlsx",
+}
+ALLOWED = TEXT_FORMATS | IMAGE_FORMATS | MEDIA_FORMATS
 
 def connect():
     db = sqlite3.connect(DB)
@@ -53,6 +62,16 @@ def init_db():
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS media_assets (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                digest TEXT UNIQUE NOT NULL,
+                stored_name TEXT NOT NULL,
+                mimetype TEXT NOT NULL,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
     with connect() as db:
         cols = [r["name"] for r in db.execute("PRAGMA table_info(documents)")]
@@ -63,7 +82,7 @@ def extract_text(path):
     ext = path.suffix.lower()
     if ext == ".txt":
         return path.read_text(encoding="utf-8", errors="replace")
-    if ext in {".jpg", ".jpeg", ".png"}:
+    if ext in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}:
         import subprocess
         result = subprocess.run(
             ["tesseract", str(path), "stdout"],
@@ -122,9 +141,9 @@ def index_file(path, original_name):
         if existing:
             # Re-uploading an older document backfills its sendable original.
             db.execute(
-                "UPDATE documents SET stored_name=? "
-                "WHERE id=? AND stored_name IS NULL",
-                (stored_name, existing["id"]),
+                "UPDATE documents SET name=?, stored_name=? "
+                "WHERE id=? AND (stored_name IS NULL OR name<>?)",
+                (original_name, stored_name, existing["id"], original_name),
             )
             return {"status": "already_exists", "name": original_name}
 
@@ -151,6 +170,10 @@ def index_image(path, original_name):
         ).fetchone()
 
         if existing:
+            db.execute(
+                "UPDATE visual_assets SET name=? WHERE id=?",
+                (original_name, existing["id"]),
+            )
             return {
                 "status": "already_exists",
                 "name": original_name,
@@ -214,25 +237,80 @@ def index_image(path, original_name):
 def home():
     return render_template("index.html")
 
+def _safe_display_name(original_filename, requested_name):
+    original = secure_filename(Path(original_filename).name)
+    ext = Path(original).suffix.lower()
+    requested = str(requested_name or "").strip()
+    if not requested:
+        return original
+    # The extension is always inherited from the actual uploaded file.
+    stem = secure_filename(Path(requested).stem).strip(" ._-")
+    if not stem:
+        raise ValueError("Enter a valid filename.")
+    return f"{stem[:150]}{ext}"
+
+
+def index_media(path, original_name):
+    """Retain non-indexable files (GIF/video/audio/archives and other assets)."""
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    stored_name = digest + path.suffix.lower()
+    mimetype = _mime_for(original_name)
+    destination = MEDIA / stored_name
+    with connect() as db:
+        existing = db.execute(
+            "SELECT id FROM media_assets WHERE digest=?", (digest,)
+        ).fetchone()
+        if existing:
+            db.execute(
+                "UPDATE media_assets SET name=?, mimetype=? WHERE id=?",
+                (original_name, mimetype, existing["id"]),
+            )
+            return {
+                "status": "already_exists",
+                "name": original_name,
+                "media_id": existing["id"],
+                "shareable": True,
+            }
+        if not destination.exists():
+            shutil.copy2(path, destination)
+        cur = db.execute(
+            "INSERT INTO media_assets(name, digest, stored_name, mimetype) "
+            "VALUES (?, ?, ?, ?)",
+            (original_name, digest, stored_name, mimetype),
+        )
+        return {
+            "status": "retained",
+            "name": original_name,
+            "media_id": cur.lastrowid,
+            "shareable": True,
+            "mimetype": mimetype,
+        }
+
+
 @app.post("/api/upload")
 def upload():
     file = request.files.get("file")
     if not file or not file.filename:
         return jsonify(error="Choose a file"), 400
 
-    name = secure_filename(file.filename)
+    try:
+        name = _safe_display_name(file.filename, request.form.get("display_name", ""))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     ext = Path(name).suffix.lower()
     if ext not in ALLOWED:
-        return jsonify(error="Supported formats: TXT, PDF, DOCX, JPG, JPEG and PNG"), 400
+        return jsonify(error="Unsupported format. Try TXT, PDF, DOCX, common images, GIF, video, audio, ZIP, CSV, JSON, Markdown, PPTX or XLSX."), 400
 
-    temp = UPLOADS / name
+    temp = UPLOADS / (hashlib.sha256(os.urandom(32)).hexdigest() + ext)
     file.save(temp)
     try:
-        if ext in {".jpg", ".jpeg", ".png"}:
+        if ext in IMAGE_FORMATS:
             result = index_image(temp, name)
             return jsonify(result)
-
-        result = index_file(temp, name)
+        if ext in TEXT_FORMATS:
+            result = index_file(temp, name)
+            return jsonify(result)
+        result = index_media(temp, name)
         return jsonify(result)
     except Exception as exc:
         return jsonify(error=str(exc)), 400
@@ -315,6 +393,9 @@ _MIME_OVERRIDES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".gif": "image/gif",
 }
 
 
@@ -366,7 +447,7 @@ def find_files():
     def add(kind, item_id, name, path, snippet, name_hits, score):
         entry = hits.setdefault((kind, item_id), {
             "ref": f"{kind}:{item_id}",
-            "kind": "image" if kind == "img" else "document",
+            "kind": "image" if kind == "img" else ("media" if kind == "media" else "document"),
             "id": item_id,
             "name": name,
             "mimetype": _mime_for(name),
@@ -399,6 +480,15 @@ def find_files():
             path = IMAGES / img["stored_name"]
             if n and path.is_file():
                 add("img", img["id"], img["name"], path, "", n, 0.0)
+
+        # 1b) filename matches for retained non-indexable media.
+        for media in db.execute(
+            "SELECT id, name, stored_name, mimetype FROM media_assets"
+        ).fetchall():
+            n = sum(1 for t in terms if t in media["name"].lower())
+            path = MEDIA / media["stored_name"]
+            if n and path.is_file():
+                add("media", media["id"], media["name"], path, "", n, 0.0)
 
         # 2) content matches (any term, ranked by bm25)
         match = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
@@ -439,6 +529,11 @@ def file_download(kind, item_id):
                 "SELECT name, stored_name FROM visual_assets WHERE id=?", (item_id,)
             ).fetchone()
             folder = IMAGES
+        elif kind == "media":
+            row = db.execute(
+                "SELECT name, stored_name FROM media_assets WHERE id=?", (item_id,)
+            ).fetchone()
+            folder = MEDIA
         else:
             return jsonify(error="Unknown file kind"), 404
 
