@@ -1011,7 +1011,7 @@ def _show_whatsapp_review_events():
     if whatsapp_autoreply is None:
         return
     try:
-        events = whatsapp_autoreply.drain_events()
+        events = whatsapp_autoreply.drain_events(event_type="REPLY_REVIEW")
     except Exception:
         return
     for event in events:
