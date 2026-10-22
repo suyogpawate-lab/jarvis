@@ -192,8 +192,16 @@ class WhistleWakeListener:
         silent_frames = 0
         speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
+        conversation_timeout = max(
+            5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
+        )
+        conversation_until = 0.0
         max_frames = int(self.MAX_COMMAND_SECONDS * self.RATE / self.FRAME)
         silence_limit = int(self.SILENCE_SECONDS * self.RATE / self.FRAME)
+        exit_phrase = re.compile(
+            r"^(?:goodbye|bye|end|stop)\s+jarvis[.!\s]*$",
+            re.IGNORECASE,
+        )
 
         try:
             with sd.InputStream(
@@ -215,10 +223,31 @@ class WhistleWakeListener:
                     if not capturing:
                         if self._is_speaking():
                             mute_until = time.time() + 0.6
+                            # Keep the conversation window open while JARVIS replies.
+                            if conversation_until:
+                                conversation_until = time.time() + conversation_timeout
                         if time.time() < mute_until:
                             preroll.clear()
                             continue
                         preroll.append(audio)
+                        level = self._rms(audio)
+
+                        # During an active conversation, voice activity starts capture
+                        # directly; the wake phrase is no longer required.
+                        if conversation_until > time.time():
+                            if level >= self.RMS_THRESHOLD:
+                                print("[VOICE] Follow-up speech detected; listening...", flush=True)
+                                capturing = True
+                                command_frames = list(preroll)
+                                speech_started = True
+                                silent_frames = 0
+                                speech_frames = 1
+                                preroll.clear()
+                            continue
+                        elif conversation_until:
+                            conversation_until = 0.0
+                            print("[VOICE] Conversation timed out; say Hey Jarvis to resume.", flush=True)
+
                         try:
                             # OpenWakeWord requires 16 kHz mono signed int16 PCM.
                             # 1280 samples is its recommended 80 ms frame size.
@@ -271,11 +300,20 @@ class WhistleWakeListener:
                         text = self._transcribe(combined)
 
                         if text:
-                            # Direct to the existing JARVIS queue.
-                            print(f"[VOICE] Recognized command: {text}", flush=True)
-                            self.output_queue.put(text)
+                            if exit_phrase.fullmatch(text.strip()):
+                                conversation_until = 0.0
+                                print("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
+                            else:
+                                # Keep listening for follow-ups without another wake phrase.
+                                conversation_until = time.time() + conversation_timeout
+                                print(f"[VOICE] Recognized command: {text}", flush=True)
+                                print(
+                                    f"[VOICE] Continuous conversation active for {conversation_timeout:g}s of inactivity.",
+                                    flush=True,
+                                )
+                                self.output_queue.put(text)
                         else:
-                            print("[VOICE WARN] No command transcript returned; ready for another wake phrase.", flush=True)
+                            print("[VOICE WARN] No command transcript returned; ready to listen again.", flush=True)
 
                         command_frames = []
                         capturing = False
