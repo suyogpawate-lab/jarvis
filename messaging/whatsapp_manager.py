@@ -305,6 +305,7 @@ class WhatsAppManager:
         mimetype="application/octet-stream",
         caption="",
         kind="document",
+        gif_playback=False,
     ):
         """Send an image or document (raw bytes) to a direct chat."""
         if not to:
@@ -322,6 +323,7 @@ class WhatsAppManager:
                 "mimetype": str(mimetype),
                 "caption": str(caption or ""),
                 "kind": kind if kind in {"image", "video", "audio"} else "document",
+                "gif_playback": bool(gif_playback),
             },
             timeout=max(self.timeout, 90),
         )
