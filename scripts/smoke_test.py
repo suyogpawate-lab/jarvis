@@ -7,6 +7,7 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "data"}
 
 
