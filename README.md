@@ -328,7 +328,7 @@ The repository is organized as a Python application with optional Android/Termux
 | `messaging/` | Android contact lookup, Gmail IMAP/SMTP, WhatsApp orchestration, and WhatsApp-related helpers. |
 | `whatsapp/` | Node.js Baileys bridge, package manifest, and local WhatsApp session integration. |
 | `monitoring/` | System telemetry, notifications, alerts, notification ingestion, and watchers. |
-| `voice/` | Optional wake-word listener, Whisper.cpp speech recognition integration, audio handling, and TTS components. |
+| `voice/` | Optional OpenWakeWord listener, Whistle speech recognition through the Needle ARM64 runner, audio handling, and TTS components. |
 | `knowledge_hub/` | Local Flask document library with SQLite full-text search, supported document extraction, and an upload/search page. |
 | `jarvis_http_bridge.py` | Optional token-protected localhost HTTP bridge for chat and transient screen-state data. |
 | `jarvis_bridge.py`, `jarvis_web.py`, `web/`, `web-ip.py` | Additional bridge/web entry points and web assets; these are separate from the default terminal workflow. |
@@ -351,7 +351,7 @@ The repository is organized as a Python application with optional Android/Termux
 ### Dependency boundaries
 
 - **Core:** `requirements.txt` contains the primary Python runtime dependencies.
-- **Voice:** `requirements-voice.txt` lists optional wake-word/audio packages. The installer’s `--with-voice` option also attempts to build Whisper.cpp and obtain the English tiny model. This is platform-sensitive on Android and is not required for typed interaction.
+- **Voice:** `requirements-voice.txt` lists optional wake-word/audio packages. The installer’s `--with-voice` option downloads the Needle ARM64 runner and Whistle model. Python audio dependencies can be platform-sensitive on Android; voice is not required for typed interaction.
 - **OSINT:** `requirements-osint.txt` contains additional optional packages for selected OSINT integrations; some adapters may have their own external tool/runtime requirements.
 - **WhatsApp:** `whatsapp/package.json` and its lockfile define the Node.js Baileys bridge dependencies.
 - **Configuration:** `.env.example` documents provider and integration variables. Use `python setup.py` for guided setup; the real `.env`, account credentials, contact lists, authentication sessions, and runtime databases must remain local.
