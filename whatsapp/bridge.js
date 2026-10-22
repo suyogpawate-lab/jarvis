@@ -537,7 +537,9 @@ const server = http.createServer(async (req, res) => {
       const caption = String(data.caption || "").trim();
       const fileName = String(data.file_name || "file").trim();
       const mimetype = String(data.mimetype || "application/octet-stream");
-      const kind = data.kind === "image" ? "image" : "document";
+      const kind = ["image", "video", "audio"].includes(data.kind)
+        ? data.kind
+        : "document";
 
       // Same rule as the rest of the bridge: media goes to DMs only.
       if (!isDirectJid(to)) {
@@ -556,10 +558,21 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const content =
-        kind === "image"
-          ? { image: buffer, mimetype, caption: caption || undefined }
-          : { document: buffer, mimetype, fileName, caption: caption || undefined };
+      let content;
+      if (kind === "image") {
+        content = { image: buffer, mimetype, caption: caption || undefined };
+      } else if (kind === "video") {
+        content = {
+          video: buffer,
+          mimetype,
+          caption: caption || undefined,
+          gifPlayback: false,
+        };
+      } else if (kind === "audio") {
+        content = { audio: buffer, mimetype, ptt: false };
+      } else {
+        content = { document: buffer, mimetype, fileName, caption: caption || undefined };
+      }
 
       const result = await sock.sendMessage(to, content);
 
