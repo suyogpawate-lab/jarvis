@@ -27,9 +27,13 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 TEXT_FORMATS = {".txt", ".pdf", ".docx"}
 IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 MEDIA_FORMATS = {
-    ".gif", ".webp", ".bmp", ".mp4", ".m4v", ".mov", ".webm",
-    ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".flac",
-    ".zip", ".csv", ".json", ".md", ".rtf", ".pptx", ".xlsx",
+    ".gif", ".webp", ".bmp", ".svg", ".heic", ".heif", ".avif",
+    ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi", ".3gp", ".flv",
+    ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".flac", ".wma", ".aiff", ".mid",
+    ".zip", ".tar", ".gz", ".7z", ".rar",
+    ".csv", ".json", ".md", ".rtf", ".xml", ".yaml", ".yml", ".log", ".sql",
+    ".py", ".js", ".html", ".css", ".doc", ".xls", ".ppt", ".pptx", ".xlsx",
+    ".odt", ".ods", ".odp", ".epub",
 }
 ALLOWED = TEXT_FORMATS | IMAGE_FORMATS | MEDIA_FORMATS
 
