@@ -108,8 +108,8 @@ def parse_discuss_command(prompt):
     # ----------------------------------------------------------
 
     match = re.match(
-        r"^(?:jarvis[,\\s]+)?(?:run\\s+)?discuss\\s+(.+?)\\s+for\\s+(\\d+)\\s*"
-        r"(seconds?|secs?|s|minutes?|mins?|m)\\s*$",
+        r"^(?:jarvis[,\s]+)?(?:run\s+)?discuss\s+(.+?)\s+for\s+(\d+)\s*"
+        r"(seconds?|secs?|s|minutes?|mins?|m)\s*$",
         text,
         re.IGNORECASE,
     )
