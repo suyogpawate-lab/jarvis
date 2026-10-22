@@ -1019,7 +1019,7 @@ def _show_whatsapp_review_events():
     for event in events:
         review_id = str(event.get("review_id", ""))
         sender = str(event.get("sender", "Unknown contact"))
-        print(f"\\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
+        print(f"\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
         print(f"  Message: {event.get('incoming', '')}")
         print(f"  Why review is needed: {event.get('reason', 'Not enough reliable context.')}")
         evidence = str(event.get("evidence", "")).strip()
@@ -1053,7 +1053,7 @@ def read_prompt():
 
         summary = pop_notification()
         if summary is not None:
-            print(f"\\nJARVIS [NOTIFICATIONS] > {summary}")
+            print(f"\nJARVIS [NOTIFICATIONS] > {summary}")
             _web_notify(summary)
             prompt_visible = False
             continue
