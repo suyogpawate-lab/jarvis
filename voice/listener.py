@@ -118,12 +118,26 @@ class WhistleWakeListener:
                 timeout=30,
             )
             if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "")[-500:]
+                print(f"[VOICE STT ERROR] Needle exited {result.returncode}: {detail}", flush=True)
                 return ""
 
-            # Needle/Whistle emits one JSON object, including timing metadata.
+            # Parse clean JSON first; tolerate runtime logs around a JSON line.
+            output = (result.stdout or "").strip()
+            payload = None
             try:
-                payload = json.loads((result.stdout or "").strip())
+                payload = json.loads(output)
             except json.JSONDecodeError:
+                for line in reversed(output.splitlines()):
+                    try:
+                        candidate = json.loads(line.strip())
+                        if isinstance(candidate, dict) and "text" in candidate:
+                            payload = candidate
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            if not isinstance(payload, dict):
+                print(f"[VOICE STT ERROR] Could not parse Needle output: {output[-500:]}", flush=True)
                 return ""
             text = str(payload.get("text") or "").strip()
             return self._clean_wake_phrase(text) if text else ""
