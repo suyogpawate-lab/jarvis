@@ -11,7 +11,7 @@ Keys  : ←/→ move the cursor (Ctrl/Alt+←/→ by word)  Home/End or Ctrl-A/E
         ↑/↓ scroll it instead (Ctrl+↑/↓ always scroll).  PgUp/PgDn scroll a page.
 Printed output from jarvis.py's modules goes to ~/jarvis/data/ui.log so it can't corrupt the screen.
 """
-import os, re, sys, time, json, math, random, threading, select, textwrap, shutil, subprocess
+import os, re, sys, time, json, math, random, threading, select, textwrap, shutil, subprocess, queue
 from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
@@ -1519,6 +1519,15 @@ def main():
                     S["alert_until"] = 0.0
                     settle()
                 if BRAIN is not None and not S["busy"]:
+                    # Acoustic wake-word commands use the same work pipeline as typed input.
+                    try:
+                        voice_prompt = BRAIN.voice_command_queue.get_nowait()
+                    except queue.Empty:
+                        voice_prompt = None
+                    if voice_prompt and str(voice_prompt).strip():
+                        voice_prompt = str(voice_prompt).strip()
+                        _remember(voice_prompt)
+                        _start_work(voice_prompt)
                     item = BRAIN.pop_notification()
                     if item:
                         notify(item)
