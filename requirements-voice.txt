@@ -1,4 +1,4 @@
-# Optional voice / wake-word dependencies.
+# Optional OpenWakeWord / microphone dependencies. Whistle STT uses the Needle ARM64 binary.
 #
 # Termux setup (before pip):
 #   pkg install python-numpy portaudio python-onnxruntime
