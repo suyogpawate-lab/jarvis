@@ -32,7 +32,7 @@ def _env_value(name: str) -> str:
                 continue
             key, raw = line.split("=", 1)
             if key.strip() == name:
-                return raw.strip().strip("\\"'").strip()
+                return raw.strip().strip('"').strip("'").strip()
     except OSError:
         pass
     return ""
