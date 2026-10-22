@@ -45,7 +45,7 @@ def test_imports():
 
 def test_files():
     """Check that the Needle runner and Whistle weights are present."""
-    print("\\nChecking required files...")
+    print("\nChecking required files...")
     needle_bin = ROOT / "android-arm64" / "needle"
     model = ROOT / "whistle.cact"
     if needle_bin.is_file() and os.access(needle_bin, os.X_OK):
@@ -90,7 +90,7 @@ def test_mic(duration=3):
 
 def test_stt():
     """Record two seconds and transcribe it with Whistle."""
-    print("\\nTesting Whistle speech-to-text (recording 2s)...")
+    print("\nTesting Whistle speech-to-text (recording 2s)...")
     try:
         import sounddevice as sd
         import numpy as np
@@ -129,12 +129,12 @@ def test_stt():
             payload = json.loads(result.stdout.strip())
             transcript = str(payload.get("text") or "").strip()
         except (json.JSONDecodeError, AttributeError):
-            print(f"  ✗ Could not parse Whistle JSON output:\\n{result.stdout}")
+            print(f"  ✗ Could not parse Whistle JSON output:\n{result.stdout}")
             return False
         if transcript:
             print(f"  ✓ Whistle STT result: '{transcript}'")
             return True
-        print(f"  ✗ No speech detected. Output:\\n{result.stdout}")
+        print(f"  ✗ No speech detected. Output:\n{result.stdout}")
         return False
     except Exception as e:
         print(f"  ✗ STT test failed: {e}")
