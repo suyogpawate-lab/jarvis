@@ -146,8 +146,8 @@ def speak(text: str, wait: bool = True) -> bool:
 
     if not shutil.which("mpv"):
         raise RuntimeError("mpv is not installed or is not on PATH.")
-    if not shutil.which("edge-tts"):
-        raise RuntimeError("edge-tts is not installed or is not on PATH.")
+    # The imported edge_tts Python module performs synthesis directly; the
+    # separate edge-tts shell executable is not required for this code path.
 
     global _proc
     with _lock:
