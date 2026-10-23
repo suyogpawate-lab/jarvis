@@ -29,9 +29,9 @@ class AppAliasTests(unittest.TestCase):
         self.assertEqual(resolve_app_candidates("whatsapp mes", True, self.apps), ["com.whatsapp"])
 
     def test_ambiguous_explicit_name_does_not_guess(self):
-        self.assertEqual(resolve_app_candidates("whatsapp", True, [
-            {"name": "WhatsApp", "package": "com.whatsapp", "short": [], "launchable": True},
-            {"name": "WhatsApp Business", "package": "com.whatsapp.w4b", "short": [], "launchable": True},
+        self.assertEqual(resolve_app_candidates("wa", False, [
+            {"name": "Messenger", "package": "com.whatsapp", "short": ["wa"], "launchable": True},
+            {"name": "Work Assistant", "package": "com.work.assistant", "short": ["wa"], "launchable": True},
         ]), [])
 
     def test_personal_nickname(self):
