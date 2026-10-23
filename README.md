@@ -273,10 +273,10 @@ This installs OpenWakeWord dependencies and downloads the ARM64 Needle runner an
 
 JARVIS keeps Edge TTS as the default and supports Piper as an optional local provider. Choose during setup or change later:
 
-\`\`\`bash
+```bash
 ./voice-config
 python setup.py voice
-\`\`\`
+```
 
 Choose **Edge** for the existing network-based en-GB-RyanNeural voice. Choose **Piper** to use a compatible local Piper C API library, an ONNX voice model and its matching JSON config. The installer does not overwrite Termux shared ONNX Runtime libraries and does not download or install an unverified Piper binary/model. Install a compatible Piper build and voice model separately, then enter their paths when prompted.
 
