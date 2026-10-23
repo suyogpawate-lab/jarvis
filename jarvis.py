@@ -1098,37 +1098,194 @@ def _show_whatsapp_review_events():
 
 
 def read_prompt():
-    prompt_visible = False
-    while True:
-        if _show_whatsapp_review_events():
-            prompt_visible = False
-        if not prompt_visible:
-            print("YOU  > ", end="", flush=True)
-            prompt_visible = True
-        try:
-            command = voice_command_queue.get_nowait()
-            if command.strip():
-                command = command.strip()
-                # The listener keeps background diagnostics in a log. Show only
-                # the actual transcript here, replacing the waiting input prompt.
-                print(f"\rYOU (VOICE) > {command}\n", flush=True)
-                return command
-        except queue.Empty:
-            pass
+    """Read an editable CLI line while still servicing voice and notifications.
 
-        summary = pop_notification()
-        if summary is not None:
-            print(f"\nJARVIS [NOTIFICATIONS] > {summary}")
-            _web_notify(summary)
-            prompt_visible = False
-            continue
+    sys.stdin.readline() bypasses Python readline's interactive editor, so arrow
+    keys arrive as escape sequences instead of moving the cursor. This small
+    terminal editor handles common cursor/editing keys and keeps the existing
+    background-event polling behavior.
+    """
+    prompt = "YOU  > "
+    if not sys.stdin.isatty():
+        return input(prompt).strip()
 
-        ready, _, _ = select.select([sys.stdin], [], [], 0.25)
-        if ready:
-            line = sys.stdin.readline()
-            if line == "":
-                raise EOFError
-            return line.strip()
+    import codecs
+    import termios
+    import tty
+    import unicodedata
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    line = []
+    cursor = 0
+    history = getattr(read_prompt, "_history", [])
+    history_index = len(history)
+    saved_draft = []
+
+    def width(value):
+        total = 0
+        for char in value:
+            if char == "\\t":
+                total += 4
+            elif unicodedata.combining(char):
+                continue
+            elif unicodedata.east_asian_width(char) in ("W", "F"):
+                total += 2
+            else:
+                total += 1
+        return total
+
+    def redraw():
+        tail_width = width("".join(line[cursor:]))
+        sys.stdout.write("\\r\\x1b[2K" + prompt + "".join(line))
+        if tail_width:
+            sys.stdout.write(f"\\x1b[{tail_width}D")
+        sys.stdout.flush()
+
+    def replace_line(chars):
+        nonlocal line, cursor
+        line = list(chars)
+        cursor = len(line)
+        redraw()
+
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    try:
+        tty.setraw(fd)
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        while True:
+            if _show_whatsapp_review_events():
+                redraw()
+
+            try:
+                command = voice_command_queue.get_nowait()
+                if command.strip():
+                    command = command.strip()
+                    sys.stdout.write(f"\\r\\x1b[2KYOU (VOICE) > {command}\\n")
+                    sys.stdout.flush()
+                    return command
+            except queue.Empty:
+                pass
+
+            summary = pop_notification()
+            if summary is not None:
+                sys.stdout.write(f"\\r\\x1b[2K\\nJARVIS [NOTIFICATIONS] > {summary}\\n")
+                sys.stdout.flush()
+                _web_notify(summary)
+                redraw()
+
+            ready, _, _ = select.select([sys.stdin], [], [], 0.2)
+            if not ready:
+                continue
+
+            data = os.read(fd, 1)
+            if not data:
+                if not line:
+                    raise EOFError
+                continue
+
+            byte = data[0]
+            if byte in (10, 13):
+                sys.stdout.write("\\r\\x1b[2K" + prompt + "".join(line) + "\\n")
+                sys.stdout.flush()
+                result = "".join(line).strip()
+                if result:
+                    if not history or history[-1] != result:
+                        history.append(result)
+                    read_prompt._history = history[-200:]
+                return result
+
+            if byte == 3:  # Ctrl-C
+                sys.stdout.write("^C\\n")
+                sys.stdout.flush()
+                raise KeyboardInterrupt
+            if byte == 4:  # Ctrl-D
+                if not line:
+                    raise EOFError
+                if cursor < len(line):
+                    del line[cursor]
+                    redraw()
+                continue
+            if byte in (8, 127):  # Backspace
+                if cursor:
+                    del line[cursor - 1]
+                    cursor -= 1
+                    redraw()
+                continue
+            if byte == 1:  # Ctrl-A
+                cursor = 0
+                redraw()
+                continue
+            if byte == 5:  # Ctrl-E
+                cursor = len(line)
+                redraw()
+                continue
+            if byte == 21:  # Ctrl-U
+                line, cursor = [], 0
+                redraw()
+                continue
+            if byte == 11:  # Ctrl-K
+                del line[cursor:]
+                redraw()
+                continue
+            if byte == 23:  # Ctrl-W
+                while cursor and line[cursor - 1].isspace():
+                    del line[cursor - 1]
+                    cursor -= 1
+                while cursor and not line[cursor - 1].isspace():
+                    del line[cursor - 1]
+                    cursor -= 1
+                redraw()
+                continue
+
+            if byte == 27:  # Escape sequence (arrows, Home/End, Delete)
+                sequence = bytearray()
+                while select.select([sys.stdin], [], [], 0.025)[0]:
+                    sequence.extend(os.read(fd, 1))
+                    if sequence and sequence[-1] in range(0x40, 0x7f):
+                        break
+                    if len(sequence) >= 8:
+                        break
+                seq = bytes(sequence)
+                if seq in (b"[D", b"OD"):  # Left
+                    cursor = max(0, cursor - 1)
+                    redraw()
+                elif seq in (b"[C", b"OC"):  # Right
+                    cursor = min(len(line), cursor + 1)
+                    redraw()
+                elif seq in (b"[H", b"[1~", b"OH"):  # Home
+                    cursor = 0
+                    redraw()
+                elif seq in (b"[F", b"[4~", b"OF"):  # End
+                    cursor = len(line)
+                    redraw()
+                elif seq == b"[3~":  # Delete
+                    if cursor < len(line):
+                        del line[cursor]
+                        redraw()
+                elif seq == b"[A":  # History up
+                    if history and history_index > 0:
+                        if history_index == len(history):
+                            saved_draft = list(line)
+                        history_index -= 1
+                        replace_line(history[history_index])
+                elif seq == b"[B":  # History down
+                    if history_index < len(history):
+                        history_index += 1
+                        replace_line(saved_draft if history_index == len(history) else history[history_index])
+                continue
+
+            if byte < 32:
+                continue
+
+            char = decoder.decode(data)
+            if char:
+                for item in char:
+                    line.insert(cursor, item)
+                    cursor += 1
+                redraw()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 # ==============================================================
