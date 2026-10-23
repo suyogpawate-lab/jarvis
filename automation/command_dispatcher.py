@@ -42,7 +42,7 @@ from search.deep_search import DeepSearch
 class CommandDispatcher:
 
     COMMAND_PATTERN = re.compile(
-        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
+        r"/(doctor|exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
         re.IGNORECASE,
     )
 
@@ -146,7 +146,7 @@ class CommandDispatcher:
 
             argument = text[start:end].strip()
 
-            if argument:
+            if argument or command == "doctor":
                 commands.append(
                     (
                         command,
@@ -195,6 +195,13 @@ class CommandDispatcher:
         command,
         argument,
     ):
+
+        # ------------------------------------------------------
+        # DOCTOR (read-only local diagnostics)
+        # ------------------------------------------------------
+        if command == "doctor":
+            from monitoring.doctor import run_doctor
+            return run_doctor()
 
         # ------------------------------------------------------
         # EXEC
@@ -1422,6 +1429,10 @@ Rules:
     def dispatch(self, text, conversation=None):
         text = str(text).strip()
         original_text = text
+
+        # Explicit local diagnostics must bypass the AI fallback.
+        if re.fullmatch(r"/doctor\s*", text, re.IGNORECASE):
+            return self.execute_one("doctor", "")
 
         # ======================================================
         # DETERMINISTIC AUTOMATION ROUTE
