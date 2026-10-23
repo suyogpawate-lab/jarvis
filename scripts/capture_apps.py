@@ -24,19 +24,28 @@ def run(cmd, timeout=15):
 
 
 def pkg_list(args):
-    out = {}
-    for line in run(["pm", "list", "packages"] + args, 30).splitlines():
-        line = line.strip()
-        if line.startswith("package:"):
-            body = line[8:]
-            path, _, pid = body.rpartition("=") if "=" in body else ("", "", body)
-            out[pid] = path
-    return out
+    """List packages for Android user 0, with a compatibility fallback."""
+    def parse(output):
+        out = {}
+        for line in output.splitlines():
+            line = line.strip()
+            if line.startswith("package:"):
+                body = line[8:]
+                path, _, pid = body.rpartition("=") if "=" in body else ("", "", body)
+                out[pid] = path
+        return out
+
+    # Explicit user avoids Android builds defaulting to a non-existent shell user.
+    out = parse(run(["pm", "list", "packages", "--user", "0"] + args, 30))
+    return out or parse(run(["pm", "list", "packages"] + args, 30))
 
 
 def launchable():
-    txt = run(["cmd", "package", "query-activities", "--brief", "-a", "android.intent.action.MAIN",
-               "-c", "android.intent.category.LAUNCHER"], 30)
+    txt = run([
+        "cmd", "package", "query-activities", "--brief", "--user", "0",
+        "-a", "android.intent.action.MAIN",
+        "-c", "android.intent.category.LAUNCHER",
+    ], 30)
     ids = {m.group(1) for m in re.finditer(r"^\s*([A-Za-z0-9_.]+)/", txt, re.M)}
     return ids or None
 
