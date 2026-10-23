@@ -57,6 +57,40 @@ def is_speaking() -> bool:
     """True while any speech is being synthesized or played."""
     return _active > 0
 
+def play_recorded(audio_path: str | Path) -> bool:
+    """Play a prerecorded MP3 through mpv while marking voice output as active."""
+    global _proc
+    audio = Path(audio_path)
+    if not audio.is_file():
+        return False
+    if not shutil.which("mpv"):
+        raise RuntimeError("mpv is not installed or is not on PATH.")
+
+    with _lock:
+        my_generation = _generation
+
+    _enter()
+    try:
+        with _lock:
+            if _generation != my_generation:
+                return True
+            proc = subprocess.Popen(
+                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(audio)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            _proc = proc
+
+        returncode = proc.wait()
+        with _lock:
+            if _proc is proc:
+                _proc = None
+            interrupted = _generation != my_generation
+        return interrupted or returncode == 0
+    finally:
+        _exit()
+
 
 def strip_markdown(text: str) -> str:
     """Remove markdown symbols so TTS never reads them aloud."""
