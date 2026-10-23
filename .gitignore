@@ -46,7 +46,10 @@ reports/
 *.pre-*
 *.pre.*
 
-# ───────── Downloads / large binaries / models ─────────
+# ───────── Downloads / large binaries / models / local voice assets ─────────
+/lib/piper/
+/voice/data/espeak-ng-data/
+/cache/
 downloads
 downloads/
 *.bin
