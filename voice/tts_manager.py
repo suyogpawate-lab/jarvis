@@ -91,11 +91,15 @@ class TTSManager:
             self.worker_alive = False
 
     @staticmethod
-    def _chunk_text(text, max_chars=320):
+    def _chunk_text(text, max_chars=4500):
         """Split at sentence punctuation first, protecting decimals and common abbreviations."""
         text = re.sub(r"\s+", " ", str(text)).strip()
         if not text:
             return []
+        # Keep ordinary responses in one synthesis/playback operation. Split only
+        # responses that exceed the practical Edge TTS text-size ceiling.
+        if len(text) <= max_chars:
+            return [text]
         sentences, start = [], 0
         for match in re.finditer(r"[.!?]+(?=\s|$)", text):
             end = match.end()
