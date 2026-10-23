@@ -222,8 +222,17 @@ class WhistleWakeListener:
         conversation_until = 0.0
         max_frames = int(self.MAX_COMMAND_SECONDS * self.RATE / self.FRAME)
         silence_limit = int(self.SILENCE_SECONDS * self.RATE / self.FRAME)
+        # End the voice conversation locally; never forward farewell/stop phrases to the LLM.
         exit_phrase = re.compile(
-            r"^(?:goodbye|bye|end|stop)\s+jarvis[.!\s]*$",
+            r"^(?:"
+            r"goodbye(?:\\s+jarvis)?|good\\s+bye(?:\\s+jarvis)?|bye(?:\\s+jarvis)?|"
+            r"see\\s+you(?:\\s+later)?(?:\\s+jarvis)?|talk\\s+(?:to\\s+you\\s+)?later|"
+            r"that(?:'s|\\s+is)\\s+all(?:\\s+for\\s+now)?|"
+            r"i(?:'m|\\s+am)\\s+(?:done|finished)|we(?:'re|\\s+are)\\s+done|"
+            r"(?:end|stop|cancel|exit|quit|close|finish)\\s+(?:the\\s+)?"
+            r"(?:conversation|chat|session|voice\\s+mode|listening)(?:\\s+jarvis)?|"
+            r"(?:end|stop|cancel|exit|quit)\\s+jarvis|stop|cancel|quit"
+            r")[.!?\\s]*$",
             re.IGNORECASE,
         )
 
@@ -316,6 +325,13 @@ class WhistleWakeListener:
                                 self._wake_model.reset()
                             except Exception:
                                 pass
+                            # Play a short random prerecorded acknowledgement, if prepared.
+                            # Playback is tracked by voice.tts so its audio is never transcribed.
+                            try:
+                                from voice.wake_responses import play_random_wake_response
+                                play_random_wake_response()
+                            except Exception as exc:
+                                self._log(f"[VOICE] Wake acknowledgement unavailable: {exc}", flush=True)
                             capturing = True
                             command_frames = list(preroll)
                             speech_started = False
