@@ -225,14 +225,14 @@ class WhistleWakeListener:
         # End the voice conversation locally; never forward farewell/stop phrases to the LLM.
         exit_phrase = re.compile(
             r"^(?:"
-            r"goodbye(?:\\s+jarvis)?|good\\s+bye(?:\\s+jarvis)?|bye(?:\\s+jarvis)?|"
-            r"see\\s+you(?:\\s+later)?(?:\\s+jarvis)?|talk\\s+(?:to\\s+you\\s+)?later|"
-            r"that(?:'s|\\s+is)\\s+all(?:\\s+for\\s+now)?|"
-            r"i(?:'m|\\s+am)\\s+(?:done|finished)|we(?:'re|\\s+are)\\s+done|"
-            r"(?:end|stop|cancel|exit|quit|close|finish)\\s+(?:the\\s+)?"
-            r"(?:conversation|chat|session|voice\\s+mode|listening)(?:\\s+jarvis)?|"
-            r"(?:end|stop|cancel|exit|quit)\\s+jarvis|stop|cancel|quit"
-            r")[.!?\\s]*$",
+            r"goodbye(?:\s+jarvis)?|good\s+bye(?:\s+jarvis)?|bye(?:\s+jarvis)?|"
+            r"see\s+you(?:\s+later)?(?:\s+jarvis)?|talk\s+(?:to\s+you\s+)?later|"
+            r"that(?:'s|\s+is)\s+all(?:\s+for\s+now)?|"
+            r"i(?:'m|\s+am)\s+(?:done|finished)|we(?:'re|\s+are)\s+done|"
+            r"(?:end|stop|cancel|exit|quit|close|finish)\s+(?:the\s+)?"
+            r"(?:conversation|chat|session|voice\s+mode|listening)(?:\s+jarvis)?|"
+            r"(?:end|stop|cancel|exit|quit)\s+jarvis|stop|cancel|quit"
+            r")[.!?\s]*$",
             re.IGNORECASE,
         )
 
