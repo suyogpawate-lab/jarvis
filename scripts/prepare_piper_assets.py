@@ -91,12 +91,21 @@ def main():
     configured_config = Path(os.environ.get("JARVIS_PIPER_CONFIG") or values.get("JARVIS_PIPER_CONFIG") or str(configured_model) + ".json").expanduser()
     configured_espeak = Path(os.environ.get("JARVIS_ESPEAK_DATA") or values.get("JARVIS_ESPEAK_DATA") or PREFIX / "share/espeak-ng-data").expanduser()
 
-    # Copy the private Piper bundle together so its adjacent private runtime
-    # and any other bundled dependencies remain available beside libpiper.so.
+    # Copy the Piper library and sibling shared objects, including a private
+    # ONNX Runtime when shipped beside it. Never copy the whole Termux lib dir.
+    library_sources = []
+    if OLD_LIB.is_dir():
+        library_sources.append(OLD_LIB)
     if configured_library.is_file():
-        merge_tree_missing(configured_library.parent, TARGET_LIB_DIR)
-    elif OLD_LIB.is_dir():
-        merge_tree_missing(OLD_LIB, TARGET_LIB_DIR)
+        library_sources.append(configured_library.parent)
+    prefix_lib = PREFIX / "lib"
+    for source_dir in library_sources:
+        if source_dir == prefix_lib:
+            continue
+        if source_dir.is_dir():
+            for item in source_dir.iterdir():
+                if item.is_file() and (item.name.endswith(".so") or ".so." in item.name):
+                    copy_file_if_missing(item, TARGET_LIB_DIR / item.name)
     copy_file_if_missing(configured_library, TARGET_LIB_DIR / "libpiper.so")
 
     model_name = DEFAULT_MODEL
