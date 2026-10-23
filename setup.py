@@ -688,6 +688,53 @@ def step_apps(env):
     info("New apps are picked up automatically the first time you ask for one that is missing.")
 
 
+
+# ───────────────────────────── voice provider ─────────────────────────────
+
+def step_voice(env):
+    heading("Speech output")
+    current = (env.get("JARVIS_TTS_PROVIDER", "edge") or "edge").strip().lower()
+    if current not in ("edge", "piper"):
+        current = "edge"
+    info("Edge TTS uses the network; Piper is local after its native library and model are installed.")
+    print("  1) Edge TTS (default)")
+    print("  2) Piper (local)")
+    choice = ask("Choose speech provider: 1=Edge, 2=Piper", default="2" if current == "piper" else "1")
+    provider = "piper" if choice.lower() in ("2", "piper") else "edge"
+    env.set("JARVIS_TTS_PROVIDER", provider)
+    if provider == "piper":
+        home = Path.home()
+        prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+        defaults = {
+            "JARVIS_PIPER_LIBRARY": str(home / ".local/opt/piper-tts-cli/data/data/com.termux/files/usr/lib/libpiper.so"),
+            "JARVIS_PIPER_MODEL": str(home / "piper_models/en_GB-alan-medium.onnx"),
+            "JARVIS_PIPER_CONFIG": str(home / "piper_models/en_GB-alan-medium.onnx.json"),
+            "JARVIS_ESPEAK_DATA": str(prefix / "share/espeak-ng-data"),
+        }
+        for key, default in defaults.items():
+            env.set(key, ask(f"{key} path", default=env.get(key, default)))
+        cfg = {
+            "JARVIS_PIPER_LIBRARY": Path(env.get("JARVIS_PIPER_LIBRARY")).expanduser(),
+            "JARVIS_PIPER_MODEL": Path(env.get("JARVIS_PIPER_MODEL")).expanduser(),
+            "JARVIS_PIPER_CONFIG": Path(env.get("JARVIS_PIPER_CONFIG")).expanduser(),
+            "JARVIS_ESPEAK_DATA": Path(env.get("JARVIS_ESPEAK_DATA")).expanduser(),
+        }
+        env.save()
+        missing = [f"{key}: {path}" for key, path in cfg.items()
+                   if not (path.is_dir() if key == "JARVIS_ESPEAK_DATA" else path.is_file())]
+        if missing:
+            warn("Piper selected, but these paths need attention:")
+            for item in missing:
+                warn("  " + item)
+            info("Install a compatible Piper C-API package and voice model, then rerun ./voice-config.")
+        else:
+            ok("Piper paths exist. A live synthesis test will happen on first speech.")
+    else:
+        env.save()
+        ok("Edge TTS selected.")
+    info("You can change this later with ./voice-config")
+
+
 # ───────────────────────────── status ─────────────────────────────
 
 def have_module(name):
@@ -804,7 +851,7 @@ def main():
     show_status()
     print()
     info("Start JARVIS:   python jarvis_ui.py")
-    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps>")
+    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps|voice>")
     return 0
 
 
