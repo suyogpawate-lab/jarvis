@@ -1025,6 +1025,9 @@ def start_whatsapp_autoreply():
 
     try:
         whatsapp_autoreply = worker_class()
+        # The same worker owns explicit group-send confirmations and DM reviews.
+        # Attach it before accepting CLI requests so group sends can be queued.
+        dispatcher.set_whatsapp_confirmation_worker(whatsapp_autoreply)
         if whatsapp_autoreply.start():
             print("[WHATSAPP AUTO] Auto-reply is ON for direct messages.", flush=True)
     except Exception as exc:
@@ -1085,6 +1088,25 @@ def pop_notification():
         return None
 
 
+def _show_whatsapp_group_events():
+    """Surface pending outgoing group messages without interrupting CLI input."""
+    if whatsapp_autoreply is None:
+        return False
+    try:
+        events = whatsapp_autoreply.drain_events(event_type="GROUP_CONFIRMATION")
+    except Exception:
+        return False
+    if not events:
+        return False
+    for event in events:
+        group = str(event.get("group_subject") or event.get("chat_jid") or "WhatsApp group")
+        message = str(event.get("text") or event.get("suggested_reply") or "")
+        print(f"\n[JARVIS WHATSAPP GROUP CONFIRMATION] {group}:")
+        print(f"  Message: {message}")
+        print("  Reply YES to send or NO to cancel.")
+    return True
+
+
 def _show_whatsapp_review_events():
     """Surface uncertain auto-replies in the CLI without interrupting input."""
     if whatsapp_autoreply is None:
@@ -1118,6 +1140,7 @@ _cli_pending_text = ""
 
 def _service_cli_background_events():
     """Render queued notifications without losing the active editable prompt."""
+    _show_whatsapp_group_events()
     _show_whatsapp_review_events()
     while True:
         summary = pop_notification()
@@ -1219,6 +1242,22 @@ def main():
                 shutdown()
                 print("JARVIS OFFLINE")
                 break
+
+            # Explicit YES/NO controls apply only while a group message is pending.
+            if (
+                whatsapp_autoreply is not None
+                and whatsapp_autoreply.pending_group_replies
+                and prompt.strip().lower() in {"yes", "y", "confirm"}
+            ):
+                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
+                continue
+            if (
+                whatsapp_autoreply is not None
+                and whatsapp_autoreply.pending_group_replies
+                and prompt.strip().lower() in {"no", "n", "cancel"}
+            ):
+                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
+                continue
 
             review_match = re.fullmatch(
                 r"wa-reply\s+(\S+)\s+(1|2|skip|none|no|0)",

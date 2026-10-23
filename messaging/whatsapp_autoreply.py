@@ -306,6 +306,7 @@ class WhatsAppAutoReplyWorker:
         pending = {
             "message_id": message_id,
             "chat_jid": chat_jid,
+            "group_subject": subject,
             "sender": "JARVIS",
             "text": message,
             "suggested_reply": message,
@@ -348,6 +349,9 @@ class WhatsAppAutoReplyWorker:
         sender = str(
             pending.get("sender", "Unknown")
         ).strip()
+        destination = str(
+            pending.get("group_subject") or sender
+        ).strip()
 
         chat_jid = str(
             pending.get("chat_jid", "")
@@ -366,7 +370,7 @@ class WhatsAppAutoReplyWorker:
 
             return (
                 f"Understood, sir. "
-                f"I discarded the pending reply to {sender}."
+                f"I cancelled the pending message to {destination}."
             )
 
         if not suggested_reply:
@@ -401,8 +405,8 @@ class WhatsAppAutoReplyWorker:
         self._save_state()
 
         return (
-            f"Sent the approved WhatsApp group reply "
-            f"to {sender}, sir."
+            f"Sent the approved WhatsApp group message "
+            f"to {destination}, sir."
         )
 
     # ------------------------------------------------------------------
