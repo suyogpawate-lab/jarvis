@@ -51,7 +51,7 @@ class Phase1IntegrationTests(unittest.TestCase):
         module = ast.parse(prompt_reader)
         function = next(node for node in module.body if isinstance(node, ast.FunctionDef))
         constants = [node.value for node in ast.walk(function) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
-        self.assertTrue(any("\\r\\x1b[2K" in value for value in constants))
+        self.assertTrue(any("\r\x1b[2K" in value for value in constants))
         if function.body and isinstance(function.body[0], ast.Expr) and isinstance(
             function.body[0].value, ast.Constant
         ) and isinstance(function.body[0].value.value, str):
