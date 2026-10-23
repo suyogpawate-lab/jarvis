@@ -1,0 +1,31 @@
+name: JARVIS regression checks
+
+on:
+  push:
+    branches: [main, "audit/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-regressions:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install core dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run syntax and regression suite
+        run: python scripts/smoke_test.py
