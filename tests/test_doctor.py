@@ -3,9 +3,16 @@ import unittest
 from unittest.mock import patch
 
 from monitoring.doctor import collect_checks, format_report
+from automation.command_dispatcher import CommandDispatcher
 
 
 class DoctorTests(unittest.TestCase):
+    def test_explicit_doctor_is_routed_before_ai(self):
+        dispatcher = object.__new__(CommandDispatcher)
+        dispatcher.execute_one = lambda command, argument: f"handled:{command}:{argument}"
+        self.assertEqual(dispatcher.dispatch("/doctor"), "handled:doctor:")
+        self.assertEqual(dispatcher.dispatch("/DOCTOR"), "handled:doctor:")
+
     def test_report_counts_failures_and_warnings(self):
         report = format_report([
             ("FAIL", "Project files", "missing: core/core.py"),
