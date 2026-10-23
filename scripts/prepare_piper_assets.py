@@ -110,7 +110,8 @@ def main():
     if not target_config.exists():
         copy_file_if_missing(OLD_MODELS / (DEFAULT_MODEL + ".json"), TARGET_MODEL_DIR / (DEFAULT_MODEL + ".json"))
 
-    merge_tree_missing(configured_espeak, TARGET_ESPEAK)
+    espeak_source = configured_espeak if configured_espeak.is_dir() and any(configured_espeak.iterdir()) else PREFIX / "share/espeak-ng-data"
+    merge_tree_missing(espeak_source, TARGET_ESPEAK)
 
     # Standardize configuration to repository-local paths; the original
     # external files are intentionally left intact.
