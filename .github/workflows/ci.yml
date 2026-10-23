@@ -1,0 +1,35 @@
+name: JARVIS regression checks
+
+on:
+  push:
+    branches: ["main", "audit/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install core dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run syntax and regression tests
+        run: python scripts/smoke_test.py
+
+  javascript-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check WhatsApp bridge syntax
+        run: node --check whatsapp/bridge.js
