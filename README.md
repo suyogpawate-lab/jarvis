@@ -173,6 +173,13 @@ Explicit dispatcher commands include:
 
 ```text
 /doctor
+/task plan <step 1> || <step 2> [|| ...]
+/task run <task-id>
+/task status <task-id>
+/task list
+/task approve <task-id>
+/task deny <task-id>
+/task cancel <task-id>
 /exec <shell command>
 /bg start <shell command>
 /bg list
@@ -181,6 +188,8 @@ Explicit dispatcher commands include:
 /bg stop <job-id>
 /notifications
 ```
+
+Multi-step plans use the explicit `/task` commands above. Plans are limited to 10 steps, run sequentially, persist under `data/tasks/`, and stop on the first reported failure. Review a plan before `/task run`; steps that can send messages, call people, alter data/settings, install/remove software, or invoke shell execution pause for a separate one-step approval. `/task approve <id>` approves only the currently paused step; `/task deny <id>` cancels the remaining plan. Each step still goes through the normal dispatcher and its existing guards. This is a safety layer, not a sandbox; outcomes are based on the tool/dispatcher result and still require user verification for external effects.
 
 These let you run a shell command, start/manage background jobs, inspect job output and retrieve active Android notifications. JARVIS can also route many shell/device tasks from natural-language requests.
 
