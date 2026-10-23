@@ -51,14 +51,13 @@ def _setting(name, default):
 
 
 def _settings():
-    home = Path.home()
-    prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+    root = Path(__file__).resolve().parents[1]
     return {
-        "library": Path(_setting("JARVIS_PIPER_LIBRARY", home / ".local/opt/piper-tts-cli/data/data/com.termux/files/usr/lib/libpiper.so")).expanduser(),
-        "model": Path(_setting("JARVIS_PIPER_MODEL", home / "piper_models/en_GB-alan-medium.onnx")).expanduser(),
-        "config": Path(_setting("JARVIS_PIPER_CONFIG", home / "piper_models/en_GB-alan-medium.onnx.json")).expanduser(),
-        "espeak": Path(_setting("JARVIS_ESPEAK_DATA", prefix / "share/espeak-ng-data")).expanduser(),
-        "output": Path(_setting("JARVIS_PIPER_OUTPUT_DIR", home / ".cache/jarvis/piper")).expanduser(),
+        "library": Path(_setting("JARVIS_PIPER_LIBRARY", root / "lib/piper/libpiper.so")).expanduser(),
+        "model": Path(_setting("JARVIS_PIPER_MODEL", root / "models/piper/en_GB-alan-medium.onnx")).expanduser(),
+        "config": Path(_setting("JARVIS_PIPER_CONFIG", root / "models/piper/en_GB-alan-medium.onnx.json")).expanduser(),
+        "espeak": Path(_setting("JARVIS_ESPEAK_DATA", root / "voice/data/espeak-ng-data")).expanduser(),
+        "output": Path(_setting("JARVIS_PIPER_OUTPUT_DIR", root / "cache/piper")).expanduser(),
     }
 
 
