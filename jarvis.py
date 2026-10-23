@@ -800,7 +800,7 @@ def stop_speaking():
         pass
 
 
-def handle_prompt(prompt):
+def handle_prompt(prompt, source="external"):
     """
     Process ONE user message.
 
@@ -928,7 +928,7 @@ def handle_prompt(prompt):
     save_message("user", prompt)
 
     try:
-        dispatched = dispatcher.dispatch(prompt)
+        dispatched = dispatcher.dispatch(prompt, source=source)
 
         if dispatched is not None:
             answer = str(dispatched or "").strip()
@@ -1179,12 +1179,12 @@ async def _read_prompt_async():
                     except asyncio.CancelledError:
                         pass
                     print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
-                    return command.strip()
+                    return command.strip(), "voice"
 
                 await asyncio.sleep(0.08)
 
             _service_cli_background_events()
-            return (await prompt_task).strip()
+            return (await prompt_task).strip(), "text"
         finally:
             # Ctrl+C cancels asyncio.run's main task. Always cancel and retrieve
             # the child prompt task so prompt_toolkit cannot leak an unhandled
@@ -1204,9 +1204,9 @@ def read_prompt():
     prompt allows JARVIS to consume voice commands before the user presses Enter.
     """
     while True:
-        prompt = asyncio.run(_read_prompt_async())
+        prompt, source = asyncio.run(_read_prompt_async())
         if prompt:
-            return prompt
+            return prompt, source
 
 
 # ==============================================================
@@ -1244,7 +1244,7 @@ def main():
                 print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
                 _web_notify(summary)
 
-            prompt = read_prompt()
+            prompt, prompt_source = read_prompt()
 
             if not prompt:
                 continue
@@ -1292,7 +1292,7 @@ def main():
                 print_memory()
                 continue
 
-            answer, should_speak = handle_prompt(prompt)
+            answer, should_speak = handle_prompt(prompt, source=prompt_source)
 
             if not answer:
                 continue
