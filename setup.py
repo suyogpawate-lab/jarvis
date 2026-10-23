@@ -4,6 +4,7 @@ JARVIS first-run setup.
 
     python setup.py                 # full guided setup
     python setup.py gmail           # just one part: keys | gmail | whatsapp | contacts | apps
+    python setup.py wake            # generate/cache prerecorded wake acknowledgements
     python setup.py --status        # show what is configured (secrets are masked)
 
 What it configures
@@ -742,6 +743,35 @@ def step_voice(env):
     info("You can change this later with ./voice-config")
 
 
+# ─────────────────────── wake acknowledgements ───────────────────────
+
+def step_wake(env):
+    heading("Wake-word acknowledgements")
+    generator = ROOT / "scripts" / "generate_wake_responses.py"
+    if not generator.is_file():
+        warn("Wake-response generator is missing; skipping.")
+        return
+    cache_dir = Path.home() / ".cache" / "jarvis" / "wake_responses"
+    existing = sum(
+        1 for index in range(1, 26)
+        if (cache_dir / f"wake_{index:02d}.mp3").is_file()
+        and (cache_dir / f"wake_{index:02d}.mp3").stat().st_size > 1024
+    )
+    info(f"Prerecorded clips available: {existing}/25.")
+    if existing == 25:
+        ok("All wake acknowledgements are already generated.")
+        return
+    info("Generating missing clips requires internet access for Edge TTS.")
+    if not yes_no("Generate the 25 wake-word acknowledgements now?", default=True):
+        info("Skipped. JARVIS can use its speech synthesizer as a fallback.")
+        return
+    result = subprocess.run([sys.executable, str(generator)], cwd=ROOT, check=False)
+    if result.returncode == 0:
+        ok("Wake-word acknowledgements are ready.")
+    else:
+        warn(f"Clip generation exited with status {result.returncode}. Run later: python setup.py wake")
+
+
 # ───────────────────────────── status ─────────────────────────────
 
 def have_module(name):
@@ -815,6 +845,7 @@ STEPS = {
     "contacts": step_contacts,
     "apps": step_apps,
     "voice": step_voice,
+    "wake": step_wake,
 }
 
 
@@ -859,7 +890,7 @@ def main():
     show_status()
     print()
     info("Start JARVIS:   python jarvis_ui.py")
-    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps|voice>")
+    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps|voice|wake>")
     return 0
 
 
