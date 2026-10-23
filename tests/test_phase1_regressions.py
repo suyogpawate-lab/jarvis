@@ -36,6 +36,17 @@ class Phase1IntegrationTests(unittest.TestCase):
         source = (root / "scripts" / "capture_apps.py").read_text(encoding="utf-8")
         self.assertIn('"--user", "0"', source)
 
+    def test_cli_prompt_supports_editing_keys_without_stdin_readline(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "jarvis.py").read_text(encoding="utf-8")
+        start = source.index("def read_prompt():")
+        end = source.index("# MAIN (plain terminal CLI)", start)
+        prompt_reader = source[start:end]
+        self.assertIn("tty.setraw(fd)", prompt_reader)
+        self.assertIn('seq in (b"[D", b"OD")', prompt_reader)
+        self.assertIn('seq == b"[3~"', prompt_reader)
+        self.assertNotIn("sys.stdin.readline()", prompt_reader)
+
 
 class AppAliasTests(unittest.TestCase):
     def setUp(self):
