@@ -26,13 +26,15 @@ from openwakeword.model import Model
 class WhistleWakeListener:
     RATE = 16000
     FRAME = 1280                 # 80 ms at 16 kHz
-    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.30"))
+    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.40"))
     # More trailing context helps Needle decode complete word endings.
     SILENCE_SECONDS = float(os.getenv("JARVIS_VOICE_SILENCE_SECONDS", "1.25"))
     MAX_COMMAND_SECONDS = 15
     MIN_COMMAND_SECONDS = 0.30
     # Configurable so quieter speech isn't discarded by a fixed high threshold.
-    RMS_THRESHOLD = float(os.getenv("JARVIS_VOICE_RMS_THRESHOLD", "300"))
+    RMS_THRESHOLD = float(os.getenv("JARVIS_VOICE_RMS_THRESHOLD", "500"))
+    # Ignore brief ambient noise that a speech recognizer may hallucinate as words.
+    MIN_SPEECH_FRAMES = max(1, int(os.getenv("JARVIS_VOICE_MIN_SPEECH_FRAMES", "6")))
 
     def __init__(self, output_queue, chunk_seconds=5, threads=4):
         self.output_queue = output_queue
@@ -357,6 +359,22 @@ class WhistleWakeListener:
                     ) or len(command_frames) >= max_frames
 
                     if done:
+                        # Wake detections can be false positives, and low-level room
+                        # noise can trip follow-up VAD. Never send a recording to STT
+                        # unless it contains a minimum amount of above-threshold audio.
+                        if speech_frames < self.MIN_SPEECH_FRAMES:
+                            self._log(
+                                f"[VOICE] Discarding capture with only {speech_frames} "
+                                f"voiced frames (minimum {self.MIN_SPEECH_FRAMES}).",
+                                flush=True,
+                            )
+                            command_frames = []
+                            capturing = False
+                            speech_started = False
+                            silent_frames = 0
+                            speech_frames = 0
+                            continue
+
                         combined = np.concatenate(command_frames)
                         text = self._transcribe(combined)
 
