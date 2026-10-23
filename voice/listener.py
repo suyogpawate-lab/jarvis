@@ -27,10 +27,12 @@ class WhistleWakeListener:
     RATE = 16000
     FRAME = 1280                 # 80 ms at 16 kHz
     WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.40"))
-    SILENCE_SECONDS = 0.90
+    # More trailing context helps Needle decode complete word endings.
+    SILENCE_SECONDS = float(os.getenv("JARVIS_VOICE_SILENCE_SECONDS", "1.25"))
     MAX_COMMAND_SECONDS = 15
     MIN_COMMAND_SECONDS = 0.30
-    RMS_THRESHOLD = 450
+    # Configurable so quieter speech isn't discarded by a fixed high threshold.
+    RMS_THRESHOLD = float(os.getenv("JARVIS_VOICE_RMS_THRESHOLD", "300"))
 
     def __init__(self, output_queue, chunk_seconds=5, threads=4):
         self.output_queue = output_queue
@@ -132,6 +134,7 @@ class WhistleWakeListener:
                 [
                     str(self.needle), "--model", str(self.model_path),
                     "--audio", str(wav_path),
+                    "--audio-language", "en",
                 ],
                 capture_output=True,
                 text=True,
@@ -241,15 +244,31 @@ class WhistleWakeListener:
                     if audio.size != self.FRAME:
                         continue
 
+                    # Never transcribe JARVIS's own voice. If playback starts during
+                    # capture, discard that partial recording and wait until playback
+                    # and its acoustic tail have ended before listening again.
+                    if self._is_speaking():
+                        if capturing:
+                            self._log(
+                                "[VOICE] Discarding partial capture while JARVIS is speaking.",
+                                flush=True,
+                            )
+                        capturing = False
+                        command_frames = []
+                        speech_started = False
+                        silent_frames = 0
+                        speech_frames = 0
+                        preroll.clear()
+                        mute_until = time.time() + 0.8
+                        if conversation_until:
+                            conversation_until = time.time() + conversation_timeout
+                        continue
+
+                    if time.time() < mute_until:
+                        preroll.clear()
+                        continue
+
                     if not capturing:
-                        if self._is_speaking():
-                            mute_until = time.time() + 0.6
-                            # Keep the conversation window open while JARVIS replies.
-                            if conversation_until:
-                                conversation_until = time.time() + conversation_timeout
-                        if time.time() < mute_until:
-                            preroll.clear()
-                            continue
                         preroll.append(audio)
                         level = self._rms(audio)
 
@@ -289,7 +308,10 @@ class WhistleWakeListener:
                             continue
 
                         if score >= self.WAKE_THRESHOLD:
-                            self._log(f"[VOICE] Wake phrase detected (score={score:.3f}); listening...", flush=True)
+                            message = f"[VOICE] Hey Jarvis detected (score={score:.3f}) — listening..."
+                            self._log(message, flush=True)
+                            # Make wake detection visible immediately in the terminal.
+                            print(f"\r{message}", flush=True)
                             try:
                                 self._wake_model.reset()
                             except Exception:
