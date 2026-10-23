@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import queue
 import select
@@ -5,6 +6,8 @@ import sys
 from pathlib import Path
 
 import readline
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 """
 JARVIS CLI
 
@@ -1107,47 +1110,68 @@ def _show_whatsapp_review_events():
         drafts.extend(str(x).strip() for x in event.get("alternatives", []) if str(x).strip())
         for index, draft in enumerate(drafts[:2], 1):
             print(f"  Draft {index}: {draft}")
-        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2 | wa-reply {review_id} skip")
-        print("  Review the draft before sending; 'skip' sends nothing.")
-    return True
+        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2 | wa-reply {r_cli_prompt_session = PromptSession()
+_cli_pending_text = ""
+
+
+def _service_cli_background_events():
+    """Render queued notifications without losing the active editable prompt."""
+    _show_whatsapp_review_events()
+    while True:
+        summary = pop_notification()
+        if summary is None:
+            break
+        print(f"\\nJARVIS [NOTIFICATIONS] > {summary}\\n", flush=True)
+        _web_notify(summary)
+
+
+async def _read_prompt_async():
+    global _cli_pending_text
+    with patch_stdout():
+        prompt_task = asyncio.create_task(
+            _cli_prompt_session.prompt_async("YOU  > ", default=_cli_pending_text)
+        )
+        _cli_pending_text = ""
+
+        while not prompt_task.done():
+            _service_cli_background_events()
+            try:
+                command = voice_command_queue.get_nowait()
+            except queue.Empty:
+                command = None
+
+            if command and command.strip():
+                # Preserve anything the user was midway through typing. The
+                # voice command is handled now; their draft returns next prompt.
+                try:
+                    _cli_pending_text = _cli_prompt_session.default_buffer.text
+                except Exception:
+                    _cli_pending_text = ""
+                prompt_task.cancel()
+                try:
+                    await prompt_task
+                except asyncio.CancelledError:
+                    pass
+                print(f"\\nYOU (VOICE) > {command.strip()}\\n", flush=True)
+                return command.strip()
+
+            await asyncio.sleep(0.08)
+
+        _service_cli_background_events()
+        return (await prompt_task).strip()
 
 
 def read_prompt():
-    """Use Termux/Python's native readline editor for interactive CLI input.
+    """Editable terminal prompt that remains responsive to voice and notifications.
 
-    GNU readline handles cursor movement, insertion, deletion, and line history.
-    Background notifications and voice commands remain queued while input() is
-    active, then are serviced immediately after the line is submitted (or before
-    the next prompt). This avoids maintaining a separate raw-terminal editor.
+    prompt_toolkit supplies readline-style arrow-key editing while its async
+    prompt allows JARVIS to consume voice commands before the user presses Enter.
     """
     while True:
-        _show_whatsapp_review_events()
-
-        while True:
-            summary = pop_notification()
-            if summary is None:
-                break
-            print(f"\\nJARVIS [NOTIFICATIONS] > {summary}\\n", flush=True)
-            _web_notify(summary)
-
-        try:
-            command = voice_command_queue.get_nowait()
-            if command and command.strip():
-                command = command.strip()
-                print(f"YOU (VOICE) > {command}", flush=True)
-                return command
-        except queue.Empty:
-            pass
-
-        # input() delegates editing to the terminal's configured readline layer.
-        prompt = input("YOU  > ").strip()
-
-        _show_whatsapp_review_events()
-        while True:
-            summary = pop_notification()
-            if summary is None:
-                break
-            print(f"\\nJARVIS [NOTIFICATIONS] > {summary}\\n", flush=True)
+        prompt = asyncio.run(_read_prompt_async())
+        if prompt:
+            return prompt
+ > {summary}\\n", flush=True)
             _web_notify(summary)
 
         if prompt:
