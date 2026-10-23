@@ -81,7 +81,8 @@ if [ "$WITH_VOICE" -eq 1 ]; then
 fi
 
 # ───────────────────────── folders ─────────────────────────
-mkdir -p data logs voice/models "$HOME/.cache/jarvis/piper"\nchmod +x "$ROOT/voice-config" 2>/dev/null || true
+mkdir -p data logs voice/models "$HOME/.cache/jarvis/piper"
+chmod +x "$ROOT/voice-config" 2>/dev/null || true
 ok "Runtime folders ready (data/, logs/)."
 
 # ───────────────────────── installed apps index ─────────────────────────
