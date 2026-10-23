@@ -81,7 +81,7 @@ if [ "$WITH_VOICE" -eq 1 ]; then
 fi
 
 # ───────────────────────── folders ─────────────────────────
-mkdir -p data logs voice/models
+mkdir -p data logs voice/models "$HOME/.cache/jarvis/piper"\nchmod +x "$ROOT/voice-config" 2>/dev/null || true
 ok "Runtime folders ready (data/, logs/)."
 
 # ───────────────────────── installed apps index ─────────────────────────
@@ -236,7 +236,7 @@ warn "For notifications, contacts and battery info install the 'Termux:API' app 
 
 # ───────────────────────── guided setup ─────────────────────────
 if [ "$RUN_SETUP" -eq 1 ] && [ -t 0 ]; then
-    info "Starting guided setup (API keys, Gmail, WhatsApp, contacts)..."
+    info "Starting guided setup (API keys, Gmail, WhatsApp, contacts, speech output)..."
     python setup.py
 else
     info "Install finished. Run the guided setup with:  python setup.py"
