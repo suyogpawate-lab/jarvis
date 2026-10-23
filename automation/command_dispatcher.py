@@ -29,6 +29,7 @@ from agents.autonomous_agent import AutonomousAgent
 from android.system_tools import SystemTools
 from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
+from automation.task_executor import TaskExecutor
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.local_ai import LocalAI
@@ -112,6 +113,9 @@ class CommandDispatcher:
             self.jobs,
             self.fast_agent,
         )
+
+        # Explicit multi-step plans use the same dispatcher for every step.
+        self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step))
 
     # ==========================================================
     # COMMAND SPLITTING
@@ -1419,9 +1423,13 @@ Rules:
             "id": info.get("id") or info.get("key"),
         }
 
-    def dispatch(self, text, conversation=None):
+    def dispatch(self, text, conversation=None, source="external"):
         text = str(text).strip()
         original_text = text
+
+        # Explicit task plans are handled locally before any AI fallback.
+        if re.match(r"^/task(?:\s|$)", text, re.IGNORECASE):
+            return self.task_executor.handle(text, source=source)
 
         # Keep explicit local diagnostics out of the AI fallback path.
         if re.fullmatch(r"/doctor\s*", text, re.IGNORECASE):
