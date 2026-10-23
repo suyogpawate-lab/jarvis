@@ -35,6 +35,7 @@ class WhistleWakeListener:
     RMS_THRESHOLD = float(os.getenv("JARVIS_VOICE_RMS_THRESHOLD", "500"))
     # Ignore brief ambient noise that a speech recognizer may hallucinate as words.
     MIN_SPEECH_FRAMES = max(1, int(os.getenv("JARVIS_VOICE_MIN_SPEECH_FRAMES", "6")))
+    MIN_CONTIGUOUS_SPEECH_FRAMES = max(1, int(os.getenv("JARVIS_VOICE_MIN_CONTIGUOUS_FRAMES", "4")))
 
     def __init__(self, output_queue, chunk_seconds=5, threads=4):
         self.output_queue = output_queue
@@ -217,6 +218,8 @@ class WhistleWakeListener:
         speech_started = False
         silent_frames = 0
         speech_frames = 0
+        consecutive_speech_frames = 0
+        max_consecutive_speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
         conversation_timeout = max(
             5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "15"))
@@ -269,6 +272,8 @@ class WhistleWakeListener:
                         speech_started = False
                         silent_frames = 0
                         speech_frames = 0
+                        consecutive_speech_frames = 0
+                        max_consecutive_speech_frames = 0
                         preroll.clear()
                         mute_until = time.time() + 0.8
                         if conversation_until:
@@ -293,6 +298,8 @@ class WhistleWakeListener:
                                 speech_started = True
                                 silent_frames = 0
                                 speech_frames = 1
+                                consecutive_speech_frames = 1
+                                max_consecutive_speech_frames = 1
                                 preroll.clear()
                             continue
                         elif conversation_until:
@@ -341,6 +348,8 @@ class WhistleWakeListener:
                             speech_started = False
                             silent_frames = 0
                             speech_frames = 0
+                            consecutive_speech_frames = 0
+                            max_consecutive_speech_frames = 0
                             preroll.clear()
                         continue
 
@@ -350,9 +359,15 @@ class WhistleWakeListener:
                     if level >= self.RMS_THRESHOLD:
                         speech_started = True
                         speech_frames += 1
+                        consecutive_speech_frames += 1
+                        max_consecutive_speech_frames = max(
+                            max_consecutive_speech_frames, consecutive_speech_frames
+                        )
                         silent_frames = 0
-                    elif speech_started:
-                        silent_frames += 1
+                    else:
+                        consecutive_speech_frames = 0
+                        if speech_started:
+                            silent_frames += 1
 
                     done = (
                         speech_started and silent_frames >= silence_limit
@@ -362,10 +377,15 @@ class WhistleWakeListener:
                         # Wake detections can be false positives, and low-level room
                         # noise can trip follow-up VAD. Never send a recording to STT
                         # unless it contains a minimum amount of above-threshold audio.
-                        if speech_frames < self.MIN_SPEECH_FRAMES:
+                        if (
+                            speech_frames < self.MIN_SPEECH_FRAMES
+                            or max_consecutive_speech_frames < self.MIN_CONTIGUOUS_SPEECH_FRAMES
+                        ):
                             self._log(
-                                f"[VOICE] Discarding capture with only {speech_frames} "
-                                f"voiced frames (minimum {self.MIN_SPEECH_FRAMES}).",
+                                f"[VOICE] Discarding weak/noisy capture: {speech_frames} voiced "
+                                f"frames, longest run {max_consecutive_speech_frames}; required "
+                                f"{self.MIN_SPEECH_FRAMES} total and "
+                                f"{self.MIN_CONTIGUOUS_SPEECH_FRAMES} consecutive.",
                                 flush=True,
                             )
                             command_frames = []
@@ -373,6 +393,8 @@ class WhistleWakeListener:
                             speech_started = False
                             silent_frames = 0
                             speech_frames = 0
+                            consecutive_speech_frames = 0
+                            max_consecutive_speech_frames = 0
                             continue
 
                         combined = np.concatenate(command_frames)
@@ -399,6 +421,8 @@ class WhistleWakeListener:
                         speech_started = False
                         silent_frames = 0
                         speech_frames = 0
+                        consecutive_speech_frames = 0
+                        max_consecutive_speech_frames = 0
                         preroll.clear()
 
         except Exception as exc:
