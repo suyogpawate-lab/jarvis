@@ -60,6 +60,16 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertIn("_cli_pending_text", prompt_reader)
         self.assertNotIn('input("YOU  > ")', prompt_reader)
 
+    def test_wake_phrase_preroll_is_not_sent_to_command_stt(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "voice" / "listener.py").read_text(encoding="utf-8")
+        wake_start = source.index('if score >= self.WAKE_THRESHOLD:')
+        wake_end = source.index('                        continue', source.index('preroll.clear()', wake_start))
+        wake_block = source[wake_start:wake_end]
+        self.assertIn("command_frames = []", wake_block)
+        self.assertNotIn("command_frames = list(preroll)", wake_block)
+        self.assertIn("preroll contains the wake phrase itself", wake_block)
+
     def test_prompt_toolkit_is_a_core_dependency(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         requirements = (root / "requirements.txt").read_text(encoding="utf-8")
