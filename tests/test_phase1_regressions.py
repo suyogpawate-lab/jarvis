@@ -37,6 +37,16 @@ class Phase1IntegrationTests(unittest.TestCase):
         source = (root / "scripts" / "capture_apps.py").read_text(encoding="utf-8")
         self.assertIn('"--user", "0"', source)
 
+    def test_local_app_launch_has_known_alias_fallbacks(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "jarvis.py").read_text(encoding="utf-8")
+        start = source.index("def handle_local_android_command(prompt):")
+        end = source.index("# ==============================================================", start)
+        handler = source[start:end]
+        self.assertIn('"whatsapp": "com.whatsapp"', handler)
+        self.assertIn('"chrome": "com.android.chrome"', handler)
+        self.assertIn('candidates = candidates or (tuple(_resolve_app(app_text, explicit)) or None)', handler)
+
     def test_cli_prompt_supports_editing_keys_without_stdin_readline(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         source = (root / "jarvis.py").read_text(encoding="utf-8")
