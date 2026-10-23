@@ -27,7 +27,7 @@ class DoctorTests(unittest.TestCase):
         from pathlib import Path
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / ".env").write_text("GROQ_API_KEY=secret-value\\n", encoding="utf-8")
+            (root / ".env").write_text("GROQ_API_KEY=secret-value\n", encoding="utf-8")
             with patch("monitoring.doctor.ROOT", root), \\
                  patch.dict("os.environ", {}, clear=True), \\
                  patch("monitoring.doctor._tcp_check", return_value=False), \\
