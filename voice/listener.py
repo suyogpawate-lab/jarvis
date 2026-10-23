@@ -222,7 +222,7 @@ class WhistleWakeListener:
         max_consecutive_speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
         conversation_timeout = max(
-            5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "15"))
+            5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
         )
         conversation_until = 0.0
         max_frames = int(self.MAX_COMMAND_SECONDS * self.RATE / self.FRAME)
