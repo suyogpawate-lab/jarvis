@@ -11,17 +11,27 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "data"}
 
 
+def iter_python_files():
+    """Yield repository Python files, excluding only repository-relative directories."""
+    for path in ROOT.rglob("*.py"):
+        relative = path.relative_to(ROOT)
+        if any(part in SKIP_DIRS for part in relative.parts):
+            continue
+        yield path
+
+
 def main():
     errors = []
     checked = 0
-    for path in ROOT.rglob("*.py"):
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
+    for path in iter_python_files():
         try:
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             checked += 1
         except Exception as exc:
             errors.append("{}: {}: {}".format(path.relative_to(ROOT), type(exc).__name__, exc))
+
+    if checked == 0:
+        errors.append("syntax scan found no Python files; refusing a false pass")
 
     result = subprocess.run(
         [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
