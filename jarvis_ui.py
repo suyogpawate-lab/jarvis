@@ -191,7 +191,7 @@ def settle():
     set_local("listening" if S["buf"] else "standby")
 
 
-def work(text, gen=None):
+def work(text, gen=None, source="typed"):
     gen = S["gen"] if gen is None else gen
     set_local("thinking")
     try:
@@ -200,7 +200,11 @@ def work(text, gen=None):
         answer, speak_it = BRAIN.handle_prompt(text)
         S["thinking"] = False                   # reply is ready: a new prompt may now interrupt the speech
         answer = str(answer or "").strip()
-        S["reply"], S["reply_t"] = answer, time.time()
+        display_answer = (
+            f"[VOICE TRANSCRIPT] {text}\\n\\n{answer}"
+            if source == "voice" else answer
+        )
+        S["reply"], S["reply_t"] = display_answer, time.time()
         if answer.startswith("[") and ("ERROR" in answer[:24] or "WARN" in answer[:24]):
             S["busy"] = False
             raise_alert(8)
@@ -248,7 +252,7 @@ def _stop_voice():
         pass
 
 
-def _start_work(text):
+def _start_work(text, source="typed"):
     """
     Run a prompt. Pressing Enter while Jarvis is still talking interrupts the old speech
     and starts the new answer; only a reply that is still being worked out blocks it.
@@ -260,7 +264,7 @@ def _start_work(text):
     S["busy"] = True
     S["thinking"] = True
     S["reply"] = ""
-    threading.Thread(target=work, args=(text, S["gen"]), daemon=True).start()
+    threading.Thread(target=work, args=(text, S["gen"], source), daemon=True).start()
     return True
 
 
@@ -1527,7 +1531,7 @@ def main():
                     if voice_prompt and str(voice_prompt).strip():
                         voice_prompt = str(voice_prompt).strip()
                         _remember(voice_prompt)
-                        _start_work(voice_prompt)
+                        _start_work(voice_prompt, source="voice")
                     item = BRAIN.pop_notification()
                     if item:
                         notify(item)
