@@ -204,7 +204,7 @@ class TTSManager:
             active = self._active_playback
         provider = _provider()
         if provider == "piper":
-            model = os.environ.get("JARVIS_PIPER_MODEL", str(Path.home() / "piper_models/en_GB-alan-medium.onnx"))
+            model = os.environ.get("JARVIS_PIPER_MODEL", str(Path(__file__).resolve().parents[1] / "models/piper/en_GB-alan-medium.onnx"))
             primary = f"piper/{Path(model).name}"
         else:
             model = "edge-tts/en-GB-RyanNeural"
