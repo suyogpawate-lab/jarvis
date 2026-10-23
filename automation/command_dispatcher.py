@@ -1423,6 +1423,10 @@ Rules:
         text = str(text).strip()
         original_text = text
 
+        # Keep explicit local diagnostics out of the AI fallback path.
+        if re.fullmatch(r"/doctor\s*", text, re.IGNORECASE):
+            return self.execute_one("doctor", "")
+
         # ======================================================
         # DETERMINISTIC AUTOMATION ROUTE
         # Timers, reminders, and scheduled commands must never
