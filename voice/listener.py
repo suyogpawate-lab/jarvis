@@ -26,7 +26,7 @@ from openwakeword.model import Model
 class WhistleWakeListener:
     RATE = 16000
     FRAME = 1280                 # 80 ms at 16 kHz
-    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.40"))
+    WAKE_THRESHOLD = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.30"))
     # More trailing context helps Needle decode complete word endings.
     SILENCE_SECONDS = float(os.getenv("JARVIS_VOICE_SILENCE_SECONDS", "1.25"))
     MAX_COMMAND_SECONDS = 15
