@@ -70,6 +70,14 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertNotIn("command_frames = list(preroll)", wake_block)
         self.assertIn("preroll contains the wake phrase itself", wake_block)
 
+    def test_voice_test_defaults_match_runtime_defaults(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        listener = (root / "voice" / "listener.py").read_text(encoding="utf-8")
+        voice_test = (root / "scripts" / "test_voice.py").read_text(encoding="utf-8")
+        self.assertIn('JARVIS_WAKE_THRESHOLD", "0.40"', listener)
+        self.assertIn('JARVIS_WAKE_THRESHOLD", "0.40"', voice_test)
+        self.assertIn('JARVIS_CONVERSATION_TIMEOUT", "20"', listener)
+
     def test_prompt_toolkit_is_a_core_dependency(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         requirements = (root / "requirements.txt").read_text(encoding="utf-8")
