@@ -1158,32 +1158,43 @@ async def _read_prompt_async():
         )
         _cli_pending_text = ""
 
-        while not prompt_task.done():
+        try:
+            while not prompt_task.done():
+                _service_cli_background_events()
+                try:
+                    command = voice_command_queue.get_nowait()
+                except queue.Empty:
+                    command = None
+
+                if command and command.strip():
+                    # Preserve anything the user was midway through typing. The
+                    # voice command is handled now; their draft returns next prompt.
+                    try:
+                        _cli_pending_text = _cli_prompt_session.default_buffer.text
+                    except Exception:
+                        _cli_pending_text = ""
+                    prompt_task.cancel()
+                    try:
+                        await prompt_task
+                    except asyncio.CancelledError:
+                        pass
+                    print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
+                    return command.strip()
+
+                await asyncio.sleep(0.08)
+
             _service_cli_background_events()
-            try:
-                command = voice_command_queue.get_nowait()
-            except queue.Empty:
-                command = None
-
-            if command and command.strip():
-                # Preserve anything the user was midway through typing. The
-                # voice command is handled now; their draft returns next prompt.
-                try:
-                    _cli_pending_text = _cli_prompt_session.default_buffer.text
-                except Exception:
-                    _cli_pending_text = ""
+            return (await prompt_task).strip()
+        finally:
+            # Ctrl+C cancels asyncio.run's main task. Always cancel and retrieve
+            # the child prompt task so prompt_toolkit cannot leak an unhandled
+            # KeyboardInterrupt/CancelledError during shutdown.
+            if not prompt_task.done():
                 prompt_task.cancel()
-                try:
-                    await prompt_task
-                except asyncio.CancelledError:
-                    pass
-                print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
-                return command.strip()
-
-            await asyncio.sleep(0.08)
-
-        _service_cli_background_events()
-        return (await prompt_task).strip()
+            try:
+                await prompt_task
+            except BaseException:
+                pass
 
 
 def read_prompt():
