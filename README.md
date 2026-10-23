@@ -388,6 +388,18 @@ The repository is organized as a Python application with optional Android/Termux
 
 This README describes the tracked source layout and intended integration boundaries. It does not imply that every optional provider, native Android action, external worker, or account integration has been exercised on every device. Installation success and runtime behavior depend on Termux packages, Android permissions, network access, valid credentials, model files, and optional services. Use the troubleshooting section below to verify each configured integration on the target device.
 
+## Local regression checks
+
+Run the Phase 1 syntax scan and deterministic regression tests before trying new features:
+
+```bash
+python scripts/smoke_test.py
+# Or run only the unit tests:
+python -m unittest discover -s tests -v
+```
+
+These checks are local-only: they do not call Groq, OmniRoute, or other providers, and they do not launch apps or send messages. The tests cover app-name normalization, aliases, nickname resolution, and safe handling of ambiguous matches. They do not replace live checks of Android permissions, microphone capture, or configured providers.
+
 ## Troubleshooting
 
 Check the current configuration and required tools:
