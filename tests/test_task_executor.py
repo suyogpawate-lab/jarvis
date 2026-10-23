@@ -48,7 +48,7 @@ class TaskExecutorTests(unittest.TestCase):
         self.assertEqual(self.calls, ["check battery"])
         self.assertIn("WAITING_APPROVAL", report)
         self.assertIn("/task approve " + task_id, report)
-        report = self.executor.handle(f"/task approve {task_id}")
+        report = self.executor.handle(f"/task approve {task_id}", source="text")
         self.assertEqual(
             self.calls,
             ["check battery", "send WhatsApp message to Alex", "check storage"],
@@ -64,6 +64,18 @@ class TaskExecutorTests(unittest.TestCase):
         self.assertEqual(self.calls, ["first step"])
         self.assertIn("FAILED", report)
         self.assertNotIn("second step", self.calls)
+
+    def test_approval_requires_typed_terminal_source(self):
+        task_id = self.task_id(self.executor.handle("/task plan send a message"))
+        self.executor.handle(f"/task run {task_id}")
+        voice_result = self.executor.handle(f"/task approve {task_id}", source="voice")
+        external_result = self.executor.handle(f"/task approve {task_id}", source="external")
+        self.assertIn("[BLOCKED]", voice_result)
+        self.assertIn("[BLOCKED]", external_result)
+        self.assertEqual(self.calls, [])
+        typed_result = self.executor.handle(f"/task approve {task_id}", source="text")
+        self.assertIn("COMPLETED", typed_result)
+        self.assertEqual(self.calls, ["send a message"])
 
     def test_deny_cancels_without_running_pending_action(self):
         created = self.executor.handle("/task plan send WhatsApp message to Alex || check storage")
