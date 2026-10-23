@@ -135,6 +135,9 @@ def speak(text, wait=True, speed=1.0):
                 wav.setsampwidth(2)
                 wav.setframerate(sample_rate)
                 wav.writeframes(b"".join(audio_chunks))
+        except Exception:
+            audio_path.unlink(missing_ok=True)
+            raise
 
     with _state_lock:
         if _generation != generation:
