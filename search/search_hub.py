@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 import json
 
 from .tor_transport import TorTransport
+from .cache import SearchCache, ttl_for_query
 
 
 @dataclass
@@ -29,6 +30,7 @@ class SearchHub:
     def __init__(self, tor_transport=None):
         self.providers = []
         self.tor = tor_transport or TorTransport()
+        self.cache = SearchCache()
 
     def register(self, provider):
         self.providers.append(provider)
@@ -52,8 +54,21 @@ class SearchHub:
             return response.read().decode("utf-8", errors="replace")
 
     def search(self, query, limit=10):
-        results = []
+        cache_ttl = ttl_for_query(query)
+        cached = self.cache.get(
+            "web-search",
+            query,
+            variant=str(limit),
+            ttl_seconds=cache_ttl,
+        )
+        if isinstance(cached, list):
+            try:
+                print(f" [WEB CACHE] Reusing saved search results for: {query[:80]}")
+                return [SearchResult(**item) for item in cached if isinstance(item, dict)]
+            except (TypeError, ValueError):
+                pass
 
+        results = []
         for provider in self.providers:
             try:
                 results.extend(provider.search(query, limit=limit))
@@ -61,8 +76,6 @@ class SearchHub:
                 continue
 
         results = self._deduplicate(results)
-
-        # Prefer strong results while preserving provider diversity.
         results.sort(
             key=lambda r: (
                 -float(r.relevance or 0.0),
@@ -73,27 +86,32 @@ class SearchHub:
 
         selected = []
         providers_seen = set()
-
-        # First pass: give each provider a chance.
         for result in results:
             if result.source not in providers_seen:
                 selected.append(result)
                 providers_seen.add(result.source)
-
-            if len(selected) >= limit:
-                return selected[:limit]
-
-        # Second pass: fill remaining slots by relevance.
-        for result in results:
-            if result in selected:
-                continue
-
-            selected.append(result)
-
             if len(selected) >= limit:
                 break
 
-        return selected[:limit]
+        if len(selected) < limit:
+            for result in results:
+                if result in selected:
+                    continue
+                selected.append(result)
+                if len(selected) >= limit:
+                    break
+
+        selected = selected[:limit]
+        if selected:
+            self.cache.put(
+                "web-search",
+                query,
+                [vars(item) for item in selected],
+                variant=str(limit),
+                ttl_seconds=cache_ttl,
+            )
+            print(f" [WEB CACHE] Saved {len(selected)} search results locally.")
+        return selected
 
     @staticmethod
     def _deduplicate(results):
