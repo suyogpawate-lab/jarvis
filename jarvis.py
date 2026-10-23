@@ -1125,7 +1125,7 @@ def read_prompt():
     def width(value):
         total = 0
         for char in value:
-            if char == "\\t":
+            if char == "\t":
                 total += 4
             elif unicodedata.combining(char):
                 continue
@@ -1137,9 +1137,9 @@ def read_prompt():
 
     def redraw():
         tail_width = width("".join(line[cursor:]))
-        sys.stdout.write("\\r\\x1b[2K" + prompt + "".join(line))
+        sys.stdout.write("\r\x1b[2K" + prompt + "".join(line))
         if tail_width:
-            sys.stdout.write(f"\\x1b[{tail_width}D")
+            sys.stdout.write(f"\x1b[{tail_width}D")
         sys.stdout.flush()
 
     def replace_line(chars):
@@ -1161,7 +1161,7 @@ def read_prompt():
                 command = voice_command_queue.get_nowait()
                 if command.strip():
                     command = command.strip()
-                    sys.stdout.write(f"\\r\\x1b[2KYOU (VOICE) > {command}\\n")
+                    sys.stdout.write(f"\r\x1b[2KYOU (VOICE) > {command}\n")
                     sys.stdout.flush()
                     return command
             except queue.Empty:
@@ -1169,7 +1169,7 @@ def read_prompt():
 
             summary = pop_notification()
             if summary is not None:
-                sys.stdout.write(f"\\r\\x1b[2K\\nJARVIS [NOTIFICATIONS] > {summary}\\n")
+                sys.stdout.write(f"\r\x1b[2K\nJARVIS [NOTIFICATIONS] > {summary}\n")
                 sys.stdout.flush()
                 _web_notify(summary)
                 redraw()
@@ -1186,7 +1186,7 @@ def read_prompt():
 
             byte = data[0]
             if byte in (10, 13):
-                sys.stdout.write("\\r\\x1b[2K" + prompt + "".join(line) + "\\n")
+                sys.stdout.write("\r\x1b[2K" + prompt + "".join(line) + "\n")
                 sys.stdout.flush()
                 result = "".join(line).strip()
                 if result:
@@ -1196,7 +1196,7 @@ def read_prompt():
                 return result
 
             if byte == 3:  # Ctrl-C
-                sys.stdout.write("^C\\n")
+                sys.stdout.write("^C\n")
                 sys.stdout.flush()
                 raise KeyboardInterrupt
             if byte == 4:  # Ctrl-D
