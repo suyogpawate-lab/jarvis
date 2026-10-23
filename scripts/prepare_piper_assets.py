@@ -99,7 +99,7 @@ def main():
         merge_tree_missing(OLD_LIB, TARGET_LIB_DIR)
     copy_file_if_missing(configured_library, TARGET_LIB_DIR / "libpiper.so")
 
-    model_name = configured_model.name or DEFAULT_MODEL
+    model_name = DEFAULT_MODEL
     config_name = model_name + ".json"
     target_model = TARGET_MODEL_DIR / model_name
     target_config = TARGET_MODEL_DIR / config_name
