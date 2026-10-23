@@ -54,8 +54,8 @@ def _load():
     for key in ("library", "model", "config"):
         if not cfg[key].is_file():
             raise RuntimeError(f"Piper {key} file not found: {cfg[key]}. Run python setup.py voice.")
-    if not cfg["espeak"].is_dir():
-        raise RuntimeError(f"eSpeak NG data directory not found: {cfg['espeak']}")
+    if not cfg["espeak"].is_dir() or not any(cfg["espeak"].iterdir()):
+        raise RuntimeError(f"eSpeak NG data directory missing or empty: {cfg['espeak']}. Run python scripts/prepare_piper_assets.py.")
     try:
         # Some Termux Piper packages ship a private ONNX Runtime beside libpiper.so.
         # Load that copy first without touching $PREFIX/lib.
