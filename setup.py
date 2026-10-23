@@ -718,7 +718,7 @@ def step_voice(env):
             "JARVIS_PIPER_OUTPUT_DIR": str(ROOT / "cache/piper"),
         }
         for key, default in defaults.items():
-            env.set(key, ask(f"{key} path", default=env.get(key, default)))
+            env.set(key, default)
         cfg = {
             "JARVIS_PIPER_LIBRARY": Path(env.get("JARVIS_PIPER_LIBRARY")).expanduser(),
             "JARVIS_PIPER_MODEL": Path(env.get("JARVIS_PIPER_MODEL")).expanduser(),
