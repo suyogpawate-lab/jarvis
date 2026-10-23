@@ -32,7 +32,7 @@ PHRASES = (
     "What's the task, sir?",
 )
 
-AUDIO_DIR = Path(__file__).resolve().parent / "assets" / "wake_responses"
+AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
 
 
 def play_random_wake_response() -> bool:
