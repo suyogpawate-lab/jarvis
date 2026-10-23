@@ -1179,12 +1179,12 @@ async def _read_prompt_async():
                     except asyncio.CancelledError:
                         pass
                     print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
-                    return command.strip(), "voice"
+                    return command.strip(), "voice", "voice"
 
                 await asyncio.sleep(0.08)
 
             _service_cli_background_events()
-            return (await prompt_task).strip(), "text"
+            return (await prompt_task).strip(), "text", "text"
         finally:
             # Ctrl+C cancels asyncio.run's main task. Always cancel and retrieve
             # the child prompt task so prompt_toolkit cannot leak an unhandled
