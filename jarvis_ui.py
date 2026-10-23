@@ -201,7 +201,7 @@ def work(text, gen=None, source="typed"):
         S["thinking"] = False                   # reply is ready: a new prompt may now interrupt the speech
         answer = str(answer or "").strip()
         display_answer = (
-            f"[VOICE TRANSCRIPT] {text}\\n\\n{answer}"
+            f"[VOICE TRANSCRIPT] {text}\n\n{answer}"
             if source == "voice" else answer
         )
         S["reply"], S["reply_t"] = display_answer, time.time()
