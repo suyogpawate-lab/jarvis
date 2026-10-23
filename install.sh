@@ -81,9 +81,11 @@ if [ "$WITH_VOICE" -eq 1 ]; then
 fi
 
 # ───────────────────────── folders ─────────────────────────
-mkdir -p data logs voice/models "$HOME/.cache/jarvis/piper"
+mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper
 chmod +x "$ROOT/voice-config" 2>/dev/null || true
-ok "Runtime folders ready (data/, logs/)."
+info "Preparing repository-local Piper assets..."
+python scripts/prepare_piper_assets.py || warn "Could not migrate existing Piper assets; run python scripts/prepare_piper_assets.py to retry."
+ok "Runtime and voice folders ready inside $ROOT."
 
 # ───────────────────────── installed apps index ─────────────────────────
 info "Capturing installed apps (data/installed_apps.json)..."
