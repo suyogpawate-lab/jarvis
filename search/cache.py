@@ -26,7 +26,7 @@ def ttl_for_query(query, stable=7 * 86400, volatile=3600):
 
 
 class SearchCache:
-    def __init__(self, path=None, max_entries=300):
+    def __init__(self, path=None, max_entries=3000):
         self.path = os.path.expanduser(
             path or os.getenv(
                 "JARVIS_WEB_CACHE_PATH",
