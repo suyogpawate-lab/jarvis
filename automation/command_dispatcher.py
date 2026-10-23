@@ -146,7 +146,7 @@ class CommandDispatcher:
 
             argument = text[start:end].strip()
 
-            if argument:
+            if argument or command == "doctor":
                 commands.append(
                     (
                         command,
