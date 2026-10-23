@@ -703,13 +703,19 @@ def step_voice(env):
     provider = "piper" if choice.lower() in ("2", "piper") else "edge"
     env.set("JARVIS_TTS_PROVIDER", provider)
     if provider == "piper":
-        home = Path.home()
-        prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+        # Copy any existing Piper installation into this checkout, without
+        # moving/deleting the originals or touching Termux shared libraries.
+        migration = ROOT / "scripts" / "prepare_piper_assets.py"
+        try:
+            subprocess.run([sys.executable, str(migration)], check=False)
+        except OSError as exc:
+            warn(f"Could not prepare repository-local Piper assets: {exc}")
         defaults = {
-            "JARVIS_PIPER_LIBRARY": str(home / ".local/opt/piper-tts-cli/data/data/com.termux/files/usr/lib/libpiper.so"),
-            "JARVIS_PIPER_MODEL": str(home / "piper_models/en_GB-alan-medium.onnx"),
-            "JARVIS_PIPER_CONFIG": str(home / "piper_models/en_GB-alan-medium.onnx.json"),
-            "JARVIS_ESPEAK_DATA": str(prefix / "share/espeak-ng-data"),
+            "JARVIS_PIPER_LIBRARY": str(ROOT / "lib/piper/libpiper.so"),
+            "JARVIS_PIPER_MODEL": str(ROOT / "models/piper/en_GB-alan-medium.onnx"),
+            "JARVIS_PIPER_CONFIG": str(ROOT / "models/piper/en_GB-alan-medium.onnx.json"),
+            "JARVIS_ESPEAK_DATA": str(ROOT / "voice/data/espeak-ng-data"),
+            "JARVIS_PIPER_OUTPUT_DIR": str(ROOT / "cache/piper"),
         }
         for key, default in defaults.items():
             env.set(key, ask(f"{key} path", default=env.get(key, default)))
@@ -718,6 +724,7 @@ def step_voice(env):
             "JARVIS_PIPER_MODEL": Path(env.get("JARVIS_PIPER_MODEL")).expanduser(),
             "JARVIS_PIPER_CONFIG": Path(env.get("JARVIS_PIPER_CONFIG")).expanduser(),
             "JARVIS_ESPEAK_DATA": Path(env.get("JARVIS_ESPEAK_DATA")).expanduser(),
+            "JARVIS_PIPER_OUTPUT_DIR": Path(env.get("JARVIS_PIPER_OUTPUT_DIR", str(ROOT / "cache/piper"))).expanduser(),
         }
         env.save()
         missing = [f"{key}: {path}" for key, path in cfg.items()
