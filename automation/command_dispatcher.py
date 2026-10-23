@@ -42,7 +42,7 @@ from search.deep_search import DeepSearch
 class CommandDispatcher:
 
     COMMAND_PATTERN = re.compile(
-        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
+        r"/(doctor|exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
         re.IGNORECASE,
     )
 
@@ -195,6 +195,14 @@ class CommandDispatcher:
         command,
         argument,
     ):
+
+        # ------------------------------------------------------
+        # DOCTOR (read-only local diagnostics)
+        # ------------------------------------------------------
+
+        if command == "doctor":
+            from monitoring.doctor import run_doctor
+            return run_doctor()
 
         # ------------------------------------------------------
         # EXEC
