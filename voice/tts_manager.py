@@ -84,7 +84,10 @@ class TTSManager:
                         break
                     text, speed = item
                     self.last_started = time.monotonic()
-                    self._speak_with_fallbacks(text, speed)
+                    if not self._speak_with_fallbacks(text, speed):
+                        # The public speak() API only queues work; report worker
+                        # failures so a silent TTS outage is diagnosable in Termux.
+                        print(f"\\n[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
                 finally:
                     self.queue.task_done()
         finally:
