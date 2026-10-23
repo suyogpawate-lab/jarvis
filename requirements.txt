@@ -5,6 +5,7 @@ requests
 openai
 edge-tts
 rich
+prompt_toolkit
 Flask
 Werkzeug
 pypdf
