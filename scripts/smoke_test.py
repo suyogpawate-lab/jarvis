@@ -15,8 +15,7 @@ def main():
     errors = []
     checked = 0
     for path in ROOT.rglob("*.py"):
-        relative_parts = path.relative_to(ROOT).parts
-        if any(part in SKIP_DIRS for part in relative_parts):
+        if any(part in SKIP_DIRS for part in path.parts):
             continue
         try:
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
