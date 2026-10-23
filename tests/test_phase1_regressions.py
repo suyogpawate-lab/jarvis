@@ -8,6 +8,19 @@ from android.app_aliases import (
 )
 
 
+class Phase1IntegrationTests(unittest.TestCase):
+    def test_hud_labels_voice_transcript(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "jarvis_ui.py").read_text(encoding="utf-8")
+        self.assertIn("[VOICE TRANSCRIPT]", source)
+        self.assertIn('_start_work(voice_prompt, source="voice")', source)
+
+    def test_fast_agent_failures_are_logged(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "automation" / "command_dispatcher.py").read_text(encoding="utf-8")
+        self.assertIn("[ROUTING WARN] Groq FastAgent failed", source)
+
+
 class AppAliasTests(unittest.TestCase):
     def setUp(self):
         self.apps = [
