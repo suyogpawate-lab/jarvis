@@ -31,8 +31,6 @@ from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
-from monitoring.doctor import format_doctor
-from automation.routines import RoutineRunner
 from agents.local_ai import LocalAI
 from agents.fast_agent import FastAgent
 from automation.scheduler import AutomationScheduler
@@ -44,7 +42,7 @@ from search.deep_search import DeepSearch
 class CommandDispatcher:
 
     COMMAND_PATTERN = re.compile(
-        r"/(exec|bg|notifications?|doctor|routine|discuss\d*(?:s|m)?|remember|project|memory)\b",
+        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
         re.IGNORECASE,
     )
 
@@ -114,12 +112,6 @@ class CommandDispatcher:
             self.jobs,
             self.fast_agent,
         )
-        self.routines = RoutineRunner(self._routine_action)
-
-    def _routine_action(self, action, argument):
-        if action == "doctor":
-            return format_doctor(argument)
-        raise ValueError("Routine action is not allowlisted")
 
     # ==========================================================
     # COMMAND SPLITTING
@@ -203,23 +195,6 @@ class CommandDispatcher:
         command,
         argument,
     ):
-
-        # ------------------------------------------------------
-        # DIAGNOSTICS AND MULTI-STEP ROUTINES
-        # ------------------------------------------------------
-
-        if command == "doctor":
-            return format_doctor(argument.strip().lower() or "all")
-
-        if command == "routine":
-            parts = argument.strip().split(maxsplit=1)
-            action = parts[0].lower() if parts else "list"
-            value = parts[1].strip() if len(parts) > 1 else ""
-            if action == "list":
-                return "[ROUTINES] Available: " + ", ".join(self.routines.names())
-            if action == "run" and value:
-                return self.routines.format_result(value)
-            return "[ERROR] Usage: /routine list | /routine run <name>"
 
         # ------------------------------------------------------
         # EXEC
@@ -577,8 +552,7 @@ class CommandDispatcher:
         """Use Groq FastAgent for lightweight decision tasks."""
         try:
             return self.fast_agent.ask(text)
-        except Exception as exc:
-            print("[ROUTING WARN] FastAgent request failed: {}".format(type(exc).__name__), flush=True)
+        except Exception:
             return None
 
     def _abilities_request(self, text):

@@ -73,7 +73,7 @@ class FastAgent:
         Load every configured API key for one provider.
 
         Preferred:
-            PROVIDER_API_KEYS=key1,key2,key3,...
+            PROVIDER_API_KEYS=key1,key2,key3,key4,key5
 
         Also accepts:
             PROVIDER_API_KEY=key1
@@ -248,7 +248,7 @@ class FastAgent:
         timeout=30,
     ):
         """
-        Claude provider with the same provider-key fallback architecture
+        Claude provider with the same five-key fallback architecture
         used by the existing Groq implementation.
         """
 

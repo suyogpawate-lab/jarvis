@@ -32,7 +32,6 @@ class AlertMonitor:
         self._thread = None
         self._level = {}            # check name -> last level raised (0 ok, 1 warn, 2 urgent)
         self._brain_fail = 0
-        self._resource_samples = {"memory": 0, "cpu": 0}
         self._termux_api = shutil.which("termux-battery-status") is not None
 
     def start(self):
@@ -121,44 +120,10 @@ class AlertMonitor:
                    "", "My reasoning backend is unreachable. Replies will fail until OmniRoute is back.",
                    "My reasoning backend is back online.")
 
-    def _check_resources(self):
-        """Alert on sustained pressure, not a single noisy sample."""
-        try:
-            from monitoring.system_telemetry import get_telemetry
-            data = get_telemetry()
-        except Exception:
-            return
-        memory = data.get("memory", {})
-        cpu = data.get("cpu", {})
-        mem_pct = memory.get("percent")
-        cpu_pct = cpu.get("percent")
-        for name, value, warn, urgent in (
-            ("memory", mem_pct, 90, 96),
-            ("cpu", cpu_pct, 90, 97),
-        ):
-            if not isinstance(value, (int, float)):
-                continue
-            if value >= warn:
-                self._resource_samples[name] = min(3, self._resource_samples.get(name, 0) + 1)
-            else:
-                self._resource_samples[name] = 0
-            samples = self._resource_samples[name]
-            level = 2 if value >= urgent and samples >= 2 else 1 if value >= warn and samples >= 2 else 0
-            if name == "memory":
-                self._edge("memory", level,
-                           "Memory pressure is high ({:.0f}% used).".format(value),
-                           "Memory pressure is critical ({:.0f}% used).".format(value),
-                           "Memory pressure is back to normal.")
-            else:
-                self._edge("cpu", level,
-                           "CPU usage remains high ({:.0f}%).".format(value),
-                           "CPU usage is critically high ({:.0f}%).".format(value),
-                           "CPU usage is back to normal.")
-
     def _run(self):
         time.sleep(5)
         while not self._stop.is_set():
-            for check in (self._check_brain, self._check_battery, self._check_storage, self._check_resources):
+            for check in (self._check_brain, self._check_battery, self._check_storage):
                 try:
                     check()
                 except Exception:
