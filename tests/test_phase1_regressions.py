@@ -47,18 +47,23 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertIn('"chrome": "com.android.chrome"', handler)
         self.assertIn('candidates = candidates or (tuple(_resolve_app(app_text, explicit)) or None)', handler)
 
-    def test_cli_prompt_uses_native_readline_input(self):
+    def test_cli_prompt_stays_responsive_to_voice_commands(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         source = (root / "jarvis.py").read_text(encoding="utf-8")
-        start = source.index("def read_prompt():")
+        start = source.index("async def _read_prompt_async():")
         end = source.index("# MAIN (plain terminal CLI)", start)
         prompt_reader = source[start:end]
-        self.assertIn('input("YOU  > ")', prompt_reader)
-        self.assertIn("_show_whatsapp_review_events()", prompt_reader)
+        self.assertIn("prompt_async", prompt_reader)
         self.assertIn("voice_command_queue.get_nowait()", prompt_reader)
-        self.assertIn("pop_notification()", prompt_reader)
-        self.assertNotIn("tty.setraw", prompt_reader)
-        self.assertNotIn("os.read(fd", prompt_reader)
+        self.assertIn("asyncio.sleep(0.08)", prompt_reader)
+        self.assertIn("patch_stdout()", prompt_reader)
+        self.assertIn("_cli_pending_text", prompt_reader)
+        self.assertNotIn('input("YOU  > ")', prompt_reader)
+
+    def test_prompt_toolkit_is_a_core_dependency(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("prompt_toolkit", requirements)
 
 
 
