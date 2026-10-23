@@ -78,6 +78,13 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertIn('JARVIS_WAKE_THRESHOLD", "0.40"', voice_test)
         self.assertIn('JARVIS_CONVERSATION_TIMEOUT", "20"', listener)
 
+    def test_env_example_does_not_seed_fake_credentials(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        example = (root / ".env.example").read_text(encoding="utf-8")
+        self.assertNotIn("gsk_xxx", example)
+        self.assertNotIn("abcdefghijklmnop", example)
+        self.assertIn("GROQ_API_KEYS=", example)
+
     def test_prompt_toolkit_is_a_core_dependency(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         requirements = (root / "requirements.txt").read_text(encoding="utf-8")
