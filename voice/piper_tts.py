@@ -10,7 +10,8 @@ from pathlib import Path
 
 from voice.tts import prepare_text
 
-_lock = threading.RLock()
+_state_lock = threading.Lock()
+_synth_lock = threading.Lock()
 _proc = None
 _generation = 0
 _synth = None
