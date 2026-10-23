@@ -34,15 +34,31 @@ class _AudioChunk(ctypes.Structure):
     ]
 
 
+def _setting(name, default):
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    try:
+        from jarvis_env import parse_env_line
+        env_path = Path(__file__).resolve().parents[1] / ".env"
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            parsed = parse_env_line(line)
+            if parsed and parsed[0] == name and parsed[1]:
+                return parsed[1]
+    except (OSError, ImportError, ValueError):
+        pass
+    return str(default)
+
+
 def _settings():
     home = Path.home()
     prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
     return {
-        "library": Path(os.environ.get("JARVIS_PIPER_LIBRARY", home / ".local/opt/piper-tts-cli/data/data/com.termux/files/usr/lib/libpiper.so")).expanduser(),
-        "model": Path(os.environ.get("JARVIS_PIPER_MODEL", home / "piper_models/en_GB-alan-medium.onnx")).expanduser(),
-        "config": Path(os.environ.get("JARVIS_PIPER_CONFIG", home / "piper_models/en_GB-alan-medium.onnx.json")).expanduser(),
-        "espeak": Path(os.environ.get("JARVIS_ESPEAK_DATA", prefix / "share/espeak-ng-data")).expanduser(),
-        "output": Path(os.environ.get("JARVIS_PIPER_OUTPUT_DIR", home / ".cache/jarvis/piper")).expanduser(),
+        "library": Path(_setting("JARVIS_PIPER_LIBRARY", home / ".local/opt/piper-tts-cli/data/data/com.termux/files/usr/lib/libpiper.so")).expanduser(),
+        "model": Path(_setting("JARVIS_PIPER_MODEL", home / "piper_models/en_GB-alan-medium.onnx")).expanduser(),
+        "config": Path(_setting("JARVIS_PIPER_CONFIG", home / "piper_models/en_GB-alan-medium.onnx.json")).expanduser(),
+        "espeak": Path(_setting("JARVIS_ESPEAK_DATA", prefix / "share/espeak-ng-data")).expanduser(),
+        "output": Path(_setting("JARVIS_PIPER_OUTPUT_DIR", home / ".cache/jarvis/piper")).expanduser(),
     }
 
 
