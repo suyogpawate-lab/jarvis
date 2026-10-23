@@ -341,10 +341,14 @@ class WhistleWakeListener:
                                 play_random_wake_response()
                             except Exception as exc:
                                 self._log(f"[VOICE] Wake acknowledgement unavailable: {exc}", flush=True)
-                            # Drain playback echo/buffered mic audio before recording the command.
+                            # The preroll contains the wake phrase itself. Never feed it
+                            # to command STT, or "Hey Jarvis" becomes a fake command and
+                            # opens continuous-conversation mode with no real user request.
+                            # Wait through the acknowledgement/echo guard, then capture
+                            # only fresh audio spoken after the wake detection.
                             mute_until = time.time() + 0.8
                             capturing = True
-                            command_frames = list(preroll)
+                            command_frames = []
                             speech_started = False
                             silent_frames = 0
                             speech_frames = 0
