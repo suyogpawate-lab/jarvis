@@ -807,6 +807,7 @@ STEPS = {
     "whatsapp": step_whatsapp,
     "contacts": step_contacts,
     "apps": step_apps,
+    "voice": step_voice,
 }
 
 
