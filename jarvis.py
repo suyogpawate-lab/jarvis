@@ -1110,7 +1110,9 @@ def _show_whatsapp_review_events():
         drafts.extend(str(x).strip() for x in event.get("alternatives", []) if str(x).strip())
         for index, draft in enumerate(drafts[:2], 1):
             print(f"  Draft {index}: {draft}")
-        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2 | wa-reply {r_cli_prompt_session = PromptSession()
+        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2")
+
+_cli_prompt_session = PromptSession()
 _cli_pending_text = ""
 
 
@@ -1169,11 +1171,6 @@ def read_prompt():
     """
     while True:
         prompt = asyncio.run(_read_prompt_async())
-        if prompt:
-            return prompt
- > {summary}\n", flush=True)
-            _web_notify(summary)
-
         if prompt:
             return prompt
 
