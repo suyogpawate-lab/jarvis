@@ -189,7 +189,7 @@ class TaskExecutor:
         self._save(task)
         return self._render(task)
 
-    def handle(self, command: str):
+    def handle(self, command: str, source: str = "external"):
         """Handle /task subcommands. Step text is always passed to normal dispatch."""
         parts = str(command or "").strip().split(maxsplit=2)
         if len(parts) < 2:
@@ -257,6 +257,8 @@ class TaskExecutor:
             self._save(task)
             return self._advance(task)
         if action == "approve":
+            if source != "text":
+                return "[BLOCKED] Step approval is accepted only from typed terminal input."
             if task["status"] != "WAITING_APPROVAL":
                 return "[ERROR] This task is not waiting for a step approval."
             step = task["steps"][task["current_step"]]
