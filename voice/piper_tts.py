@@ -34,32 +34,17 @@ class _AudioChunk(ctypes.Structure):
     ]
 
 
-def _setting(name, default):
-    value = os.environ.get(name, "").strip()
-    if value:
-        return value
-    try:
-        from jarvis_env import parse_env_line
-        env_path = Path(__file__).resolve().parents[1] / ".env"
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            parsed = parse_env_line(line)
-            if parsed and parsed[0] == name and parsed[1]:
-                return parsed[1]
-    except (OSError, ImportError, ValueError):
-        pass
-    return str(default)
-
-
 def _settings():
+    # JARVIS voice assets are deliberately repository-local. The migration
+    # helper copies legacy assets into these paths and leaves originals intact.
     root = Path(__file__).resolve().parents[1]
     return {
-        "library": Path(_setting("JARVIS_PIPER_LIBRARY", root / "lib/piper/libpiper.so")).expanduser(),
-        "model": Path(_setting("JARVIS_PIPER_MODEL", root / "models/piper/en_GB-alan-medium.onnx")).expanduser(),
-        "config": Path(_setting("JARVIS_PIPER_CONFIG", root / "models/piper/en_GB-alan-medium.onnx.json")).expanduser(),
-        "espeak": Path(_setting("JARVIS_ESPEAK_DATA", root / "voice/data/espeak-ng-data")).expanduser(),
-        "output": Path(_setting("JARVIS_PIPER_OUTPUT_DIR", root / "cache/piper")).expanduser(),
+        "library": root / "lib/piper/libpiper.so",
+        "model": root / "models/piper/en_GB-alan-medium.onnx",
+        "config": root / "models/piper/en_GB-alan-medium.onnx.json",
+        "espeak": root / "voice/data/espeak-ng-data",
+        "output": root / "cache/piper",
     }
-
 
 def _load():
     global _lib, _synth, _runtime_lib
