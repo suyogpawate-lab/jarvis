@@ -40,8 +40,8 @@ class AppAliasTests(unittest.TestCase):
     def test_package_fallback_resolves_whatsapp(self):
         self.assertEqual(resolve_installed_packages("whatsapp", {"com.whatsapp", "com.android.chrome"}), ["com.whatsapp"])
 
-    def test_package_fallback_refuses_ambiguous_match(self):
-        self.assertEqual(resolve_installed_packages("whatsapp", {"com.whatsapp", "com.whatsapp.w4b"}), [])
+    def test_package_fallback_prefers_exact_package_tail(self):
+        self.assertEqual(resolve_installed_packages("whatsapp", {"com.whatsapp", "com.whatsapp.w4b"}), ["com.whatsapp"])
 
 
 if __name__ == "__main__":
