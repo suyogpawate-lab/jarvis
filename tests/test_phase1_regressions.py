@@ -20,6 +20,22 @@ class Phase1IntegrationTests(unittest.TestCase):
         source = (root / "automation" / "command_dispatcher.py").read_text(encoding="utf-8")
         self.assertIn("[ROUTING WARN] Groq FastAgent failed", source)
 
+    def test_android_launcher_does_not_require_package_list_or_monkey(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "jarvis.py").read_text(encoding="utf-8")
+        start = source.index("def _launch_android_package(package):")
+        end = source.index("\ndef handle_local_android_command", start)
+        launcher = source[start:end]
+        self.assertIn('"am", "start", "-n", resolved', launcher)
+        self.assertIn('"am", "start", "-a", "android.intent.action.MAIN"', launcher)
+        self.assertIn('shutil.which("monkey")', launcher)
+        self.assertNotIn("installed = _android_package_ids()", launcher)
+
+    def test_app_capture_targets_android_user_zero(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "scripts" / "capture_apps.py").read_text(encoding="utf-8")
+        self.assertIn('"--user", "0"', source)
+
 
 class AppAliasTests(unittest.TestCase):
     def setUp(self):
