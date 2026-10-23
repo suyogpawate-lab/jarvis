@@ -552,7 +552,13 @@ class CommandDispatcher:
         """Use Groq FastAgent for lightweight decision tasks."""
         try:
             return self.fast_agent.ask(text)
-        except Exception:
+        except Exception as exc:
+            # Keep the existing fallback behavior, but make provider failures diagnosable.
+            print(
+                f"[ROUTING WARN] Groq FastAgent failed "
+                f"({type(exc).__name__}): {exc}",
+                flush=True,
+            )
             return None
 
     def _abilities_request(self, text):
