@@ -1,4 +1,5 @@
 """Phase 1 regression tests for deterministic routing helpers."""
+import ast
 import unittest
 
 from android.app_aliases import (
@@ -45,7 +46,16 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertIn("tty.setraw(fd)", prompt_reader)
         self.assertIn('seq in (b"[D", b"OD")', prompt_reader)
         self.assertIn('seq == b"[3~"', prompt_reader)
-        self.assertNotIn("sys.stdin.readline()", prompt_reader)
+
+        # Inspect executable syntax, excluding comments and the explanatory docstring.
+        module = ast.parse(prompt_reader)
+        function = next(node for node in module.body if isinstance(node, ast.FunctionDef))
+        if function.body and isinstance(function.body[0], ast.Expr) and isinstance(
+            function.body[0].value, ast.Constant
+        ) and isinstance(function.body[0].value.value, str):
+            function.body.pop(0)
+        executable_code = ast.unparse(function)
+        self.assertNotIn("sys.stdin.readline()", executable_code)
 
 
 class AppAliasTests(unittest.TestCase):
