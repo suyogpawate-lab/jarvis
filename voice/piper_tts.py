@@ -75,7 +75,7 @@ def _load():
 
 def interrupt():
     global _generation, _proc
-    with _lock:
+    with _state_lock:
         _generation += 1
         proc = _proc
     if proc is not None and proc.poll() is None:
@@ -92,8 +92,12 @@ def speak(text, wait=True, speed=1.0):
         return False
     if not shutil.which("mpv"):
         raise RuntimeError("mpv is not installed or is not on PATH.")
-    with _lock:
+    with _state_lock:
         generation = _generation
+
+    # The synthesizer is single-instance, but the state lock is not held while
+    # synthesizing; interrupt() can invalidate the utterance immediately.
+    with _synth_lock:
         lib, synth = _load()
         cfg = _settings()
         cfg["output"].mkdir(parents=True, exist_ok=True)
@@ -124,18 +128,18 @@ def speak(text, wait=True, speed=1.0):
                 wav.setsampwidth(2)
                 wav.setframerate(sample_rate)
                 wav.writeframes(b"".join(audio_chunks))
-            if _generation != generation:
-                audio_path.unlink(missing_ok=True)
-                return True
-            command = ["mpv", "--no-video", "--no-terminal", "--really-quiet"]
-            if speed and float(speed) > 0 and float(speed) != 1.0:
-                command.append(f"--speed={float(speed):.3f}")
-            command.extend(["--", str(audio_path)])
-            proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            _proc = proc
-        except Exception:
-            # Retain generated WAV files on errors for troubleshooting.
-            raise
+
+    with _state_lock:
+        if _generation != generation:
+            audio_path.unlink(missing_ok=True)
+            return True
+        command = ["mpv", "--no-video", "--no-terminal", "--really-quiet"]
+        if speed and float(speed) > 0 and float(speed) != 1.0:
+            command.append(f"--speed={float(speed):.3f}")
+        command.extend(["--", str(audio_path)])
+        proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _proc = proc
+
     if not wait:
         return proc
     try:
@@ -145,6 +149,6 @@ def speak(text, wait=True, speed=1.0):
             return True
         raise RuntimeError(f"mpv exited with status {code}; WAV retained at {audio_path}")
     finally:
-        with _lock:
+        with _state_lock:
             if _proc is proc:
                 _proc = None
