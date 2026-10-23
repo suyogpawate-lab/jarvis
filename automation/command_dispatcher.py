@@ -1431,6 +1431,10 @@ Rules:
         text = str(text).strip()
         original_text = text
 
+        # Explicit local diagnostics must be handled before any AI route.
+        if re.fullmatch(r"/doctor\\s*", text, re.IGNORECASE):
+            return self.execute_one("doctor", "")
+
         # ======================================================
         # DETERMINISTIC AUTOMATION ROUTE
         # Timers, reminders, and scheduled commands must never
