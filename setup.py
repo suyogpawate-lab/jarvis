@@ -728,7 +728,7 @@ def step_voice(env):
         }
         env.save()
         missing = [f"{key}: {path}" for key, path in cfg.items()
-                   if not (path.is_dir() if key == "JARVIS_ESPEAK_DATA" else path.is_file())]
+                   if not ((path.is_dir() and any(path.iterdir())) if key == "JARVIS_ESPEAK_DATA" else path.is_file())]
         if missing:
             warn("Piper selected, but these paths need attention:")
             for item in missing:
