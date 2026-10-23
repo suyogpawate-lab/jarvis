@@ -6,8 +6,22 @@ is not committed to GitHub. Cache failures never block a search.
 import hashlib
 import json
 import os
+import re
 import tempfile
 import time
+
+
+def ttl_for_query(query, stable=7 * 86400, volatile=3600):
+    """Shorten cache lifetime for questions likely to change quickly."""
+    terms = re.findall(r"[a-z0-9]+", str(query or "").lower())
+    volatile_terms = {
+        "today", "tonight", "now", "current", "currently", "latest",
+        "recent", "news", "weather", "price", "prices", "stock", "stocks",
+        "score", "scores", "live", "traffic", "forecast", "availability",
+        "exchange", "rate", "version", "released", "release", "schedule",
+        "election", "outage", "this", "week", "tomorrow", "yesterday",
+    }
+    return volatile if volatile_terms.intersection(terms) else stable
 
 
 class SearchCache:
