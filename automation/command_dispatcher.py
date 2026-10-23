@@ -37,12 +37,13 @@ from automation.scheduler import AutomationScheduler
 from voice.tts_manager import tts
 from search.search_hub import build_default_search_hub
 from search.deep_search import DeepSearch
+from skills.builtin import build_default_registry
 
 
 class CommandDispatcher:
 
     COMMAND_PATTERN = re.compile(
-        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
+        r"/(exec|bg|notifications?|skills|discuss\d*(?:s|m)?|remember|project|memory)\b",
         re.IGNORECASE,
     )
 
@@ -54,6 +55,8 @@ class CommandDispatcher:
     ):
         self.jarvis = jarvis
         self.discussion = discussion
+        # Phase 2 registry: trusted, explicitly registered executable skills.
+        self.skill_registry = build_default_registry()
         self.memory = memory
 
         # Deterministic JARVIS abilities registry.
@@ -197,6 +200,23 @@ class CommandDispatcher:
     ):
 
         # ------------------------------------------------------
+        # ------------------------------------------------------
+        # SKILL REGISTRY
+        # ------------------------------------------------------
+
+        if command == "skills":
+            skills = self.skill_registry.list_skills()
+            if not skills:
+                return "[INFO] No skills are registered."
+            lines = [f"[SKILLS] {len(skills)} registered"]
+            for skill in skills:
+                confirmation = " | confirmation required" if skill["requires_confirmation"] else ""
+                lines.append(
+                    f"- {skill['name']} [{skill['permission']}] "
+                    f"— {skill['description']}{confirmation}"
+                )
+            return "\n".join(lines)
+
         # EXEC
         # ------------------------------------------------------
 
