@@ -49,9 +49,9 @@ class Skill:
             raise SkillValidationError(
                 f"Permission must be one of: {', '.join(sorted(_PERMISSION_LEVELS))}."
             )
-        if self.permission == "restricted" and not self.requires_confirmation:
+        if self.permission != "read" and not self.requires_confirmation:
             raise SkillValidationError(
-                "Restricted skills must require explicit confirmation."
+                "Write and restricted skills must require explicit confirmation."
             )
         unknown_required = set(self.required) - set(self.parameters)
         if unknown_required:
