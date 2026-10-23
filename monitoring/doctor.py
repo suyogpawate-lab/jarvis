@@ -17,6 +17,7 @@ PROVIDERS = {
     "Groq": ("GROQ_API_KEYS", "GROQ_API_KEY"),
     "Gemini": ("GEMINI_API_KEYS", "GEMINI_API_KEY"),
     "Anthropic": ("ANTHROPIC_API_KEYS", "ANTHROPIC_API_KEY"),
+    "OmniRoute": ("OMNIROUTE_API_KEY", "OMNIROUTE_BASE_URL"),
 }
 SERVICES = (
     ("OmniRoute", "127.0.0.1", 20128),
@@ -30,6 +31,7 @@ REQUIRED_FILES = (
     "core/core.py",
     "automation/command_dispatcher.py",
     "config/abilities.json",
+    "monitoring/doctor.py",
 )
 
 
@@ -89,7 +91,7 @@ def collect_checks():
         pass
     configured = [name for name, keys in PROVIDERS.items()
                   if any(key in configured_keys for key in keys)]
-    checks.append(("OK" if configured else "WARN", "AI provider keys",
+    checks.append(("OK" if configured else "WARN", "AI provider configuration",
                    "configured: " + ", ".join(configured) if configured else "no supported provider key found"))
     # Never display key values, lengths, or environment dumps.
 
