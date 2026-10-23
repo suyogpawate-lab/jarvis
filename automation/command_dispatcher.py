@@ -1423,13 +1423,13 @@ Rules:
             "id": info.get("id") or info.get("key"),
         }
 
-    def dispatch(self, text, conversation=None):
+    def dispatch(self, text, conversation=None, source="external"):
         text = str(text).strip()
         original_text = text
 
         # Explicit task plans are handled locally before any AI fallback.
         if re.match(r"^/task(?:\s|$)", text, re.IGNORECASE):
-            return self.task_executor.handle(text)
+            return self.task_executor.handle(text, source=source)
 
         # Keep explicit local diagnostics out of the AI fallback path.
         if re.fullmatch(r"/doctor\s*", text, re.IGNORECASE):
