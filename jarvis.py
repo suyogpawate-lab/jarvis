@@ -531,38 +531,14 @@ def _nicknames():
 
 
 def _resolve_app(query, explicit):
-    """Typed app name -> candidate package IDs, from installed_apps.json.
-    Bare names only match exactly (name, shortform, package ID). With an explicit
-    open/launch/start/run, a unique partial match of the app's name is also accepted."""
-    apps = _load_apps()
-    q = _norm(_nicknames().get(_norm(query), query))
-    if not apps or not q:
-        return []
-
-    def pick(found):  # user-installed, launchable apps first
-        found = sorted(found, key=lambda a: (a.get("launchable") is False, bool(a.get("system"))))
-        return [a["package"] for a in found]
-
-    named = [a for a in apps if q == _norm(a["name"]) or q in {_norm(x) for x in a.get("short", [])}]
-    if named:
-        return pick(named)
-    ids = [a for a in apps if q == _norm(a["package"]) or q == _norm(a["package"].rsplit(".", 1)[-1])]
-    if len(ids) == 1:
-        return pick(ids)
-    if not explicit or len(q) < 3:
-        return []
-    part = [a for a in apps if a.get("launchable") is not False and q in _norm(a["name"])]
-    for group in ([a for a in part if _norm(a["name"]).startswith(q)], part):
-        if len(group) == 1:
-            return pick(group)
-    inside = [a for a in apps if a.get("launchable") is not False and len(_norm(a["name"])) >= 4
-              and re.search(rf"\b{re.escape(_norm(a['name']))}\b", q)]   # "google chrome" -> Chrome
-    if inside:
-        best = max(len(_norm(a["name"])) for a in inside)
-        inside = [a for a in inside if len(_norm(a["name"])) == best]
-        if len(inside) == 1:
-            return pick(inside)
-    return []
+    """Resolve an app alias to package IDs using the testable shared resolver."""
+    from android.app_aliases import resolve_app_candidates
+    return resolve_app_candidates(
+        query,
+        explicit,
+        _load_apps(),
+        _nicknames(),
+    )
 
 
 ANDROID_SETTINGS = {
@@ -662,10 +638,8 @@ def handle_local_android_command(prompt):
     if candidates is None and re.fullmatch(r"[a-z0-9][a-z0-9 ._-]{0,39}", app_text):
         packages = _android_package_ids()
         slug = app_text.replace(" ", "").replace("-", "").replace("_", "")
-        matches = [
-            pkg for pkg in packages
-            if slug and slug in pkg.lower().replace(".", "")
-        ]
+        from android.app_aliases import resolve_installed_packages
+        matches = resolve_installed_packages(app_text, packages)
         if len(matches) == 1:
             candidates = (matches[0],)
 
