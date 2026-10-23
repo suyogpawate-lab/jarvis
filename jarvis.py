@@ -564,10 +564,26 @@ ANDROID_SETTINGS = {
 
 
 def _android_package_ids():
+    """Return package IDs when Android's package service is queryable.
+
+    This is advisory only: some Android/Termux builds return an empty list even
+    for apps that can be launched explicitly.
+    """
     try:
         result = subprocess.run(
+            ["pm", "list", "packages", "--user", "0"],
+            capture_output=True, text=True, timeout=5
+        )
+        packages = {
+            line.strip().split(":", 1)[-1]
+            for line in result.stdout.splitlines()
+            if line.strip().startswith("package:")
+        }
+        if packages:
+            return packages
+        result = subprocess.run(
             ["pm", "list", "packages"],
-            capture_output=True, text=True, timeout=4
+            capture_output=True, text=True, timeout=5
         )
         return {
             line.strip().split(":", 1)[-1]
@@ -578,18 +594,69 @@ def _android_package_ids():
         return set()
 
 
+def _android_start_succeeded(result):
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    lowered = output.lower()
+    return result.returncode == 0 and not any(
+        marker in lowered for marker in (
+            "error:", "exception", "unable to resolve", "no activities found",
+            "activity class", "does not exist",
+        )
+    )
+
+
 def _launch_android_package(package):
-    installed = _android_package_ids()
-    if package not in installed:
+    """Launch an app without depending on monkey or a successful package query."""
+    if not package or not re.fullmatch(r"[A-Za-z0-9_.]+", package):
         return False
-    # monkey launches the package's launcher activity without an LLM.
-    result = subprocess.run(
-        ["monkey", "-p", package, "1"],
-        capture_output=True, text=True, timeout=8
-    )
-    return result.returncode == 0 and (
-        "No activities found" not in (result.stdout + result.stderr)
-    )
+
+    def start(args, timeout=8):
+        try:
+            result = subprocess.run(
+                args, capture_output=True, text=True, timeout=timeout
+            )
+            return _android_start_succeeded(result)
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    resolved = ""
+    try:
+        result = subprocess.run(
+            [
+                "cmd", "package", "resolve-activity", "--brief", "--user", "0",
+                "-a", "android.intent.action.MAIN",
+                "-c", "android.intent.category.LAUNCHER", "-p", package,
+            ],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            for line in (result.stdout or "").splitlines():
+                candidate = line.strip().split()[-1] if line.strip() else ""
+                if "/" in candidate and candidate.split("/", 1)[0] == package:
+                    resolved = candidate
+                    break
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    if resolved and start(["am", "start", "-n", resolved]):
+        return True
+
+    if start([
+        "am", "start", "-a", "android.intent.action.MAIN",
+        "-c", "android.intent.category.LAUNCHER", "-p", package,
+    ]):
+        return True
+
+    monkey = shutil.which("monkey")
+    if monkey and start([monkey, "-p", package, "1"]):
+        return True
+
+    # A few Android builds cannot resolve launcher activities but accept these
+    # common explicit component names. Try them only after normal resolution.
+    for activity in (".Main", ".MainActivity", ".Launcher", ".SplashActivity"):
+        if start(["am", "start", "-n", f"{package}/{activity}"]):
+            return True
+    return False
 
 
 def handle_local_android_command(prompt):
