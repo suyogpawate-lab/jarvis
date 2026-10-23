@@ -1121,7 +1121,7 @@ def _service_cli_background_events():
         summary = pop_notification()
         if summary is None:
             break
-        print(f"\\nJARVIS [NOTIFICATIONS] > {summary}\\n", flush=True)
+        print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
         _web_notify(summary)
 
 
@@ -1152,7 +1152,7 @@ async def _read_prompt_async():
                     await prompt_task
                 except asyncio.CancelledError:
                     pass
-                print(f"\\nYOU (VOICE) > {command.strip()}\\n", flush=True)
+                print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
                 return command.strip()
 
             await asyncio.sleep(0.08)
@@ -1171,7 +1171,7 @@ def read_prompt():
         prompt = asyncio.run(_read_prompt_async())
         if prompt:
             return prompt
- > {summary}\\n", flush=True)
+ > {summary}\n", flush=True)
             _web_notify(summary)
 
         if prompt:
