@@ -17,6 +17,7 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from .search_hub import SearchHub
+from .cache import SearchCache, ttl_for_query
 
 
 class _ResearchHTMLParser(HTMLParser):
@@ -233,6 +234,7 @@ class DeepSearch:
     ):
         self.search_hub = search_hub
         self.fast_agent = fast_agent
+        self.cache = SearchCache()
 
         # 0 = unlimited.
         self.max_pages = int(max_pages)
@@ -994,6 +996,17 @@ class DeepSearch:
         return evidence, len(pages)
 
     def search(self, query, limit=8):
+        cache_ttl = ttl_for_query(query, stable=7 * 86400, volatile=3600)
+        cached_answer = self.cache.get(
+            "deep-search",
+            query,
+            variant=str(limit),
+            ttl_seconds=cache_ttl,
+        )
+        if isinstance(cached_answer, str) and cached_answer.strip():
+            print(f" [WEB CACHE] Reusing saved deep-research answer for: {query[:80]}")
+            return cached_answer
+
         initial_results = self.search_hub.search(
             query,
             limit=limit,
@@ -1043,7 +1056,16 @@ Rules:
             answer = self.fast_agent.ask_synthesis(prompt)
 
             if answer and str(answer).strip():
-                return str(answer).strip()
+                answer = str(answer).strip()
+                self.cache.put(
+                    "deep-search",
+                    query,
+                    answer,
+                    variant=str(limit),
+                    ttl_seconds=cache_ttl,
+                )
+                print(" [WEB CACHE] Saved deep-research answer locally.")
+                return answer
 
         except Exception:
             pass
