@@ -47,27 +47,19 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertIn('"chrome": "com.android.chrome"', handler)
         self.assertIn('candidates = candidates or (tuple(_resolve_app(app_text, explicit)) or None)', handler)
 
-    def test_cli_prompt_supports_editing_keys_without_stdin_readline(self):
+    def test_cli_prompt_uses_native_readline_input(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         source = (root / "jarvis.py").read_text(encoding="utf-8")
         start = source.index("def read_prompt():")
         end = source.index("# MAIN (plain terminal CLI)", start)
         prompt_reader = source[start:end]
-        self.assertIn("tty.setraw(fd)", prompt_reader)
-        self.assertIn('seq in (b"[D", b"OD")', prompt_reader)
-        self.assertIn('seq == b"[3~"', prompt_reader)
+        self.assertIn('input("YOU  > ")', prompt_reader)
+        self.assertIn("_show_whatsapp_review_events()", prompt_reader)
+        self.assertIn("voice_command_queue.get_nowait()", prompt_reader)
+        self.assertIn("pop_notification()", prompt_reader)
+        self.assertNotIn("tty.setraw", prompt_reader)
+        self.assertNotIn("os.read(fd", prompt_reader)
 
-        # Ensure terminal control sequences are interpreted escapes, not printed literally.
-        module = ast.parse(prompt_reader)
-        function = next(node for node in module.body if isinstance(node, ast.FunctionDef))
-        constants = [node.value for node in ast.walk(function) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
-        self.assertTrue(any("\r\x1b[2K" in value for value in constants))
-        if function.body and isinstance(function.body[0], ast.Expr) and isinstance(
-            function.body[0].value, ast.Constant
-        ) and isinstance(function.body[0].value.value, str):
-            function.body.pop(0)
-        executable_code = ast.unparse(function)
-        self.assertNotIn("sys.stdin.readline()", executable_code)
 
 
 class AppAliasTests(unittest.TestCase):
