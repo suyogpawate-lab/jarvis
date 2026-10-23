@@ -16,6 +16,7 @@ _proc = None
 _generation = 0
 _synth = None
 _lib = None
+_runtime_lib = None
 
 
 class _AudioChunk(ctypes.Structure):
@@ -46,7 +47,7 @@ def _settings():
 
 
 def _load():
-    global _lib, _synth
+    global _lib, _synth, _runtime_lib
     if _synth:
         return _lib, _synth
     cfg = _settings()
@@ -56,6 +57,11 @@ def _load():
     if not cfg["espeak"].is_dir():
         raise RuntimeError(f"eSpeak NG data directory not found: {cfg['espeak']}")
     try:
+        # Some Termux Piper packages ship a private ONNX Runtime beside libpiper.so.
+        # Load that copy first without touching $PREFIX/lib.
+        private_runtime = cfg["library"].parent / "libonnxruntime.so"
+        if private_runtime.is_file():
+            _runtime_lib = ctypes.CDLL(str(private_runtime), mode=ctypes.RTLD_GLOBAL)
         lib = ctypes.CDLL(str(cfg["library"]))
         lib.piper_create.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
         lib.piper_create.restype = ctypes.c_void_p
