@@ -637,7 +637,6 @@ def handle_local_android_command(prompt):
     # Never fuzzy-match a normal sentence to an installed app.
     if candidates is None and re.fullmatch(r"[a-z0-9][a-z0-9 ._-]{0,39}", app_text):
         packages = _android_package_ids()
-        slug = app_text.replace(" ", "").replace("-", "").replace("_", "")
         from android.app_aliases import resolve_installed_packages
         matches = resolve_installed_packages(app_text, packages)
         if len(matches) == 1:
@@ -855,7 +854,7 @@ def handle_prompt(prompt):
             return None, False
 
     except Exception as exc:
-        print(f"\n[DISPATCH ERROR] {exc}\n")
+        print(f"\n[DISPATCH WARN] {type(exc).__name__}: {exc}; trying core fallback.\n", flush=True)
 
     # ----------------------------------------------------------
     # Fallback: plain JARVIS with memory context
