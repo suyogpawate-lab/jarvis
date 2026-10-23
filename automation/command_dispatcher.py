@@ -1428,7 +1428,7 @@ Rules:
         original_text = text
 
         # Explicit task plans are handled locally before any AI fallback.
-        if re.match(r"^/task(?:\\s|$)", text, re.IGNORECASE):
+        if re.match(r"^/task(?:\s|$)", text, re.IGNORECASE):
             return self.task_executor.handle(text)
 
         # Keep explicit local diagnostics out of the AI fallback path.
