@@ -693,8 +693,23 @@ def handle_local_android_command(prompt):
     app_text = re.sub(r"\s+app$", "", app_text)
     explicit = bool(re.match(r"^(?:open|launch|start|run)\s+", text))
     candidates = None
+    # Deterministic fallbacks for common apps when Android package enumeration
+    # is unavailable in Termux and installed_apps.json is stale or missing.
+    built_in_packages = {
+        "whatsapp": "com.whatsapp",
+        "whatsapp messenger": "com.whatsapp",
+        "wa": "com.whatsapp",
+        "chrome": "com.android.chrome",
+        "google chrome": "com.android.chrome",
+        "youtube": "com.google.android.youtube",
+        "gmail": "com.google.android.gm",
+        "google maps": "com.google.android.apps.maps",
+        "maps": "com.google.android.apps.maps",
+    }
+    if explicit:
+        candidates = (built_in_packages.get(_norm(app_text)),) if _norm(app_text) in built_in_packages else None
     if re.fullmatch(r"[a-z0-9][a-z0-9 ._-]{0,39}", app_text):
-        candidates = tuple(_resolve_app(app_text, explicit)) or None
+        candidates = candidates or (tuple(_resolve_app(app_text, explicit)) or None)
         if candidates is None and explicit and len(_norm(app_text)) >= 3:
             q = _norm(app_text)
             many = [a["name"] for a in _load_apps() if a.get("launchable") is not False and q in _norm(a["name"])]
