@@ -51,7 +51,7 @@ python setup.py --status
 | `keys` | Groq, Gemini, Anthropic and OmniRoute provider settings. Optional search/lookup keys include Brave, Bing and Veriphone. |
 | `gmail` | Gmail account(s) and a Google [App Password](https://myaccount.google.com/apppasswords), not your normal account password. Enable 2-Step Verification and ensure IMAP access is available. |
 | `whatsapp` | Link WhatsApp with a pairing code or QR code. Pairing code is convenient when WhatsApp is on the same phone. |
-| `contacts` | Optionally sync Android contacts and maintain a priority-people list. Android may ask for permission. |
+| `contacts` | Optionally sync Android contacts and maintain a priority-people list. Android may ask for permission. |\n| `voice` | Select Edge TTS or configure local Piper library/model paths. You can change this later with `./voice-config`. |
 
 Press Enter to keep existing values or skip optional questions. Completed sections are saved as you go.
 
@@ -267,7 +267,23 @@ bash install.sh --with-voice
 
 This installs OpenWakeWord dependencies and downloads the ARM64 Needle runner and `whistle.cact` model; it no longer builds Whisper.cpp or downloads the Whisper tiny model. Python audio dependencies may still be incompatible with some Android/Termux environments. Grant microphone permission and confirm that the microphone backend works. JARVIS may disable voice input when its listener or model is unavailable. Speech output uses the configured TTS path and may require network access depending on the provider.
 
-The acoustic wake phrase is **“Hey Jarvis”**. After the first recognized command, voice input enters continuous-conversation mode: follow-up speech is captured without another wake phrase, and JARVIS returns to wake-word standby after 20 seconds of inactivity by default. Say **“Goodbye Jarvis”** to end the conversation immediately. Configure the idle window with `JARVIS_CONVERSATION_TIMEOUT` (seconds; minimum 5). JARVIS's own TTS playback keeps the conversation active and is muted from input capture. The detector consumes 16 kHz mono signed 16-bit PCM frames; Whistle transcribes each utterance after a pause. Run these checks from `~/jarvis`:
+
+
+### Speech output providers and low-latency chunking
+
+JARVIS keeps Edge TTS as the default and supports Piper as an optional local provider. Choose during setup or change later:
+
+\`\`\`bash
+./voice-config
+python setup.py voice
+\`\`\`
+
+Choose **Edge** for the existing network-based en-GB-RyanNeural voice. Choose **Piper** to use a compatible local Piper C API library, an ONNX voice model and its matching JSON config. The installer does not overwrite Termux shared ONNX Runtime libraries and does not download or install an unverified Piper binary/model. Install a compatible Piper build and voice model separately, then enter their paths when prompted.
+
+Long answers are split at sentence-ending punctuation and queued in order, so JARVIS can start speaking the first sentence while later sentences remain queued. Very long sentences are further split at punctuation and then word boundaries. Common abbreviations and decimal numbers are protected where practical. A new response interrupts current playback and discards queued chunks. Piper is local after model load; first use may take longer while the model initializes. If Piper native-library compatibility fails, switch back with ./voice-config and select Edge.
+
+The provider and local model paths are stored in the git-ignored .env file. Supported settings include JARVIS_TTS_PROVIDER=edge or piper, JARVIS_PIPER_LIBRARY, JARVIS_PIPER_MODEL, JARVIS_PIPER_CONFIG and JARVIS_ESPEAK_DATA. Do not commit model files or private runtime libraries.
+\nThe acoustic wake phrase is **“Hey Jarvis”**. After the first recognized command, voice input enters continuous-conversation mode: follow-up speech is captured without another wake phrase, and JARVIS returns to wake-word standby after 20 seconds of inactivity by default. Say **“Goodbye Jarvis”** to end the conversation immediately. Configure the idle window with `JARVIS_CONVERSATION_TIMEOUT` (seconds; minimum 5). JARVIS's own TTS playback keeps the conversation active and is muted from input capture. The detector consumes 16 kHz mono signed 16-bit PCM frames; Whistle transcribes each utterance after a pause. Run these checks from `~/jarvis`:
 
 ```bash
 python scripts/test_voice.py imports
