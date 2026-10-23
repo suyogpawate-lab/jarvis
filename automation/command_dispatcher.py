@@ -1432,7 +1432,7 @@ Rules:
         original_text = text
 
         # Explicit local diagnostics must be handled before any AI route.
-        if re.fullmatch(r"/doctor\\s*", text, re.IGNORECASE):
+        if re.fullmatch(r"/doctor\s*", text, re.IGNORECASE):
             return self.execute_one("doctor", "")
 
         # ======================================================
