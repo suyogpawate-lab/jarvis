@@ -1242,7 +1242,9 @@ def read_prompt():
                 sequence = bytearray()
                 while select.select([sys.stdin], [], [], 0.025)[0]:
                     sequence.extend(os.read(fd, 1))
-                    if sequence and sequence[-1] in range(0x40, 0x7f):
+                    # The first byte is normally '[' or 'O'; only a later
+                    # byte in the ANSI final-byte range ends the sequence.
+                    if len(sequence) >= 2 and sequence[-1] in range(0x40, 0x7f):
                         break
                     if len(sequence) >= 8:
                         break
