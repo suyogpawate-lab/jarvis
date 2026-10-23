@@ -167,7 +167,7 @@ def test_wakeword(duration=15):
         print("    Check the openwakeword model assets and installed ONNX/TFLite runtime.")
         return False
 
-    threshold = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.50"))
+    threshold = float(os.getenv("JARVIS_WAKE_THRESHOLD", "0.40"))
     print(f"  Say “Hey Jarvis” clearly within {duration} seconds (threshold {threshold:.2f}).")
     max_score = 0.0
     try:
