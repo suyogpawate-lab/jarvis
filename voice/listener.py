@@ -332,6 +332,8 @@ class WhistleWakeListener:
                                 play_random_wake_response()
                             except Exception as exc:
                                 self._log(f"[VOICE] Wake acknowledgement unavailable: {exc}", flush=True)
+                            # Drain playback echo/buffered mic audio before recording the command.
+                            mute_until = time.time() + 0.8
                             capturing = True
                             command_frames = list(preroll)
                             speech_started = False
