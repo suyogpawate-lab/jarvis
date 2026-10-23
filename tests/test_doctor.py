@@ -28,11 +28,11 @@ class DoctorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / ".env").write_text("GROQ_API_KEY=secret-value\nOMNIROUTE_BASE_URL=http://127.0.0.1:20128/v1\n", encoding="utf-8")
-            with patch("monitoring.doctor.ROOT", root), \\
-                 patch.dict("os.environ", {}, clear=True), \\
-                 patch("monitoring.doctor._tcp_check", return_value=False), \\
-                 patch("monitoring.doctor.shutil.disk_usage", side_effect=OSError), \\
-                 patch("monitoring.doctor._memory_summary", return_value="unavailable"), \\
+            with patch("monitoring.doctor.ROOT", root), \
+                 patch.dict("os.environ", {}, clear=True), \
+                 patch("monitoring.doctor._tcp_check", return_value=False), \
+                 patch("monitoring.doctor.shutil.disk_usage", side_effect=OSError), \
+                 patch("monitoring.doctor._memory_summary", return_value="unavailable"), \
                  patch("monitoring.doctor.shutil.which", return_value=None):
                 report = format_report(collect_checks())
         self.assertIn("configured: Groq, OmniRoute", report)
