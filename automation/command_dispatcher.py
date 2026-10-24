@@ -31,6 +31,7 @@ from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
+from automation.skill_forge import SkillForge
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
@@ -118,6 +119,7 @@ class CommandDispatcher:
 
         # Explicit multi-step plans use the same dispatcher for every step.
         self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step, source="agent_step"))
+        self.skill_forge = SkillForge(self.task_executor)
 
         # Coordinate existing providers, persisted workflows, and read-only health checks.
         self.health_manager = HealthManager()
@@ -1452,6 +1454,9 @@ Rules:
         original_text = text
 
         # Explicit agent/task/health controls are deterministic and never sent to AI.
+        if re.match(r"^/skill(?:\\s|$)", text, re.IGNORECASE):
+            return self.skill_forge.handle(text, source=source)
+
         if re.match(r"^/agent(?:\s|$)", text, re.IGNORECASE):
             return self.agent_engine.handle(text, source=source)
 
