@@ -56,7 +56,7 @@ class GroqRetryTests(unittest.TestCase):
         limited.json.return_value = {
             "error": {"message": "tokens per minute limit"}
         }
-        with patch("agents.fast_agent.requests.post", return_value=limited) as post, \\
+        with patch("agents.fast_agent.requests.post", return_value=limited) as post, \
              patch("time.sleep") as sleep:
             result = agent._groq_post({"model": "test-model", "messages": []})
         self.assertEqual(result.status_code, 429)
