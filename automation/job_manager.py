@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import subprocess
+import shlex
 import time
 import uuid
 
@@ -78,26 +79,17 @@ class JobManager:
         running = bool(state) and not state.startswith("Z")
 
         if job["status"] == "RUNNING" and not running:
-            stderr = ""
-
+            exit_code = None
             try:
-                if os.path.exists(job["stderr_file"]):
-                    with open(
-                        job["stderr_file"],
-                        "r",
-                        encoding="utf-8",
-                        errors="replace",
-                    ) as f:
-                        stderr = f.read().strip()
-            except Exception:
+                with open(job["exit_code_file"], "r", encoding="ascii") as stream:
+                    exit_code = int(stream.read().strip())
+            except (OSError, ValueError, TypeError):
+                # Missing status must never be interpreted as successful.
                 pass
-
-            job["status"] = (
-                "FAILED"
-                if stderr
-                else "DONE"
-            )
-
+            job["exit_code"] = exit_code
+            job["status"] = "DONE" if exit_code == 0 else "FAILED"
+            if exit_code is None:
+                job["error"] = "Process ended without a recorded exit status."
             job["finished_at"] = time.time()
             self._save(job)
 
@@ -133,6 +125,13 @@ class JobManager:
                 f"{job_id}.stderr",
             )
         )
+        exit_code_file = os.path.abspath(os.path.join(self.base_dir, f"{job_id}.exit"))
+        wrapped_command = (
+            f"({command})\n"
+            f"__jarvis_status=$?\n"
+            f"printf '%s' \"$__jarvis_status\" > {shlex.quote(exit_code_file)}\n"
+            f"exit \"$__jarvis_status\""
+        )
 
         try:
             stdout = open(
@@ -148,7 +147,7 @@ class JobManager:
             )
 
             process = subprocess.Popen(
-                command,
+                wrapped_command,
                 shell=True,
                 executable=TERMUX_BASH,
                 cwd=cwd or os.getcwd(),
@@ -176,6 +175,8 @@ class JobManager:
             "finished_at": None,
             "stdout_file": stdout_file,
             "stderr_file": stderr_file,
+            "exit_code_file": exit_code_file,
+            "exit_code": None,
         }
 
         self._save(job)
