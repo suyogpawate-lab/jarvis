@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 from android.command_guard import authorize_command_once, requires_approval, revoke_command_authorization
+from automation.agent_runtime import ExecutionRuntime
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,6 +51,8 @@ class TaskExecutor:
         self.task_dir = Path(task_dir) if task_dir is not None else DEFAULT_TASK_DIR
         self.max_steps = max(1, min(int(max_steps), MAX_STEPS))
         self.task_dir.mkdir(parents=True, exist_ok=True)
+        # Durable audit events and conservative retries for read-only transient failures.
+        self.runtime = ExecutionRuntime(dispatch, journal_path=self.task_dir / "agent_events.jsonl")
 
     def _path(self, task_id: str) -> Path:
         if not re.fullmatch(r"task-[0-9a-f]{8}", str(task_id or "")):
@@ -191,7 +194,7 @@ class TaskExecutor:
                 if task_approved:
                     authorize_command_once(step["command"])
                 try:
-                    result = self.dispatch(step["command"])
+                    result = self.runtime.execute(task["id"], step)
                 finally:
                     if task_approved:
                         revoke_command_authorization(step["command"])
