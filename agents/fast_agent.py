@@ -2747,21 +2747,21 @@ class FastAgent:
         for marker in ("CURRENT USER MESSAGE:", "CURRENT USER REQUEST:"):
             if marker in text:
                 text = text.rsplit(marker, 1)[1].strip()
-        if not text or len(text) > 240 or "\\n" in text:
+        if not text or len(text) > 240 or "\n" in text:
             return None
         low = " ".join(text.lower().split())
         if re.search(
-            r"\\b(?:send|message|whatsapp|email|call|execute|run|terminal|shell|termux|"
+            r"\b(?:send|message|whatsapp|email|call|execute|run|terminal|shell|termux|"
             r"install|uninstall|delete|remove|create|edit|modify|fix|debug|inspect|"
-            r"search|look\\s+up|latest|today|tonight|current|right\\s+now|"
+            r"search|look\s+up|latest|today|tonight|current|right\s+now|"
             r"alarm|timer|file|files|code|repository|repo|project|github|website|"
-            r"web|internet|battery|storage|wifi|wi-fi|notifications?|launch|open\\s+app)\\b",
+            r"web|internet|battery|storage|wifi|wi-fi|notifications?|launch|open\s+app)\b",
             low,
         ):
             return None
         if not re.match(
-            r"^(?:what|who|where|when|which|is|are|can|does|do|define|meaning\\s+of|"
-            r"translate|summari[sz]e|explain)\\b",
+            r"^(?:what|who|where|when|which|is|are|can|does|do|define|meaning\s+of|"
+            r"translate|summari[sz]e|explain)\b",
             low,
         ):
             return None
