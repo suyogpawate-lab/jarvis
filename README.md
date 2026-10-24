@@ -383,7 +383,7 @@ The repository is organized as a Python application with optional Android/Termux
 | `jarvis_bridge.py`, `jarvis_web.py`, `web/`, `web-ip.py` | Additional bridge/web entry points and web assets; these are separate from the default terminal workflow. |
 | `osint/` | Pluggable OSINT adapters, registry/team orchestration, and result formatting. Optional dependencies are listed separately. |
 | `workers/` | Worker registry and adapters for supported external/local coding or task workers, including OpenCode and OWL integration points. |
-| `tools/` | Tool registry, skill loading, progress reporting, and MCP client integration. |
+| `tools/` | Tool registry with argument-contract validation, skill loading, progress reporting, and MCP client integration. |
 | `skills/` | Bundled operational and interface-design skill instructions. |
 | `scripts/` | Voice test, app-inventory capture, and publishing checks. |
 | `install.sh`, `setup.py`, `jarvis_env.py` | Termux installation, guided configuration, and environment loading. |
