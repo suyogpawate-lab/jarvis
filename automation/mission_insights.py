@@ -161,8 +161,12 @@ class MissionInsights:
         for score, task in matches[:limit]:
             lines.append(f"- {task.get('id')} [{task.get('status', 'UNKNOWN')}] score={score}: {_clean(task.get('goal'), 180)}")
             for step in self._steps(task):
-                if any(term in str(step.get("command") or "").lower() for term in terms):
-                    lines.append(f"  Step {step.get('number', '?')} [{step.get('status', 'UNKNOWN')}]: {_clean(step.get('command'), 160)}")
+                command = str(step.get("command") or "")
+                result = str(step.get("result") or "")
+                if any(term in command.lower() or term in result.lower() for term in terms):
+                    lines.append(f"  Step {step.get('number', '?')} [{step.get('status', 'UNKNOWN')}]: {_clean(command, 160)}")
+                    if result:
+                        lines.append(f"  Result: {_clean(result, 220)}")
                     break
         lines.append("Recall reports past records only; it does not rerun a workflow.")
         return "\n".join(lines)
