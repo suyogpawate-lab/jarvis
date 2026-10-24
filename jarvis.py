@@ -1134,6 +1134,11 @@ def _show_whatsapp_review_events():
             print(f"  Draft {index}: {draft}")
         print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2")
 
+def is_float_mode():
+    """True when launched through the compact Termux:Float entry point."""
+    return os.environ.get("JARVIS_FLOAT_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 _cli_prompt_session = PromptSession()
 _cli_pending_text = ""
 
@@ -1154,7 +1159,10 @@ async def _read_prompt_async():
     global _cli_pending_text
     with patch_stdout():
         prompt_task = asyncio.create_task(
-            _cli_prompt_session.prompt_async("YOU  > ", default=_cli_pending_text)
+            _cli_prompt_session.prompt_async(
+                "J> " if is_float_mode() else "YOU  > ",
+                default=_cli_pending_text,
+            )
         )
         _cli_pending_text = ""
 
@@ -1217,17 +1225,23 @@ def main():
 
     init_services()
 
-    try:
-        import jarvis_ui, jarvis_web
-        url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
-        if url:
-            print(f"Web UI: {url}")
-    except Exception as exc:
-        print(f"[WEB UI DISABLED] {exc}")
+    if is_float_mode():
+        # Termux:Float is a small terminal surface; keep the CLI compact and
+        # avoid starting the separate Rich full-screen UI/web companion.
+        print("JARVIS FLOAT ONLINE")
+        print("Commands: /memory | exit")
+    else:
+        try:
+            import jarvis_ui, jarvis_web
+            url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
+            if url:
+                print(f"Web UI: {url}")
+        except Exception as exc:
+            print(f"[WEB UI DISABLED] {exc}")
 
-    print("JARVIS ONLINE")
-    print("Type '/memory' to inspect memory.")
-    print("Type 'exit' to quit.")
+        print("JARVIS ONLINE")
+        print("Type '/memory' to inspect memory.")
+        print("Type 'exit' to quit.")
     print()
 
     while True:
