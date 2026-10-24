@@ -4,6 +4,7 @@ import os
 import requests
 
 from messaging.whatsapp_manager import WhatsAppManager
+from messaging.style_profile import style_instructions
 
 
 class GroqAgent:
@@ -140,7 +141,7 @@ class GroqAgent:
                     "When the user asks to contact someone, use the tool. "
                     "Infer natural message wording from the user's intent. "
                     "Do not claim success unless the tool confirms success. "
-                    "Keep the final response extremely concise."
+                    "Keep the final response extremely concise. " + style_instructions("outbound")
                 ),
             },
             {
