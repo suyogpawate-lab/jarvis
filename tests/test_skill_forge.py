@@ -1,4 +1,5 @@
 """Regression tests for reusable local JARVIS skills."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,6 +32,8 @@ class SkillForgeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.executor = FakeTaskExecutor()
+        self.executor.task_dir = Path(self.temp.name) / "tasks"
+        self.executor.task_dir.mkdir(parents=True, exist_ok=True)
         self.forge = SkillForge(self.executor, Path(self.temp.name) / "skills")
         self.executor.tasks["task-1234abcd"] = {
             "id": "task-1234abcd",
@@ -77,6 +80,25 @@ class SkillForgeTests(unittest.TestCase):
         }
         result = self.forge.save_completed_task("task-87654321", "nested")
         self.assertIn("invalid or nested", result)
+
+    def test_existing_skill_is_not_silently_overwritten(self):
+        self.forge.save_completed_task("task-1234abcd", "device-check")
+        result = self.forge.save_completed_task("task-1234abcd", "device-check")
+        self.assertIn("Skill already exists", result)
+
+    def test_suggest_finds_repeated_completed_workflows_locally(self):
+        for task_id in ("task-aaaaaaaa", "task-bbbbbbbb"):
+            payload = {
+                "id": task_id,
+                "status": "COMPLETED",
+                "steps": [{"command": "show battery status"}],
+            }
+            (self.executor.task_dir / f"{task_id}.json").write_text(
+                json.dumps(payload), encoding="utf-8"
+            )
+        result = self.forge.handle("/skill suggest")
+        self.assertIn("repeated 2 times", result)
+        self.assertIn("/skill save task-", result)
 
     def test_invalid_skill_names_are_rejected(self):
         result = self.forge.save_completed_task("task-1234abcd", "../../unsafe")
