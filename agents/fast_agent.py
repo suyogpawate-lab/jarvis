@@ -490,7 +490,7 @@ class FastAgent:
         """
         import time
 
-        max_wait = float(os.getenv("JARVIS_GROQ_MAX_WAIT", "20"))
+        max_wait = float(os.getenv("JARVIS_GROQ_MAX_WAIT", "45"))
         total = len(self.api_keys)
         if total == 0:
             raise RuntimeError("No Groq API keys configured.")
@@ -2739,8 +2739,14 @@ class FastAgent:
 
     @staticmethod
     def _is_complex_shell_project(prompt):
-        """Detect substantial local engineering/project work for Gemini planning."""
-        text = " ".join(str(prompt).lower().split())
+        """Detect substantial engineering work from the current user message only."""
+        raw = str(prompt or "")
+        # The conversation wrapper may contain older project requests. Never let
+        # those historical words turn a simple current message into a Gemini plan.
+        marker = "CURRENT USER MESSAGE:"
+        if marker in raw:
+            raw = raw.split(marker, 1)[1].split("\\n", 1)[0]
+        text = " ".join(raw.lower().split())
         project_cues = re.search(
             r"\b(project|repository|repo|codebase|code base|implement|refactor|"
             r"debug|fix all|multiple files|across files|build a feature|"
