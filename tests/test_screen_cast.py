@@ -40,8 +40,9 @@ class ScreenCastReceiverTests(unittest.TestCase):
                 self.parts = [b"\x00", b"\x00\x00", b"\x03", b"abc"]
             def recv(self, count):
                 return self.parts.pop(0) if self.parts else b""
-        self.assertEqual(ScreenCastReceiver._read_exact(FakeSocket(), 4), b"\x00\x00\x00\x03")
-        self.assertEqual(ScreenCastReceiver._read_exact(FakeSocket(), 3), b"abc")
+        fake = FakeSocket()
+        self.assertEqual(ScreenCastReceiver._read_exact(fake, 4), b"\x00\x00\x00\x03")
+        self.assertEqual(ScreenCastReceiver._read_exact(fake, 3), b"abc")
 
 
 if __name__ == "__main__":
