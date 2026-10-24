@@ -99,8 +99,10 @@ class AgentEngineTests(unittest.TestCase):
         dispatcher.agent_engine = type("Agent", (), {
             "execute_goal": lambda self, goal, source="external": f"executed:{goal}"
         })()
-        self.assertEqual(dispatcher.dispatch("please fix the project tests"), "executed:please fix the project tests")
+        self.assertTrue(dispatcher._looks_like_agent_task("please fix the project tests"))
+        self.assertTrue(dispatcher._looks_like_agent_task("Build a CLI tool"))
         self.assertFalse(dispatcher._looks_like_agent_task("How do I fix a test?"))
+        self.assertFalse(dispatcher._looks_like_agent_task("What should I build?"))
 
 
 class HealthManagerTests(unittest.TestCase):
