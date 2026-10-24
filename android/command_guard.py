@@ -131,6 +131,12 @@ def _consume_authorization(digest):
         return True
 
 
+def revoke_command_authorization(command):
+    """Remove an unused one-shot authorization after its dispatch attempt."""
+    with _authorized_lock:
+        _authorized_once.discard(_hash(str(command).strip()))
+
+
 def check(command, kind="shell"):
     """Return None if the command may run, otherwise a message to show instead."""
     if _policy() == "off":
