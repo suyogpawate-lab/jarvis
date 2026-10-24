@@ -489,17 +489,15 @@ class FastAgent:
         conversation (which used to re-run tools). Returns the last Response;
         the caller checks status_code.
         """
-        import time
-
-        max_wait = float(os.getenv("JARVIS_GROQ_MAX_WAIT", "45"))
         total = len(self.api_keys)
         if total == 0:
             raise RuntimeError("No Groq API keys configured.")
 
         last = None
-        for sweep in range(2):
-            waits = []
-            for offset in range(total):
+        # One bounded sweep per model request. If all keys are rate-limited,
+        # return the last 429 immediately instead of sleeping and retrying the
+        # same prompt (which can stall simple commands for 30-60 seconds).
+        for offset in range(total):
                 index = (self.current_key_index + offset) % total
                 key = self.api_keys[index]
                 if not key:
@@ -522,9 +520,37 @@ class FastAgent:
                     self.current_key_index = index
                     if os.getenv("JARVIS_DEBUG_TOKENS") == "1":
                         try:
-                            print(f" [tokens] {response.json().get('usage')}")
-                        except Exception:
-                            pass
+                            usage = response.json().get("usage") or {}
+                            messages = payload.get("messages") or []
+                            system_chars = sum(
+                                len(str(m.get("content", "")))
+                                for m in messages if m.get("role") == "system"
+                            )
+                            user_chars = sum(
+                                len(str(m.get("content", "")))
+                                for m in messages if m.get("role") == "user"
+                            )
+                            tool_chars = sum(
+                                len(str(m.get("content", "")))
+                                for m in messages if m.get("role") == "tool"
+                            )
+                            tool_rounds = sum(
+                                1 for m in messages if m.get("role") == "tool"
+                            )
+                            phase = "tool-follow-up" if tool_rounds else "initial/final"
+                            print(
+                                "[TOKEN AUDIT] "
+                                f"phase={phase} model={payload.get('model', self.model)} "
+                                f"prompt={usage.get('prompt_tokens', '?')} "
+                                f"completion={usage.get('completion_tokens', '?')} "
+                                f"total={usage.get('total_tokens', '?')} "
+                                f"messages={len(messages)} tools={len(payload.get('tools') or [])} "
+                                f"system_chars={system_chars} user_chars={user_chars} "
+                                f"tool_result_chars={tool_chars}",
+                                flush=True,
+                            )
+                        except Exception as audit_exc:
+                            print(f"[TOKEN AUDIT] usage unavailable: {type(audit_exc).__name__}", flush=True)
                     return response
 
                 last = response
@@ -532,8 +558,6 @@ class FastAgent:
 
                 if code == 429:
                     wait, kind = self._groq_rate_info(response)
-                    if kind != "daily limit":  # a daily limit will not clear in seconds
-                        waits.append(wait)
                     print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
                     continue
                 if code in (401, 403):
@@ -545,12 +569,6 @@ class FastAgent:
                 # 400/413/other: the request itself is the problem; more keys won't help.
                 return response
 
-            if sweep == 0 and waits and min(waits) <= max_wait:
-                delay = min(waits) + 0.5
-                print(f" All Groq keys are rate limited; waiting {delay:.0f}s, then retrying...")
-                progress.emit(f"   \u21b3 waiting {delay:.0f}s for the Groq rate limit, then continuing")
-                time.sleep(delay)
-                continue
             break
 
         if last is None:
