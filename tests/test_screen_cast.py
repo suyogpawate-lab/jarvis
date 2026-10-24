@@ -22,6 +22,20 @@ class ScreenCastReceiverTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ScreenCastReceiver().control({"action": "unsupported"})
 
+    def test_snapshot_action_is_allowed_and_forwarded(self):
+        fake = MagicMock()
+        fake.__enter__.return_value = fake
+        fake.recv.side_effect = [b'{"ok":true,"type":"screen_accessibility","elements":[]}\\n']
+        with patch("screen_cast.receiver.socket.create_connection", return_value=fake):
+            result = ScreenCastReceiver().control({"action": "snapshot"})
+        self.assertTrue(result["ok"])
+        payload = json.loads(fake.sendall.call_args.args[0].decode().strip())
+        self.assertEqual(payload["action"], "snapshot")
+
+    def test_click_element_index_is_validated(self):
+        with self.assertRaises(ValueError):
+            ScreenCastReceiver().control({"action": "click_element", "element_index": 250})
+
     def test_swipe_duration_is_bounded(self):
         fake = MagicMock()
         fake.__enter__.return_value = fake
