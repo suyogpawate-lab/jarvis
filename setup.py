@@ -772,6 +772,34 @@ def step_wake(env):
         warn(f"Clip generation exited with status {result.returncode}. Run later: python setup.py wake")
 
 
+# ───────────────────────── message style profile ─────────────────────────
+
+def step_message_style(env):
+    heading("Message style and language")
+    info("Applies to WhatsApp drafts and auto-replies. Context can override the saved default.")
+    current_style = (env.get("JARVIS_MESSAGE_STYLE", "mirror") or "mirror").strip().lower()
+    if current_style not in {"mirror", "casual", "genz", "friendly", "formal"}:
+        current_style = "mirror"
+    print("  1) Mirror my normal wording (default)")
+    print("  2) Casual")
+    print("  3) Gen Z / slang-friendly")
+    print("  4) Friendly")
+    print("  5) Formal")
+    defaults = {"mirror": "1", "casual": "2", "genz": "3", "friendly": "4", "formal": "5"}
+    choice = ask("Default message style", default=defaults[current_style])
+    styles = {"1": "mirror", "2": "casual", "3": "genz", "4": "friendly", "5": "formal",
+              "mirror": "mirror", "casual": "casual", "genz": "genz", "friendly": "friendly", "formal": "formal"}
+    env.set("JARVIS_MESSAGE_STYLE", styles.get(choice.lower(), current_style))
+    language = ask("Preferred messaging language (match, English, Hinglish, Hindi, etc.)",
+                   default=env.get("JARVIS_MESSAGE_LANGUAGE", "match"))
+    env.set("JARVIS_MESSAGE_LANGUAGE", language[:40] or "match")
+    examples = ask("Your style examples (optional; e.g. damnnn, gng)", default=env.get("JARVIS_MESSAGE_EXAMPLES", ""))
+    env.set("JARVIS_MESSAGE_EXAMPLES", examples[:500])
+    env.save()
+    ok("Message style saved.")
+    info("Formal/professional requests and serious contexts override casual slang automatically.")
+
+
 # ───────────────────────────── status ─────────────────────────────
 
 def have_module(name):
@@ -846,6 +874,7 @@ STEPS = {
     "apps": step_apps,
     "voice": step_voice,
     "wake": step_wake,
+    "message_style": step_message_style,
 }
 
 
@@ -890,7 +919,7 @@ def main():
     show_status()
     print()
     info("Start JARVIS:   python jarvis_ui.py")
-    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps|voice|wake>")
+    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps|voice|wake|message_style>")
     return 0
 
 
