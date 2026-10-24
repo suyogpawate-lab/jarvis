@@ -42,6 +42,37 @@ class LocalCodeInspectionTests(unittest.TestCase):
         self.dispatcher.fast_agent._groq_post.assert_not_called()
 
 
+class SimpleQuestionRoutingTests(unittest.TestCase):
+    def test_short_factual_question_is_routed_without_tools(self):
+        self.assertEqual(
+            FastAgent._simple_direct_request("What is an X-Token?"),
+            "What is an X-Token?",
+        )
+        self.assertIsNone(
+            FastAgent._simple_direct_request("Send a WhatsApp message to Alex"),
+        )
+        self.assertIsNone(
+            FastAgent._simple_direct_request("Inspect jarvis_http_bridge.py"),
+        )
+
+    def test_simple_answer_payload_omits_tool_schemas_and_skill_index(self):
+        agent = object.__new__(FastAgent)
+        agent.model = "test-model"
+        agent._jarvis_base_system_prompt = Mock(return_value="compact system prompt")
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": "It authenticates a request."}}]
+        }
+        agent._groq_post = Mock(return_value=response)
+        result = agent._answer_simple_direct("What is an X-Token?")
+        self.assertEqual(result, "It authenticates a request.")
+        payload = agent._groq_post.call_args.args[0]
+        self.assertNotIn("tools", payload)
+        self.assertEqual(payload["max_tokens"], 256)
+        self.assertEqual(payload["messages"][0]["content"], "compact system prompt")
+
+
 class GroqRetryTests(unittest.TestCase):
     def test_rate_limited_keys_are_checked_once_without_sleeping(self):
         agent = object.__new__(FastAgent)
