@@ -120,8 +120,13 @@ class MCPServer:
 
     def _send(self, message):
         with self._write_lock:
-            self.proc.stdin.write(json.dumps(message) + "\n")
-            self.proc.stdin.flush()
+            if self.proc is None or self.proc.poll() is not None or self.proc.stdin is None:
+                raise MCPError(f"MCP server {self.name!r} is not running")
+            try:
+                self.proc.stdin.write(json.dumps(message) + "\n")
+                self.proc.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                raise MCPError(f"MCP server {self.name!r} transport closed: {exc}") from exc
 
     def _read_loop(self):
         try:
@@ -178,9 +183,14 @@ class MCPServer:
         with self._pending_lock:
             self._pending[request_id] = waiter
 
-        self._send(
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
-        )
+        try:
+            self._send(
+                {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
+            )
+        except Exception:
+            with self._pending_lock:
+                self._pending.pop(request_id, None)
+            raise
 
         try:
             message = waiter.get(timeout=timeout)
