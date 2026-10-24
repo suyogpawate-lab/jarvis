@@ -348,6 +348,30 @@ The `/screen` routes accept screen-layout data for integrations. Do not expose t
 - `omni` starts the OmniRoute daemon, which prints its API base URL (`http://127.0.0.1:20128`). JARVIS provider configuration uses `OMNIROUTE_BASE_URL` and `OMNIROUTE_API_KEY`.
 - OmniRoute is optional at runtime for some routes, but the current guided setup describes it as part of the full provider configuration. If it fails to install/start, check `omniroute.log` and verify the local endpoint before relying on it.
 
+## Skill registry (Phase 2)
+
+JARVIS now has an explicit Python skill registry for adding capabilities without
+placing every implementation in the command dispatcher.
+
+- `skills/registry.py` defines skill metadata, parameter validation, registration,
+  and permission gates.
+- `skills/builtin.py` registers initial read-only skills: `system.time` and
+  `system.telemetry`.
+- `/skills` lists the registered skills and their permission levels.
+- Skills are registered by trusted Python code; JARVIS does not import arbitrary
+  Python modules based on user input or automatically execute files discovered
+  on disk.
+- Skills marked `write` or `restricted` must require explicit approval. The
+  registry refuses to execute those skills unless the caller passes approval.
+- Add tests for new skills in `tests/test_skill_registry.py` before integrating
+  them into natural-language routing.
+
+Run the registry tests with:
+
+```bash
+python -m unittest tests.test_skill_registry -v
+```
+
 ## Project architecture and source map
 
 The repository is organized as a Python application with optional Android/Termux integrations and a small Node.js WhatsApp bridge. The main execution path is the CLI/UI or an optional local HTTP interface, which delegates requests to the shared dispatcher and its service modules.
