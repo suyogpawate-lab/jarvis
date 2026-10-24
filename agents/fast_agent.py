@@ -2756,6 +2756,8 @@ class FastAgent:
             r"search|look\s+up|latest|today|tonight|current|right\s+now|"
             r"alarm|timer|file|files|document|docs|knowledge|memory|notes?|history|"
             r"conversation|chat|mail|inbox|code|repository|repo|project|github|website|"
+            r"personal|my|me|i|we|our|you|your|previous|last|before|remember|said|mentioned|"
+            r"earlier|above|recent|just\s+now|"
             r"web|internet|device|system|ram|process|package|app|application|"
             r"battery|storage|wifi|wi-fi|notifications?|launch|open\s+app)\b",
             low,
