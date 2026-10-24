@@ -2739,6 +2739,58 @@ class FastAgent:
             timeout=30,
         )
 
+    @staticmethod
+    def _simple_direct_request(prompt):
+        """Identify short factual questions that do not need tools or project context."""
+        text = str(prompt or "").strip()
+        # Dispatcher wrappers may include memory/history; classify only the live request.
+        for marker in ("CURRENT USER MESSAGE:", "CURRENT USER REQUEST:"):
+            if marker in text:
+                text = text.rsplit(marker, 1)[1].strip()
+        if not text or len(text) > 240 or "\\n" in text:
+            return None
+        low = " ".join(text.lower().split())
+        if re.search(
+            r"\\b(?:send|message|whatsapp|email|call|execute|run|terminal|shell|termux|"
+            r"install|uninstall|delete|remove|create|edit|modify|fix|debug|inspect|"
+            r"search|look\\s+up|latest|today|tonight|current|right\\s+now|"
+            r"alarm|timer|file|files|code|repository|repo|project|github|website|"
+            r"web|internet|battery|storage|wifi|wi-fi|notifications?|launch|open\\s+app)\\b",
+            low,
+        ):
+            return None
+        if not re.match(
+            r"^(?:what|who|where|when|which|is|are|can|does|do|define|meaning\\s+of|"
+            r"translate|summari[sz]e|explain)\\b",
+            low,
+        ):
+            return None
+        return text
+
+    def _answer_simple_direct(self, prompt):
+        """One low-token Groq completion with no skill index or tool schemas."""
+        payload = {
+            "stream": False,
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": self._jarvis_base_system_prompt(),
+                },
+                {"role": "user", "content": str(prompt).strip()},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 256,
+            "reasoning_effort": "low",
+        }
+        response = self._groq_post(payload, timeout=15)
+        if response.status_code == 200:
+            try:
+                return str(response.json()["choices"][0]["message"].get("content") or "").strip()
+            except (KeyError, IndexError, TypeError, ValueError):
+                return "[ERROR] Groq returned an invalid simple-answer response."
+        return self._groq_limit_message(response)
+
     def ask(self, prompt):
         """Answer queries through the appropriate provider route."""
 
@@ -2779,6 +2831,14 @@ class FastAgent:
         shell_result = self._route_shell_request(prompt)
         if shell_result is not None:
             return shell_result
+
+        # Cheap factual questions do not need the full tool catalogue or skill index.
+        direct_question = self._simple_direct_request(prompt)
+        if direct_question is not None:
+            try:
+                return self._answer_simple_direct(direct_question)
+            except Exception as exc:
+                return f"[ERROR] Simple Groq request failed ({type(exc).__name__}: {exc})"
 
         # RAG questions go straight to Gemini; fall back to Groq if it fails.
         if self._is_rag_request(prompt):
