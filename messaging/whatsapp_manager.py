@@ -90,8 +90,27 @@ class WhatsAppManager:
                 f"Multiple contacts match '{name}'."
             )
 
+        # Permit a unique partial display-name match (e.g. "Richie" for
+        # "Richie Pawate"), but never guess when more than one contact matches.
+        partial_matches = [
+            contact
+            for contact in contacts
+            if target in self._normalize_name(contact.get("name", ""))
+            and self._normalize_number(contact.get("number", ""))
+        ]
+        if len(partial_matches) == 1:
+            return self._normalize_number(partial_matches[0]["number"])
+        if len(partial_matches) > 1:
+            names = ", ".join(
+                str(item.get("name", "")) for item in partial_matches[:5]
+            )
+            raise ValueError(
+                f"Multiple contacts partially match '{name}': {names}. "
+                "Please specify the full contact name."
+            )
+
         raise ValueError(
-            f"No exact contact found for '{name}'."
+            f"No contact found for '{name}'."
         )
 
     def resolve_group(self, name):
@@ -146,9 +165,20 @@ class WhatsAppManager:
 
         # If it isn't a contact, try an exact WhatsApp group name.
         # Group sends still pass through the confirmation gate in
-        # CommandDispatcher._whatsapp_send().
-        group = self.resolve_group(value)
-        return str(group["jid"]).strip()
+        # CommandDispatcher._whatsapp_send(). Convert bridge/server errors
+        # into a useful recipient-resolution message instead of exposing HTTP 500.
+        try:
+            group = self.resolve_group(value)
+            return str(group["jid"]).strip()
+        except requests.RequestException as exc:
+            raise ValueError(
+                f"No matching WhatsApp contact or group was found for '{value}'. "
+                "Use the saved contact's full name or provide the phone number."
+            ) from exc
+        except RuntimeError as exc:
+            raise ValueError(
+                f"Could not resolve WhatsApp group '{value}': {exc}"
+            ) from exc
 
     def get_incoming_messages(self, limit=50):
         """Return unprocessed incoming WhatsApp messages."""
