@@ -21,6 +21,9 @@ class AgentEngine:
         self.fast_agent = fast_agent
         self.task_executor = task_executor
         self.health_manager = health_manager
+        # Persisted RUNNING tasks may have been interrupted by Android process death.
+        # Pause them for explicit review rather than automatically replaying side effects.
+        self.recovered_tasks = self.task_executor.recover_interrupted()
 
     @staticmethod
     def _extract_json(text: str) -> dict[str, Any]:
