@@ -104,6 +104,39 @@ def _risky_reason(low):
     return None
 
 
+def requires_approval(command):
+    """Return whether a command needs a one-time, terminal-approved confirmation."""
+    low = str(command or "").strip().lower()
+    return bool(_risky_reason(low)) or bool(re.search(
+        r"\b(delete|erase|wipe|shred|truncate|format|overwrite|purge|factory\s+reset|reset\s+(?:the\s+)?device)\b",
+        low,
+    ))
+
+
+_authorized_once = set()
+_authorized_lock = __import__("threading").Lock()
+
+
+def authorize_command_once(command):
+    """Permit one exact command after an enclosing task approval; hard denies remain active."""
+    with _authorized_lock:
+        _authorized_once.add(_hash(str(command).strip()))
+
+
+def _consume_authorization(digest):
+    with _authorized_lock:
+        if digest not in _authorized_once:
+            return False
+        _authorized_once.remove(digest)
+        return True
+
+
+def revoke_command_authorization(command):
+    """Remove an unused one-shot authorization after its dispatch attempt."""
+    with _authorized_lock:
+        _authorized_once.discard(_hash(str(command).strip()))
+
+
 def check(command, kind="shell"):
     """Return None if the command may run, otherwise a message to show instead."""
     if _policy() == "off":
@@ -121,6 +154,8 @@ def check(command, kind="shell"):
         return None
 
     digest = _hash(command)
+    if _consume_authorization(digest):
+        return None
     data = _purge(_load())
 
     for code, entry in list(data.items()):

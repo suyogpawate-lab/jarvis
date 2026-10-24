@@ -1,7 +1,7 @@
 """
 JARVIS Deep Search.
 
-Adaptive, unlimited-page research crawler.
+Adaptive, resource-bounded research crawler.
 
 Flow:
     search -> rank -> fetch -> extract -> discover links
@@ -217,28 +217,29 @@ class _ResearchHTMLParser(HTMLParser):
 
 class DeepSearch:
     """
-    Unlimited adaptive research crawler.
+    Adaptive research crawler with bounded defaults for mobile reliability.
 
-    pages=0 means unlimited.
-    depth=0 means unlimited depth.
+    Explicit max_pages=0 or max_depth=0 retains the opt-in unlimited mode.
     """
 
     def __init__(
         self,
         search_hub,
         fast_agent,
-        max_pages=0,
-        max_depth=0,
+        max_pages=12,
+        max_depth=2,
         max_page_bytes=2_000_000,
-        max_evidence_chars=30_000,
+        max_evidence_chars=24_000,
+        max_seconds=120,
     ):
         self.search_hub = search_hub
         self.fast_agent = fast_agent
         self.cache = SearchCache()
 
-        # 0 = unlimited.
-        self.max_pages = int(max_pages)
-        self.max_depth = int(max_depth)
+        # Safe defaults prevent unbounded crawling on resource-constrained devices.
+        self.max_pages = max(0, int(max_pages))
+        self.max_depth = max(0, int(max_depth))
+        self.max_seconds = max(5, int(max_seconds))
 
         # Protect the Android device from enormous individual responses.
         self.max_page_bytes = int(max_page_bytes)
@@ -503,8 +504,11 @@ class DeepSearch:
             )
 
         pages_crawled = 0
+        deadline = __import__("time").monotonic() + self.max_seconds
 
         while queue:
+            if __import__("time").monotonic() >= deadline:
+                break
             url, depth, source, seed_title, seed_snippet = queue.popleft()
 
             if url in visited:

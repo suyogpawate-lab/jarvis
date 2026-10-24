@@ -50,12 +50,20 @@ class WhistleWakeListener:
         self._wake_model = None
         self.log_path = self.runtime / "listener.log"
 
-        # Don't trigger on (or transcribe) JARVIS's own spoken replies.
+        # Use the provider-neutral manager so Edge and Piper playback are
+        # both covered, including speech queued but not yet playing.
         try:
-            from voice import tts as _tts
-            self._is_speaking = _tts.is_speaking
+            from voice.tts_manager import tts as _tts_manager
+            def _tts_active():
+                status = _tts_manager.status()
+                return bool(status.get("active_playback")) or bool(status.get("queue_pending"))
+            self._is_speaking = _tts_active
         except Exception:
-            self._is_speaking = lambda: False
+            try:
+                from voice import tts as _tts
+                self._is_speaking = _tts.is_speaking
+            except Exception:
+                self._is_speaking = lambda: False
 
     def _log(self, *args, sep=" ", end="\n", flush=True):
         """Write voice diagnostics to a log instead of corrupting the interactive prompt."""

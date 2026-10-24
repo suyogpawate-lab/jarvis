@@ -15,6 +15,8 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
+from android.command_guard import authorize_command_once, requires_approval, revoke_command_authorization
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TASK_DIR = ROOT / "data" / "tasks"
@@ -79,14 +81,28 @@ class TaskExecutor:
         if result is None:
             return True
         if isinstance(result, dict):
-            return bool(result.get("error")) or result.get("ok") is False or result.get("exit", 0) != 0
+            if result.get("error") or result.get("ok") is False:
+                return True
+            for key in ("exit", "exit_code", "returncode"):
+                if key in result:
+                    try:
+                        if int(result[key]) != 0:
+                            return True
+                    except (TypeError, ValueError):
+                        return True
+            return False
         text = str(result).strip()
         upper = text.upper()
-        return not text or any(upper.startswith(prefix) for prefix in FAILURE_PREFIXES)
+        if not text or any(upper.startswith(prefix) for prefix in FAILURE_PREFIXES):
+            return True
+        match = re.search(r"(?m)^\[EXIT\]\s*(-?\d+)\s*$", text)
+        return bool(match and int(match.group(1)) != 0)
 
     @staticmethod
     def _is_destructive(step: str) -> bool:
-        return bool(DESTRUCTIVE.search(step))
+        # Use the same risk rules as the shell guard, so one task approval
+        # authorizes this exact command once instead of prompting twice.
+        return bool(DESTRUCTIVE.search(step)) or requires_approval(step)
 
     def create(self, steps):
         if not isinstance(steps, (list, tuple)):
@@ -167,11 +183,18 @@ class TaskExecutor:
                 task["status"] = "WAITING_APPROVAL"
                 self._save(task)
                 return self._render(task)
+            task_approved = step["status"] == "APPROVED"
             step["status"] = "RUNNING"
             step["started_at"] = time.time()
             self._save(task)
             try:
-                result = self.dispatch(step["command"])
+                if task_approved:
+                    authorize_command_once(step["command"])
+                try:
+                    result = self.dispatch(step["command"])
+                finally:
+                    if task_approved:
+                        revoke_command_authorization(step["command"])
             except Exception as exc:
                 result = f"[ERROR] {type(exc).__name__}: {exc}"
             step["result"] = result if isinstance(result, (str, int, float, bool, dict, list)) else str(result)

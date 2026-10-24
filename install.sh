@@ -97,8 +97,21 @@ info "Configuring JARVIS shell aliases..."
 BASHRC="$HOME/.bashrc"
 ALIAS_START="# >>> JARVIS aliases (managed by install.sh) >>>"
 ALIAS_END="# <<< JARVIS aliases (managed by install.sh) <<<"
-if ! grep -Fq "$ALIAS_START" "$BASHRC" 2>/dev/null; then
-    cat >> "$BASHRC" <<EOF
+# Refresh only the installer-managed block, preserving all unrelated shell config.
+mkdir -p "$(dirname "$BASHRC")"
+touch "$BASHRC"
+ALIAS_TMP="$(mktemp "${BASHRC}.jarvis.XXXXXX")"
+awk -v start="$ALIAS_START" -v end="$ALIAS_END" '
+    $0 == start { inside=1; found_start=1; next }
+    $0 == end { inside=0; found_end=1; next }
+    !inside { print }
+    END { if (inside || (found_start && !found_end)) exit 2 }
+' "$BASHRC" > "$ALIAS_TMP" || {
+    rm -f "$ALIAS_TMP"
+    warn "Could not safely refresh the managed alias block; leaving $BASHRC unchanged."
+    exit 1
+}
+cat >> "$ALIAS_TMP" <<EOF
 
 $ALIAS_START
 alias jarvis='python "$ROOT/jarvis_ui.py"'
@@ -109,10 +122,10 @@ alias omni='bash "$ROOT/omniroute_daemon.sh"'
 alias rag='nohup python "$ROOT/knowledge_hub/app.py" > /dev/null 2>&1 &'
 $ALIAS_END
 EOF
-    ok "Added JARVIS aliases to $BASHRC."
-else
-    ok "JARVIS aliases already exist in $BASHRC; leaving the block unchanged."
-fi
+# Rewrite the existing file in place to preserve its permissions and ownership.
+cat "$ALIAS_TMP" > "$BASHRC"
+rm -f "$ALIAS_TMP"
+ok "Refreshed JARVIS aliases in $BASHRC."
 # This loads aliases in the installer's shell. A child script cannot modify
 # its parent interactive shell, so users may need to run: source ~/.bashrc
 if [ -r "$BASHRC" ]; then

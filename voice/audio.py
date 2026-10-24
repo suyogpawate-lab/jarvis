@@ -1,82 +1,91 @@
+"""Streaming microphone input for the legacy offline Vosk voice engine.
+
+Audio is delivered as mono, 16 kHz, signed 16-bit PCM bytes, matching
+OfflineSTT's KaldiRecognizer configuration. The active Whistle listener uses
+its own stream and is not changed by this compatibility backend.
 """
-Local microphone abstraction.
-
-The rest of JARVIS does not need to know how Android/Termux
-provides microphone data.
-
-This module intentionally keeps the audio interface isolated
-so we can replace the backend later without rewriting the
-voice engine.
-"""
-
-import subprocess
-import shutil
-import threading
 import queue
-import time
+import threading
+
+import sounddevice as sd
 
 
 class AudioInput:
-
-    def __init__(self, sample_rate=16000):
-        self.sample_rate = sample_rate
+    def __init__(self, sample_rate=16000, blocksize=4000, queue_size=16):
+        self.sample_rate = int(sample_rate)
+        self.blocksize = int(blocksize)
         self.running = False
-        self.queue = queue.Queue()
-        self.process = None
+        self.queue = queue.Queue(maxsize=max(1, int(queue_size)))
+        self.stream = None
         self.thread = None
+        self.dropped_frames = 0
+        self._lock = threading.Lock()
+
+    def _callback(self, indata, frames, time_info, status):
+        if not self.running:
+            return
+        payload = bytes(indata)
+        try:
+            self.queue.put_nowait(payload)
+        except queue.Full:
+            # Keep latency bounded: discard the oldest block rather than
+            # allowing stale audio to accumulate behind slow transcription.
+            try:
+                self.queue.get_nowait()
+                self.queue.task_done()
+            except queue.Empty:
+                pass
+            try:
+                self.queue.put_nowait(payload)
+            except queue.Full:
+                self.dropped_frames += frames
 
     def start(self):
-        if self.running:
-            return
-
-        self.running = True
-
-        # We currently use Termux:API as the microphone bridge.
-        # The backend is isolated here so it can later be replaced
-        # with a native localhost audio bridge.
-
-        if shutil.which("termux-microphone-record") is None:
-            raise RuntimeError(
-                "termux-microphone-record not found. "
-                "Install Termux:API."
-            )
-
-        self.thread = threading.Thread(
-            target=self._capture_loop,
-            daemon=True,
-            name="JarvisAudioInput",
-        )
-
-        self.thread.start()
-
-    def _capture_loop(self):
-        """
-        Placeholder backend.
-
-        We deliberately do not allow the rest of the application
-        to depend directly on Termux:API.
-
-        The backend will be upgraded to a true streaming PCM
-        transport after the basic local voice stack is verified.
-        """
-
-        while self.running:
-            time.sleep(0.1)
+        with self._lock:
+            if self.running:
+                return
+            self.running = True
+            try:
+                self.stream = sd.RawInputStream(
+                    samplerate=self.sample_rate,
+                    blocksize=self.blocksize,
+                    channels=1,
+                    dtype="int16",
+                    callback=self._callback,
+                )
+                self.stream.start()
+            except Exception as exc:
+                self.running = False
+                if self.stream is not None:
+                    try:
+                        self.stream.close()
+                    except Exception:
+                        pass
+                self.stream = None
+                raise RuntimeError(
+                    "Could not start microphone input. Check Termux:API/microphone "
+                    f"permission and the selected audio device: {exc}"
+                ) from exc
 
     def read(self, timeout=None):
         try:
-            return self.queue.get(timeout=timeout)
+            payload = self.queue.get(timeout=timeout)
         except queue.Empty:
             return None
+        self.queue.task_done()
+        return payload
 
     def stop(self):
-        self.running = False
-
-        if self.process:
+        with self._lock:
+            self.running = False
+            stream, self.stream = self.stream, None
+        if stream is not None:
             try:
-                self.process.terminate()
+                stream.stop()
             except Exception:
                 pass
-
-        self.process = None
+            try:
+                stream.close()
+            except Exception:
+                pass
         self.thread = None

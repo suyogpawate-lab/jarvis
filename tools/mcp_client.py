@@ -120,8 +120,13 @@ class MCPServer:
 
     def _send(self, message):
         with self._write_lock:
-            self.proc.stdin.write(json.dumps(message) + "\n")
-            self.proc.stdin.flush()
+            if self.proc is None or self.proc.poll() is not None or self.proc.stdin is None:
+                raise MCPError(f"MCP server {self.name!r} is not running")
+            try:
+                self.proc.stdin.write(json.dumps(message) + "\n")
+                self.proc.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                raise MCPError(f"MCP server {self.name!r} transport closed: {exc}") from exc
 
     def _read_loop(self):
         try:
@@ -178,9 +183,14 @@ class MCPServer:
         with self._pending_lock:
             self._pending[request_id] = waiter
 
-        self._send(
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
-        )
+        try:
+            self._send(
+                {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
+            )
+        except Exception:
+            with self._pending_lock:
+                self._pending.pop(request_id, None)
+            raise
 
         try:
             message = waiter.get(timeout=timeout)
@@ -252,19 +262,24 @@ def _register_server_tools(server):
             if _tool_count >= MAX_TOOLS:
                 _log_failure("registry", f"tool cap ({MAX_TOOLS}) reached; skipping {name}")
                 break
-            _tool_count += 1
+            _tool_count += 1  # Reserve a slot while concurrent servers register.
 
         schema = tool.get("inputSchema") or {}
         if schema.get("type") != "object":
             schema = {"type": "object", "properties": {}}
 
-        registry.register(
-            _safe_name(server.name, name),
-            str(tool.get("description") or name)[:MAX_DESC_CHARS],
-            schema,
-            _make_handler(server, name),
-        )
-        added += 1
+        try:
+            registry.register(
+                _safe_name(server.name, name),
+                str(tool.get("description") or name)[:MAX_DESC_CHARS],
+                schema,
+                _make_handler(server, name),
+            )
+            added += 1
+        except Exception as exc:
+            with _count_lock:
+                _tool_count = max(0, _tool_count - 1)
+            _log_failure(server.name, f"tool registration failed for {name}: {type(exc).__name__}: {exc}")
     return added
 
 
