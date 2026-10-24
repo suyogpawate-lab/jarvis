@@ -272,17 +272,16 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         except Exception as exc:
 
+            # Request exceptions can contain private on-screen text. Log only
+            # the exception class, never the request body or exception message.
             print(
-                f"[JARVIS HTTP] ERROR: {exc}",
+                f"[JARVIS HTTP] Request failed ({type(exc).__name__}).",
                 file=sys.stderr,
                 flush=True
             )
-
-            traceback.print_exc()
-
             self._send_json(500, {
                 "ok": False,
-                "error": str(exc)
+                "error": "request failed; sensitive request contents were not logged"
             })
 
     def log_message(self, fmt, *args):
