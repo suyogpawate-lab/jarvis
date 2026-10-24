@@ -173,6 +173,13 @@ Explicit dispatcher commands include:
 
 ```text
 /doctor
+/health
+/agent help
+/agent plan <goal>
+/agent run <task-id>
+/agent status <task-id>
+/agent list
+/agent approve|deny|cancel <task-id>
 /task plan <step 1> || <step 2> [|| ...]
 /task run <task-id>
 /task status <task-id>
@@ -189,7 +196,7 @@ Explicit dispatcher commands include:
 /notifications
 ```
 
-Multi-step plans use the explicit `/task` commands above. Plans are limited to 10 steps, run sequentially, persist under `data/tasks/`, and stop on the first reported failure. Routine actions—including messages, calls, settings changes, and installs—run without an extra task-level approval. Destructive data-loss actions (such as deleting, wiping, formatting, or overwriting data) pause before execution. For a paused destructive step, `/task approve <id>` (typed in the plain CLI terminal) confirms only that step; `/task deny <id>` cancels the remaining plan. Voice and external sources cannot confirm the destructive step. Each step still goes through the normal dispatcher and its existing guards. This is not a sandbox; outcomes are based on the tool/dispatcher result and still require user verification for external effects.
+Multi-step plans use the explicit `/task` commands above. Plans are limited to 10 steps, run sequentially, persist under `data/tasks/`, and stop on the first reported failure. The Agent Engine adds Gemini-backed planning through `/agent plan <goal>`; planning only creates a reviewable workflow and does not execute it. Use `/agent run <task-id>` to start it. Plans contain at most 8 generated steps, each routed through the existing dispatcher and safeguards. Interrupted workflows are paused for review rather than automatically replayed. `/health` or `/agent health` shows read-only CPU, RAM, swap, storage, and local-service checks. A low-overhead background monitor checks every 5 minutes by default (configurable with `JARVIS_HEALTH_INTERVAL`, minimum 60 seconds) and reports newly appearing warnings; it never kills processes, restarts services, or deletes files. Gemini configuration is required for Agent Engine planning. Routine actions—including messages, calls, settings changes, and installs—run without an extra task-level approval. Destructive data-loss actions (such as deleting, wiping, formatting, or overwriting data) pause before execution. For a paused destructive step, `/task approve <id>` (typed in the plain CLI terminal) confirms only that step; `/task deny <id>` cancels the remaining plan. Voice and external sources cannot confirm the destructive step. Each step still goes through the normal dispatcher and its existing guards. This is not a sandbox; outcomes are based on the tool/dispatcher result and still require user verification for external effects.
 
 These let you run a shell command, start/manage background jobs, inspect job output and retrieve active Android notifications. JARVIS can also route many shell/device tasks from natural-language requests.
 
