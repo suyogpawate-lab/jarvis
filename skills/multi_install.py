@@ -78,7 +78,7 @@ def install_skills(owner, repo, branch, skills, destination=SKILLS_DIR):
             failed.append((skill_path, "destination already exists; refusing to overwrite"))
             continue
         raw_url = "https://raw.githubusercontent.com/{}/{}/{}/{}".format(
-            owner, repo, urllib.parse.quote(branch, safe=""), "/".join(urllib.parse.quote(p, safe="") for p in skill_path.split("/"))
+            owner, repo, urllib.parse.quote(branch, safe="/"), "/".join(urllib.parse.quote(p, safe="") for p in skill_path.split("/"))
         )
         try:
             request = urllib.request.Request(raw_url, headers={"User-Agent": "JARVIS-Multi-Skill-Installer"})
