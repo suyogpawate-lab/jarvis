@@ -1,0 +1,68 @@
+"""Regression tests for local code inspection and bounded Groq retries."""
+import unittest
+from unittest.mock import Mock, patch
+
+from automation.command_dispatcher import CommandDispatcher
+from agents.fast_agent import FastAgent
+
+
+class LocalCodeInspectionTests(unittest.TestCase):
+    def setUp(self):
+        self.dispatcher = object.__new__(CommandDispatcher)
+        self.dispatcher.fast_agent = Mock()
+        self.dispatcher.fast_agent.model = "test-model"
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": "The file defines a shell executor."}}]
+        }
+        self.dispatcher.fast_agent._groq_post.return_value = response
+
+    def test_reads_repository_file_and_uses_one_no_tools_completion(self):
+        result = self.dispatcher._local_code_inspection(
+            "code inspect android/shell_executor.py and tell me how to use it"
+        )
+        self.assertIn("[FILE INSPECTION] android/shell_executor.py", result)
+        payload = self.dispatcher.fast_agent._groq_post.call_args.args[0]
+        self.assertNotIn("tools", payload)
+        self.assertEqual(payload["max_tokens"], 650)
+        self.dispatcher.fast_agent._groq_post.assert_called_once()
+
+    def test_rejects_paths_outside_repository(self):
+        result = self.dispatcher._local_code_inspection(
+            "inspect ../../etc/passwd.py"
+        )
+        self.assertIn("restricted to files inside", result)
+        self.dispatcher.fast_agent._groq_post.assert_not_called()
+
+    def test_ignores_requests_without_file_inspection_intent(self):
+        self.assertIsNone(self.dispatcher._local_code_inspection(
+            "What does a Python file do?"
+        ))
+        self.dispatcher.fast_agent._groq_post.assert_not_called()
+
+
+class GroqRetryTests(unittest.TestCase):
+    def test_rate_limited_keys_are_checked_once_without_sleeping(self):
+        agent = object.__new__(FastAgent)
+        agent.api_keys = ["key-a", "key-b", "key-c"]
+        agent.current_key_index = 0
+        agent.base_url = "https://example.invalid/v1"
+        agent.model = "test-model"
+        limited = Mock()
+        limited.status_code = 429
+        limited.headers = {}
+        limited.text = '{"error":{"message":"tokens per minute limit"}}'
+        limited.json.return_value = {
+            "error": {"message": "tokens per minute limit"}
+        }
+        with patch("agents.fast_agent.requests.post", return_value=limited) as post, \\
+             patch("time.sleep") as sleep:
+            result = agent._groq_post({"model": "test-model", "messages": []})
+        self.assertEqual(result.status_code, 429)
+        self.assertEqual(post.call_count, 3)
+        sleep.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
