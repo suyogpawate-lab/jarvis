@@ -857,6 +857,10 @@ def show_status():
     else:
         warn("Apps: not scanned - run: python setup.py apps")
 
+    style = (env.get("JARVIS_MESSAGE_STYLE", "mirror") or "mirror").strip().lower()
+    language = (env.get("JARVIS_MESSAGE_LANGUAGE", "match") or "match").strip()
+    info(f"WhatsApp message style: {style}; language: {language}")
+
     heading("Tools")
     for tool in ("node", "npm", "termux-notification-list", "termux-contact-list", "ollama", "mpv", "tmux", "git"):
         (ok if shutil.which(tool) else warn)(f"{tool}: {'found' if shutil.which(tool) else 'missing'}")
