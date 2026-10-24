@@ -144,22 +144,25 @@ def _top():
 
 
 def _jarvis_uptime():
-    started = getattr(
-        _jarvis_uptime,
-        "_started",
-        None,
-    )
-
-    if started is None:
-        started = time.time()
-        _jarvis_uptime._started = started
-
-    seconds = max(0, time.time() - started)
-
-    return {
-        "seconds": round(seconds, 1),
-        "text": _format_uptime(seconds),
-    }
+    """Return this process's actual elapsed time using Linux /proc metadata."""
+    try:
+        # /proc/self/stat field 22 is starttime in clock ticks since boot.
+        with open("/proc/self/stat", "r", encoding="utf-8") as stream:
+            stat = stream.read()
+        fields = stat[stat.rfind(")") + 2:].split()
+        start_ticks = int(fields[19])
+        ticks_per_second = os.sysconf("SC_CLK_TCK")
+        with open("/proc/uptime", "r", encoding="utf-8") as stream:
+            system_uptime = float(stream.read().split()[0])
+        seconds = max(0.0, system_uptime - start_ticks / ticks_per_second)
+    except (OSError, ValueError, IndexError, TypeError, AttributeError):
+        # Fallback is process-module uptime, never reset on each telemetry call.
+        started = getattr(_jarvis_uptime, "_started", None)
+        if started is None:
+            started = time.monotonic()
+            _jarvis_uptime._started = started
+        seconds = max(0.0, time.monotonic() - started)
+    return {"seconds": round(seconds, 1), "text": _format_uptime(seconds)}
 
 
 def _format_uptime(seconds):
