@@ -194,6 +194,10 @@ class TaskExecutor:
                 if task_approved:
                     authorize_command_once(step["command"])
                 try:
+                    # Keep the runtime bound to the current dispatcher. Tests,
+                    # adapters, and controlled rerouting may replace dispatch
+                    # after TaskExecutor construction.
+                    self.runtime.dispatch = self.dispatch
                     result = self.runtime.execute(task["id"], step)
                 finally:
                     if task_approved:
