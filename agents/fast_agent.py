@@ -2779,9 +2779,9 @@ class FastAgent:
                 plan = self._gemini_shell_plan(prompt)
                 prompt = (
                     str(prompt)
-                    + "\\n\\nGEMINI ENGINEERING PLAN (advisory; verify each step):\\n"
+                    + "\n\nGEMINI ENGINEERING PLAN (advisory; verify each step):\n"
                     + plan
-                    + "\\n\\nUse local tools to carry out the original request, "
+                    + "\n\nUse local tools to carry out the original request, "
                       "validate results, and stop on failures. The shell guard still "
                       "requires approval for destructive/high-impact actions."
                 )
