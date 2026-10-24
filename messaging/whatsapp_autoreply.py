@@ -24,6 +24,7 @@ import requests
 
 from agents.fast_agent import FastAgent
 from messaging.whatsapp_manager import WhatsAppManager
+from messaging.style_profile import style_instructions
 
 
 class WhatsAppAutoReplyWorker:
@@ -614,6 +615,7 @@ class WhatsAppAutoReplyWorker:
             "For send, reply must contain the complete short natural message. For ask_owner, "
             "do not send anything yet. For skip, reply must be empty."
         )
+        system_prompt += " " + style_instructions("auto_reply")
         tools = self._reply_tools() if files_enabled else []
         if files_enabled:
             system_prompt += (
