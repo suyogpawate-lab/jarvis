@@ -30,6 +30,8 @@ from android.system_tools import SystemTools
 from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
+from automation.agent_engine import AgentEngine
+from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.local_ai import LocalAI
