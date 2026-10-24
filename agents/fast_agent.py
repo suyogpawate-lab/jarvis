@@ -2832,14 +2832,6 @@ class FastAgent:
         if shell_result is not None:
             return shell_result
 
-        # Cheap factual questions do not need the full tool catalogue or skill index.
-        direct_question = self._simple_direct_request(prompt)
-        if direct_question is not None:
-            try:
-                return self._answer_simple_direct(direct_question)
-            except Exception as exc:
-                return f"[ERROR] Simple Groq request failed ({type(exc).__name__}: {exc})"
-
         # RAG questions go straight to Gemini; fall back to Groq if it fails.
         if self._is_rag_request(prompt):
             print("[JARVIS ROUTER] RAG -> GEMINI")
@@ -2847,6 +2839,14 @@ class FastAgent:
                 return self._gemini_fallback(prompt)
             except Exception as exc:
                 print(f"Gemini RAG route failed, using Groq: {exc}")
+
+        # Cheap factual questions do not need the full tool catalogue or skill index.
+        direct_question = self._simple_direct_request(prompt)
+        if direct_question is not None:
+            try:
+                return self._answer_simple_direct(direct_question)
+            except Exception as exc:
+                return f"[ERROR] Simple Groq request failed ({type(exc).__name__}: {exc})"
 
         # Gemini plans complex local engineering; Groq remains the tool executor.
         if self._is_complex_shell_project(prompt) and self.gemini_api_keys:
