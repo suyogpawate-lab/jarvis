@@ -11,6 +11,8 @@ from core import Jarvis
 from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
+from screen_cast.receiver import get_receiver
+from screen_cast.perception import analyze_latest_screen
 
 
 import os, hmac
@@ -33,6 +35,14 @@ dispatcher = CommandDispatcher(
     discussion,
     memory,
 )
+
+# Continuous JPEG stream receiver. Frames stay in RAM; Android's companion
+# app owns MediaProjection consent and sends a framed TCP stream to port 21340.
+screen_receiver = get_receiver()
+try:
+    screen_receiver.start()
+except OSError as exc:
+    print(f"[JARVIS SCREEN CAST] Receiver not started: {exc}", flush=True)
 
 # ------------------------------------------------------------------
 # LIVE SCREEN STATE
@@ -151,6 +161,23 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send_json(401, {"ok": False, "error": "unauthorized"})
             return
+        if self.path == "/screen/stream/status":
+            self._send_json(200, screen_receiver.status())
+            return
+
+        if self.path == "/screen/stream/frame":
+            frame, timestamp = screen_receiver.latest_frame()
+            if not frame:
+                self._send_json(404, {"ok": False, "error": "no live frame; start the Android screen-cast companion"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(frame)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(frame)
+            return
+
         if self.path == "/screen":
             xml, timestamp = get_screen()
 
@@ -179,7 +206,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"ok": False, "error": "unauthorized"})
             return
 
-        if self.path not in ("/chat", "/screen"):
+        if self.path not in ("/chat", "/screen", "/control", "/screen/analyze"):
             self._send_json(404, {
                 "ok": False,
                 "error": "not found"
@@ -198,7 +225,53 @@ class JarvisHandler(BaseHTTPRequestHandler):
             )
 
             # ======================================================
-            # SCREEN PERCEPTION
+            # LIVE STREAM PERCEPTION AND ANDROID CONTROL
+            # ======================================================
+
+            if self.path == "/control":
+                result = screen_receiver.control(body)
+                self._send_json(200 if result.get("ok") else 503, result)
+                return
+
+            if self.path == "/screen/analyze":
+                answer = analyze_latest_screen(str(body.get("prompt", "Describe the current screen.")))
+                self._send_json(200, {"ok": True, "response": answer, "stream": screen_receiver.status()})
+                return
+
+            if self.path == "/chat":
+                command_text = str(body.get("command", "")).strip()
+                lower = command_text.lower()
+                if lower in ("what is on my screen", "what's on my screen", "describe my screen", "look at my screen", "analyze my screen"):
+                    answer = analyze_latest_screen(command_text)
+                    self._send_json(200, {"ok": True, "response": answer})
+                    return
+                # Explicit screen commands use a narrow grammar rather than
+                # allowing arbitrary model output to become touch input.
+                import re
+                match = re.fullmatch(r"screen\s+tap\s+(\d+)\s+(\d+)", command_text, re.I)
+                if match:
+                    result = screen_receiver.control({"action": "tap", "x": int(match.group(1)), "y": int(match.group(2))})
+                    self._send_json(200 if result.get("ok") else 503, result)
+                    return
+                match = re.fullmatch(r"screen\s+swipe\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)", command_text, re.I)
+                if match:
+                    coords = [int(match.group(i)) for i in range(1, 5)]
+                    result = screen_receiver.control({"action": "swipe", "x1": coords[0], "y1": coords[1], "x2": coords[2], "y2": coords[3]})
+                    self._send_json(200 if result.get("ok") else 503, result)
+                    return
+                match = re.fullmatch(r"screen\s+type\s+(.+)", command_text, re.I | re.S)
+                if match:
+                    result = screen_receiver.control({"action": "type", "text": match.group(1)})
+                    self._send_json(200 if result.get("ok") else 503, result)
+                    return
+                match = re.fullmatch(r"screen\s+(back|home|recents|notifications)", command_text, re.I)
+                if match:
+                    result = screen_receiver.control({"action": match.group(1).lower()})
+                    self._send_json(200 if result.get("ok") else 503, result)
+                    return
+
+            # ======================================================
+            # EXISTING SCREEN HIERARCHY INGESTION (kept compatible)
             # ======================================================
 
             screen_value = body.get("screen_xml")
