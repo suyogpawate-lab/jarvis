@@ -22,6 +22,7 @@ _MAX_STEP_LENGTH = 500
 class SkillForge:
     def __init__(self, task_executor, skill_dir=None):
         self.task_executor = task_executor
+        self.task_dir = getattr(task_executor, "task_dir", None)
         self.skill_dir = Path(skill_dir) if skill_dir is not None else DEFAULT_SKILL_DIR
         self.skill_dir.mkdir(parents=True, exist_ok=True)
 
@@ -71,6 +72,8 @@ class SkillForge:
             path = self._path(name)
         except ValueError as exc:
             return f"[ERROR] {exc}"
+        if path.exists():
+            return f"[ERROR] Skill already exists: {path.stem}. Choose another name to preserve the existing skill."
         slug = path.stem
         record = {
             "name": slug,
@@ -102,6 +105,53 @@ class SkillForge:
             except (OSError, ValueError, AttributeError):
                 continue
         return "\n".join(items) if items else "[INFO] No saved skills yet. Complete a task, then use /skill save <task-id> as <name>."
+
+    def suggestions(self) -> str:
+        """Find repeated completed task sequences locally, without model calls."""
+        if not self.task_dir or not Path(self.task_dir).is_dir():
+            return "[INFO] No task history is available to analyze yet."
+        groups = {}
+        for path in Path(self.task_dir).glob("task-????????.json"):
+            try:
+                task = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(task, dict) or task.get("status") != "COMPLETED":
+                continue
+            steps = task.get("steps")
+            if not isinstance(steps, list) or not steps:
+                continue
+            commands = tuple(
+                str(step.get("command") or "").strip()
+                for step in steps if isinstance(step, dict)
+            )
+            if not commands or any(not item for item in commands):
+                continue
+            entry = groups.setdefault(commands, [])
+            entry.append(str(task.get("id") or path.stem))
+        repeated = []
+        for commands, task_ids in groups.items():
+            if len(task_ids) < 2:
+                continue
+            already_saved = False
+            for skill_path in self.skill_dir.glob("*.json"):
+                try:
+                    saved = json.loads(skill_path.read_text(encoding="utf-8"))
+                    if tuple(saved.get("steps", [])) == commands:
+                        already_saved = True
+                        break
+                except (OSError, ValueError, AttributeError):
+                    continue
+            if already_saved:
+                continue
+            latest_id = task_ids[-1]
+            suggested_name = re.sub(r"[^a-z0-9]+", "-", commands[0].lower()).strip("-")[:24] or "repeated-workflow"
+            repeated.append(
+                f"{suggested_name} — repeated {len(task_ids)} times; save with: /skill save {latest_id} as {suggested_name}"
+            )
+        if not repeated:
+            return "[INFO] No repeated completed workflows found yet. JARVIS checks local task history only."
+        return "JARVIS Skill Forge suggestions (local history; no AI call):\n" + "\n".join(repeated[:10])
 
     def show(self, name: str) -> str:
         try:
@@ -143,6 +193,8 @@ class SkillForge:
         value = parts[2].strip() if len(parts) > 2 else ""
         if action == "list":
             return self.list_skills()
+        if action in {"suggest", "suggestions"}:
+            return self.suggestions()
         if action == "show":
             return self.show(value) if value else "[ERROR] Usage: /skill show <name>"
         if action == "run":
