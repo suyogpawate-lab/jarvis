@@ -135,6 +135,7 @@ class EmailManager:
         requested_account=None,
         mailbox="INBOX",
         limit=10,
+        unread_only=False,
     ):
         account = self._account(
             requested_account
@@ -158,7 +159,7 @@ class EmailManager:
             status, data = mail.uid(
                 "search",
                 None,
-                "ALL",
+                "UNSEEN" if unread_only else "ALL",
             )
 
             if status != "OK":
@@ -181,7 +182,7 @@ class EmailManager:
                 status, fetched = mail.uid(
                     "fetch",
                     uid,
-                    "(RFC822)",
+                    "(BODY.PEEK[])",
                 )
 
                 if status != "OK":
@@ -236,6 +237,56 @@ class EmailManager:
                 except Exception:
                     pass
 
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+
+    def mark_all_unread_as_read(
+        self,
+        requested_account=None,
+        mailbox="INBOX",
+    ):
+        """Mark all currently unread messages in one mailbox as read."""
+        account = self._account(requested_account)
+        mail = None
+
+        try:
+            mail = self._imap(account)
+            status, _ = mail.select(mailbox, readonly=False)
+            if status != "OK":
+                raise RuntimeError(f"Unable to open mailbox: {mailbox}")
+
+            status, data = mail.uid("search", None, "UNSEEN")
+            if status != "OK":
+                raise RuntimeError("Unable to search unread messages.")
+
+            uids = data[0].split() if data and data[0] else []
+            if not uids:
+                return {
+                    "status": "OK",
+                    "account": account["email"],
+                    "mailbox": mailbox,
+                    "marked_read": 0,
+                }
+
+            uid_set = b",".join(uids)
+            status, _ = mail.uid("store", uid_set, "+FLAGS", r"(\\Seen)")
+            if status != "OK":
+                raise RuntimeError("Gmail did not confirm the read-status update.")
+
+            return {
+                "status": "OK",
+                "account": account["email"],
+                "mailbox": mailbox,
+                "marked_read": len(uids),
+            }
+        finally:
+            if mail:
+                try:
+                    mail.close()
+                except Exception:
+                    pass
                 try:
                     mail.logout()
                 except Exception:
