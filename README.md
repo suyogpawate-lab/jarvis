@@ -485,3 +485,24 @@ The Skill Forge can turn a successfully completed workflow into a reusable local
 ```
 
 Saving a skill requires a completed task. Running one creates a fresh task and uses the normal dispatcher and its existing safeguards.
+
+
+## Message personality and multi-skill installation
+
+Configure the wording JARVIS uses for WhatsApp drafts and automatic replies:
+
+```bash
+python setup.py message_style
+```
+
+Choose **mirror**, **casual**, **Gen Z**, **friendly**, or **formal**; set a preferred language such as English or Hinglish; and optionally give examples of your normal phrasing (for example, `damnnn, gng`). These preferences are stored in the local `.env` file. The style is a default, not a blind rule: when you explicitly request professional wording or the context calls for a teacher/employer/official message, serious matter, apology, or formal request, JARVIS switches to respectful formal language. It should not force slang into every message. The same policy is used by outbound WhatsApp drafting and the direct-message auto-reply worker.
+
+Install multiple Agent Skills from a GitHub repository or a folder containing multiple `SKILL.md` files:
+
+```bash
+python skills/multi_install.py https://github.com/owner/repository --list
+python skills/multi_install.py https://github.com/owner/repository
+python skills/multi_install.py https://github.com/owner/repository/tree/main/path/to/skills
+```
+
+The installer discovers all `SKILL.md` files in the selected repository/folder, lists them, and asks before installing the set. Add `--yes` only when you intentionally want non-interactive installation. It installs each skill into its own folder under `skills/`, refuses to overwrite existing folders, and does not execute installed skill content. Review skills from unfamiliar sources before using them. The installer currently installs each skill's `SKILL.md` entrypoint; auxiliary files referenced by a skill may need separate handling.
