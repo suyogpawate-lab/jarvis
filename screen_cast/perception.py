@@ -14,6 +14,9 @@ def analyze_latest_screen(prompt: str = "Describe the current screen and the mai
     frame, timestamp = get_receiver().latest_frame()
     if not frame:
         return "Sir, I don't have a live screen frame yet. Open the JARVIS Screen Cast companion, start casting, and try again."
+    import time
+    if time.time() - timestamp > 5:
+        return "Sir, the last screen frame is stale. Check that the companion is still casting, then try again."
     raw_keys = os.environ.get("GEMINI_API_KEYS", "") or os.environ.get("GEMINI_API_KEY", "")
     keys = [item.strip() for item in raw_keys.replace(";", ",").split(",") if item.strip()]
     if not keys:
@@ -32,8 +35,8 @@ def analyze_latest_screen(prompt: str = "Describe the current screen and the mai
     body = json.dumps(payload).encode("utf-8")
     errors = []
     for key in keys:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + key
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=20) as response:
                 result = json.loads(response.read().decode("utf-8"))
