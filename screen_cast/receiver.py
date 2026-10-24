@@ -20,6 +20,7 @@ CONTROL_HOST = "127.0.0.1"
 CONTROL_PORT = int(os.environ.get("JARVIS_SCREEN_CONTROL_PORT", "21341"))
 MAX_FRAME_BYTES = 8 * 1024 * 1024
 MAX_CONTROL_TEXT = 2000
+MAX_CONTROL_RESPONSE_BYTES = 512 * 1024
 
 
 class ScreenCastReceiver:
@@ -144,7 +145,7 @@ class ScreenCastReceiver:
         if not isinstance(action, dict):
             raise ValueError("action must be a JSON object")
         kind = str(action.get("action", "")).lower().strip()
-        allowed = {"tap", "swipe", "type", "back", "home", "recents", "notifications"}
+        allowed = {"tap", "swipe", "type", "back", "home", "recents", "notifications", "snapshot", "click_element"}
         if kind not in allowed:
             raise ValueError("unsupported action; allowed: " + ", ".join(sorted(allowed)))
         clean: dict[str, Any] = {"action": kind, "request_id": str(action.get("request_id", ""))[:80]}
@@ -158,6 +159,11 @@ class ScreenCastReceiver:
             if isinstance(duration, bool) or not isinstance(duration, (int, float)):
                 raise ValueError("duration_ms must be numeric")
             clean["duration_ms"] = int(max(80, min(1500, duration)))
+        elif kind == "click_element":
+            index = action.get("element_index")
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 250:
+                raise ValueError("element_index must be an integer from 0 to 249")
+            clean["element_index"] = index
         elif kind == "type":
             value = action.get("text")
             if not isinstance(value, str) or not value or len(value) > MAX_CONTROL_TEXT:
@@ -168,13 +174,15 @@ class ScreenCastReceiver:
                 conn.settimeout(5)
                 conn.sendall((json.dumps(clean, ensure_ascii=False) + "\n").encode("utf-8"))
                 response = bytearray()
-                while len(response) < 16384:
-                    part = conn.recv(4096)
+                while len(response) < MAX_CONTROL_RESPONSE_BYTES:
+                    part = conn.recv(min(4096, MAX_CONTROL_RESPONSE_BYTES - len(response)))
                     if not part:
                         break
                     response.extend(part)
                     if b"\n" in part:
                         break
+                if len(response) >= MAX_CONTROL_RESPONSE_BYTES and b"\n" not in response:
+                    return {"ok": False, "error": "Android screen hierarchy exceeded the response limit"}
             if not response:
                 return {"ok": False, "error": "Android control service closed without a response"}
             return json.loads(bytes(response).split(b"\n", 1)[0].decode("utf-8"))
