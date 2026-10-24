@@ -76,6 +76,15 @@ class AgentEngineTests(unittest.TestCase):
             self.assertIn("not automatically repeated", saved["steps"][1]["result"])
 
 
+    def test_dispatcher_routes_agent_and_health_before_ai(self):
+        from automation.command_dispatcher import CommandDispatcher
+        dispatcher = object.__new__(CommandDispatcher)
+        dispatcher.agent_engine = type("Agent", (), {"handle": lambda self, text, source="external": "agent-routed"})()
+        dispatcher.health_manager = type("Health", (), {"report": lambda self: "health-routed"})()
+        self.assertEqual(dispatcher.dispatch("/agent help"), "agent-routed")
+        self.assertEqual(dispatcher.dispatch("/health"), "health-routed")
+
+
 class HealthManagerTests(unittest.TestCase):
     @patch("monitoring.health_manager.get_telemetry")
     @patch.object(HealthManager, "_reachable", return_value=True)
