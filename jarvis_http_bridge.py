@@ -183,9 +183,15 @@ class JarvisHandler(BaseHTTPRequestHandler):
             if self.path == "/chat":
                 command_text = str(body.get("command", "")).strip()
                 lower = command_text.lower()
-                if lower in ("what is on my screen", "what's on my screen", "describe my screen", "look at my screen", "analyze my screen"):
-                    answer = analyze_latest_screen(command_text)
-                    self._send_json(200, {"ok": True, "response": answer})
+                screen_questions = (
+                    "what is on my screen", "what's on my screen",
+                    "describe my screen", "look at my screen",
+                    "analyze my screen", "read my screen",
+                    "what's open", "what is open",
+                )
+                if lower in screen_questions or lower.startswith(("what does this screen", "on my screen,", "from my screen")):
+                    answer = analyze_latest_screen(command_text, ask=jarvis.ask)
+                    self._send_json(200, {"ok": True, "response": answer, "perception": "accessibility_json"})
                     return
                 # Explicit screen commands use a narrow grammar rather than
                 # allowing arbitrary model output to become touch input.
