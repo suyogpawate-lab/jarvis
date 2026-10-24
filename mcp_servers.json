@@ -3,7 +3,13 @@
     "filesystem": {
       "enabled": true,
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data/data/com.termux/files/home/jarvis/workspace"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/data/data/com.termux/files/home/jarvis/workspace",
+        "/data/data/com.termux/files/home/jarvis/knowledge_hub/files",
+        "/data/data/com.termux/files/home/Downloads"
+      ],
       "env": {},
       "tools": ["read_file", "list_directory"]
     }
