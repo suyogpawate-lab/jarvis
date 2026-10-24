@@ -211,6 +211,7 @@ class SkillForge:
         return (
             "JARVIS Skill Forge\n"
             "/skill list — list reusable skills\n"
+            "/skill suggest — find repeated completed workflows locally\n"
             "/skill show <name> — inspect a saved skill\n"
             "/skill save <completed-task-id> as <name> — save a successful workflow\n"
             "/skill run <name> — execute a saved workflow through the normal task engine\n"
