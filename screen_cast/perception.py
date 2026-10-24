@@ -33,7 +33,7 @@ def _http_error_detail(exc: urllib.error.HTTPError) -> str:
         parsed = json.loads(raw)
         message = parsed.get("error", {}).get("message", "")
         if message:
-            return str(message).replace("\\r", " ").replace("\\n", " ")[:180]
+            return str(message).replace("\r", " ").replace("\n", " ")[:180]
     except Exception:
         pass
     return f"HTTP {exc.code}"
