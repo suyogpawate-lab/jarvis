@@ -483,8 +483,8 @@ class FastAgent:
     def _groq_post(self, payload, timeout=30):
         """POST one chat completion to Groq.
 
-        Rotates keys on 429/401/403/5xx/network errors. If EVERY key is rate
-        limited and the shortest wait is short, sleeps once and sweeps again.
+        Rotates keys once on 429/401/403/5xx/network errors.
+        A 429 sweep is bounded: all configured keys are tried once, without sleeping.
         Retries happen per request, so a failure never restarts the whole
         conversation (which used to re-run tools). Returns the last Response;
         the caller checks status_code.
@@ -498,78 +498,78 @@ class FastAgent:
         # return the last 429 immediately instead of sleeping and retrying the
         # same prompt (which can stall simple commands for 30-60 seconds).
         for offset in range(total):
-                index = (self.current_key_index + offset) % total
-                key = self.api_keys[index]
-                if not key:
-                    continue
-                try:
-                    response = requests.post(
-                        f"{self.base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {key}",
-                            "Content-Type": "application/json",
-                        },
-                        json=payload,
-                        timeout=timeout,
-                    )
-                except requests.exceptions.RequestException as exc:
-                    print(f" Groq account {index + 1}: network problem ({type(exc).__name__})")
-                    continue
+            index = (self.current_key_index + offset) % total
+            key = self.api_keys[index]
+            if not key:
+                continue
+            try:
+                response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=timeout,
+                )
+            except requests.exceptions.RequestException as exc:
+                print(f" Groq account {index + 1}: network problem ({type(exc).__name__})")
+                continue
 
-                if response.status_code == 200:
-                    self.current_key_index = index
-                    if os.getenv("JARVIS_DEBUG_TOKENS") == "1":
-                        try:
-                            usage = response.json().get("usage") or {}
-                            messages = payload.get("messages") or []
-                            system_chars = sum(
-                                len(str(m.get("content", "")))
-                                for m in messages if m.get("role") == "system"
-                            )
-                            user_chars = sum(
-                                len(str(m.get("content", "")))
-                                for m in messages if m.get("role") == "user"
-                            )
-                            tool_chars = sum(
-                                len(str(m.get("content", "")))
-                                for m in messages if m.get("role") == "tool"
-                            )
-                            tool_rounds = sum(
-                                1 for m in messages if m.get("role") == "tool"
-                            )
-                            phase = "tool-follow-up" if tool_rounds else "initial/final"
-                            print(
-                                "[TOKEN AUDIT] "
-                                f"phase={phase} model={payload.get('model', self.model)} "
-                                f"prompt={usage.get('prompt_tokens', '?')} "
-                                f"completion={usage.get('completion_tokens', '?')} "
-                                f"total={usage.get('total_tokens', '?')} "
-                                f"messages={len(messages)} tools={len(payload.get('tools') or [])} "
-                                f"system_chars={system_chars} user_chars={user_chars} "
-                                f"tool_result_chars={tool_chars}",
-                                flush=True,
-                            )
-                        except Exception as audit_exc:
-                            print(f"[TOKEN AUDIT] usage unavailable: {type(audit_exc).__name__}", flush=True)
-                    return response
-
-                last = response
-                code = response.status_code
-
-                if code == 429:
-                    wait, kind = self._groq_rate_info(response)
-                    print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
-                    continue
-                if code in (401, 403):
-                    print(f" Groq account {index + 1}: key rejected (HTTP {code})")
-                    continue
-                if code >= 500:
-                    print(f" Groq account {index + 1}: server error (HTTP {code})")
-                    continue
-                # 400/413/other: the request itself is the problem; more keys won't help.
+            if response.status_code == 200:
+                self.current_key_index = index
+                if os.getenv("JARVIS_DEBUG_TOKENS") == "1":
+                    try:
+                        usage = response.json().get("usage") or {}
+                        messages = payload.get("messages") or []
+                        system_chars = sum(
+                            len(str(m.get("content", "")))
+                            for m in messages if m.get("role") == "system"
+                        )
+                        user_chars = sum(
+                            len(str(m.get("content", "")))
+                            for m in messages if m.get("role") == "user"
+                        )
+                        tool_chars = sum(
+                            len(str(m.get("content", "")))
+                            for m in messages if m.get("role") == "tool"
+                        )
+                        tool_rounds = sum(
+                            1 for m in messages if m.get("role") == "tool"
+                        )
+                        phase = "tool-follow-up" if tool_rounds else "initial/final"
+                        print(
+                            "[TOKEN AUDIT] "
+                            f"phase={phase} model={payload.get('model', self.model)} "
+                            f"prompt={usage.get('prompt_tokens', '?')} "
+                            f"completion={usage.get('completion_tokens', '?')} "
+                            f"total={usage.get('total_tokens', '?')} "
+                            f"messages={len(messages)} tools={len(payload.get('tools') or [])} "
+                            f"system_chars={system_chars} user_chars={user_chars} "
+                            f"tool_result_chars={tool_chars}",
+                            flush=True,
+                        )
+                    except Exception as audit_exc:
+                        print(f"[TOKEN AUDIT] usage unavailable: {type(audit_exc).__name__}", flush=True)
                 return response
 
-            break
+            last = response
+            code = response.status_code
+
+            if code == 429:
+                wait, kind = self._groq_rate_info(response)
+                print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
+                continue
+            if code in (401, 403):
+                print(f" Groq account {index + 1}: key rejected (HTTP {code})")
+                continue
+            if code >= 500:
+                print(f" Groq account {index + 1}: server error (HTTP {code})")
+                continue
+            # 400/413/other: the request itself is the problem; more keys won't help.
+            return response
+
+        break
 
         if last is None:
             raise RuntimeError("Could not reach Groq with any configured key.")
