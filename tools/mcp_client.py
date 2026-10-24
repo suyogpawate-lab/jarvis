@@ -298,13 +298,22 @@ def _boot(name, config):
     env = {key: os.path.expandvars(str(value)) for key, value in (config.get("env") or {}).items()}
     args = [os.path.expandvars(str(value)) for value in (config.get("args") or [])]
 
-    # The filesystem MCP server exits if its permitted root does not exist.
-    # Create the configured root before launching it (last positional argument).
+    # The filesystem MCP server exits if any permitted root does not exist.
+    # Its CLI accepts multiple root paths after the package name, so prepare
+    # every configured root (not just the last one) before launching it.
     if name == "filesystem" and args:
         try:
-            Path(args[-1]).expanduser().mkdir(parents=True, exist_ok=True)
+            package_index = next(
+                (index for index, value in enumerate(args)
+                 if "server-filesystem" in value),
+                None,
+            )
+            roots = args[package_index + 1:] if package_index is not None else args[-1:]
+            for root in roots:
+                if root and not str(root).startswith("-"):
+                    Path(root).expanduser().mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            _log_failure(name, f"cannot prepare filesystem root: {exc}")
+            _log_failure(name, f"cannot prepare filesystem roots: {exc}")
             return
 
     server = MCPServer(
