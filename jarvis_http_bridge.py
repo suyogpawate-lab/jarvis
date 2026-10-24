@@ -12,7 +12,7 @@ from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
 from screen_cast.receiver import get_receiver
-from screen_cast.perception import analyze_latest_screen
+from screen_cast.perception import analyze_latest_screen, get_screen_snapshot
 
 
 import os, hmac
@@ -44,55 +44,8 @@ try:
 except OSError as exc:
     print(f"[JARVIS SCREEN CAST] Receiver not started: {exc}", flush=True)
 
-# ------------------------------------------------------------------
-# LIVE SCREEN STATE
-# Kept entirely in RAM. Nothing is written to disk.
-# ------------------------------------------------------------------
-
-_screen_lock = threading.Lock()
-
-latest_screen_xml = None
-latest_screen_time = 0.0
-
-
-def normalize_screen_xml(value):
-    """
-    Automate's Node-set may arrive as a list containing XML strings.
-    Normalize it into one XML string without touching disk.
-    """
-
-    if value is None:
-        return ""
-
-    if isinstance(value, str):
-        return value.strip()
-
-    if isinstance(value, (list, tuple)):
-        parts = []
-
-        for item in value:
-            normalized = normalize_screen_xml(item)
-
-            if normalized:
-                parts.append(normalized)
-
-        return "\n".join(parts).strip()
-
-    return str(value).strip()
-
-
-def store_screen(xml):
-    global latest_screen_xml
-    global latest_screen_time
-
-    with _screen_lock:
-        latest_screen_xml = xml
-        latest_screen_time = time.time()
-
-
-def get_screen():
-    with _screen_lock:
-        return latest_screen_xml, latest_screen_time
+# Screen hierarchy is fetched only on explicit requests. The bridge does not
+# cache screen JSON/XML; each response is discarded after it is sent.
 
 
 print(f"[JARVIS HTTP] Ready on http://{HOST}:{PORT}", flush=True)
