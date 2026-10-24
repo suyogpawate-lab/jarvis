@@ -81,7 +81,10 @@ class JobManager:
         if job["status"] == "RUNNING" and not running:
             exit_code = None
             try:
-                with open(job["exit_code_file"], "r", encoding="ascii") as stream:
+                marker_path = job.get("exit_code_file")
+                if not marker_path:
+                    raise OSError("Legacy job has no exit-code marker.")
+                with open(marker_path, "r", encoding="ascii") as stream:
                     exit_code = int(stream.read().strip())
             except (OSError, ValueError, TypeError):
                 # Missing status must never be interpreted as successful.
