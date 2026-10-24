@@ -47,6 +47,12 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Unknown tool", result["error"])
 
+    def test_non_object_arguments_are_rejected(self):
+        result = self.registry.call("lookup", [])
+        self.assertFalse(result["ok"])
+        self.assertIn("JSON object", result["error"])
+        self.assertEqual(self.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()
