@@ -32,6 +32,8 @@ REQUIRED_FILES = (
     "automation/command_dispatcher.py",
     "config/abilities.json",
     "monitoring/doctor.py",
+    "automation/agent_engine.py",
+    "monitoring/health_manager.py",
 )
 
 
