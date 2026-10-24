@@ -11,7 +11,7 @@ JARVIS itself:
 Only terminal input (jarvis.py / jarvis_ui.py) can approve. WhatsApp, the HTTP
 bridge and the model itself cannot.
 
-JARVIS_SHELL_POLICY=off in .env disables the guard completely.
+Routine shell syntax is allowed. Destructive/high-impact actions require typed approval.
 """
 
 import json
@@ -94,9 +94,6 @@ def _hard_denied(low):
     for rx, why in HARD_DENY:
         if rx.search(low):
             return why
-    if re.search(r"\brm\b", low) and re.search(r"\s(-[a-z]*r|--recursive)", low) \
-            and RM_BROAD.search(low + " "):
-        return "recursive delete of a broad path"
     return None
 
 
