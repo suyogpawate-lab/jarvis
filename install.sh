@@ -67,8 +67,27 @@ fi
 
 # ───────────────────────── python packages ─────────────────────────
 info "Installing Python packages..."
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+# Network hiccups and one Android-incompatible wheel must not abort the
+# entire core install before aliases and recovery guidance are configured.
+PIP_FLAGS=(--retries 5 --timeout 30)
+python -m pip install --upgrade "${PIP_FLAGS[@]}" pip || warn "Could not upgrade pip; continuing with the existing pip."
+CORE_PIP_FAILURES=()
+while IFS= read -r requirement || [ -n "$requirement" ]; do
+    requirement="${requirement%%#*}"
+    requirement="$(printf "%s" "$requirement" | xargs)"
+    [ -z "$requirement" ] && continue
+    info "Installing Python requirement: $requirement"
+    if python -m pip install "${PIP_FLAGS[@]}" "$requirement"; then
+        ok "Installed $requirement."
+    else
+        warn "Could not install $requirement; continuing with the remaining core requirements."
+        CORE_PIP_FAILURES+=("$requirement")
+    fi
+done < requirements.txt
+if [ "${#CORE_PIP_FAILURES[@]}" -gt 0 ]; then
+    warn "Core Python packages needing attention: ${CORE_PIP_FAILURES[*]}"
+    warn "A failed package did not stop other requirements or alias setup. Retry individual packages with: python -m pip install --retries 5 --timeout 30 PACKAGE"
+fi
 
 if [ "$WITH_OSINT" -eq 1 ]; then
     python -m pip install -r requirements-osint.txt \
@@ -116,6 +135,7 @@ cat >> "$ALIAS_TMP" <<EOF
 $ALIAS_START
 alias jarvis='python "$ROOT/jarvis_ui.py"'
 alias jarvis-cli='python "$ROOT/jarvis.py"'
+alias jarvis-float='python "$ROOT/jarvis_float.py"'
 alias olser='nohup ollama serve > /dev/null 2>&1 &'
 alias wa='nohup bash "$ROOT/whatsapp_daemon.sh" > /dev/null 2>&1 &'
 alias omni='bash "$ROOT/omniroute_daemon.sh"'
