@@ -119,6 +119,11 @@ class CommandDispatcher:
         # Explicit multi-step plans use the same dispatcher for every step.
         self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step))
 
+        # Coordinate existing providers, persisted workflows, and read-only health checks.
+        self.health_manager = HealthManager()
+        self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
+        self.health_manager.start()
+
     # ==========================================================
     # COMMAND SPLITTING
     # ==========================================================
