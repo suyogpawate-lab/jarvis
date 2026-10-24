@@ -25,7 +25,7 @@ class ScreenCastReceiverTests(unittest.TestCase):
     def test_snapshot_action_is_allowed_and_forwarded(self):
         fake = MagicMock()
         fake.__enter__.return_value = fake
-        fake.recv.side_effect = [b'{"ok":true,"type":"screen_accessibility","elements":[]}\\n']
+        fake.recv.side_effect = [b'{"ok":true,"type":"screen_accessibility","elements":[]}\n']
         with patch("screen_cast.receiver.socket.create_connection", return_value=fake):
             result = ScreenCastReceiver().control({"action": "snapshot"})
         self.assertTrue(result["ok"])
