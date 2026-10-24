@@ -1434,9 +1434,15 @@ Rules:
         text = str(text).strip()
         original_text = text
 
-        # Explicit task plans are handled locally before any AI fallback.
+        # Explicit agent/task/health controls are deterministic and never sent to AI.
+        if re.match(r"^/agent(?:\s|$)", text, re.IGNORECASE):
+            return self.agent_engine.handle(text, source=source)
+
         if re.match(r"^/task(?:\s|$)", text, re.IGNORECASE):
             return self.task_executor.handle(text, source=source)
+
+        if re.fullmatch(r"/health\s*", text, re.IGNORECASE):
+            return self.health_manager.report()
 
         # Keep explicit local diagnostics out of the AI fallback path.
         if re.fullmatch(r"/doctor\s*", text, re.IGNORECASE):
