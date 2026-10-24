@@ -117,7 +117,7 @@ class CommandDispatcher:
         )
 
         # Explicit multi-step plans use the same dispatcher for every step.
-        self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step))
+        self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step, source="agent_step"))
 
         # Coordinate existing providers, persisted workflows, and read-only health checks.
         self.health_manager = HealthManager()
@@ -2068,7 +2068,7 @@ Rules:
         # Natural-language action requests use the Agent Engine immediately.
         # Keep this after deterministic device routes so simple local queries
         # remain fast and do not incur Gemini planning overhead.
-        if self._looks_like_agent_task(text):
+        if source != "agent_step" and self._looks_like_agent_task(text):
             return self.agent_engine.execute_goal(text, source=source)
 
         # ======================================================
