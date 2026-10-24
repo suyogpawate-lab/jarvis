@@ -212,6 +212,34 @@ class TaskExecutor:
         self._save(task)
         return self._render(task)
 
+    def recover_interrupted(self):
+        """Pause tasks interrupted by process exit without blindly repeating work."""
+        recovered = []
+        for path in self.task_dir.glob("task-????????.json"):
+            try:
+                task = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if task.get("status") != "RUNNING":
+                continue
+            index = task.get("current_step", 0)
+            steps = task.get("steps", [])
+            if not isinstance(index, int) or not 0 <= index < len(steps):
+                task["status"] = "PAUSED_RECOVERY"
+                task["failure"] = "Interrupted task has an invalid current step; inspect status before resuming."
+            else:
+                step = steps[index]
+                if step.get("status") == "RUNNING":
+                    step["status"] = "PENDING"
+                    step["result"] = "[RECOVERY] Previous process ended before completion was verified; this step was not automatically repeated."
+                    step["started_at"] = None
+                    step["finished_at"] = None
+                task["status"] = "PAUSED_RECOVERY"
+                task["failure"] = "Task was interrupted. Review the current step before resuming."
+            self._save(task)
+            recovered.append(task.get("id", path.stem))
+        return recovered
+
     def handle(self, command: str, source: str = "external"):
         """Handle /task subcommands. Step text is always passed to normal dispatch."""
         parts = str(command or "").strip().split(maxsplit=2)
@@ -274,8 +302,8 @@ class TaskExecutor:
             self._save(task)
             return self._render(task)
         if action == "run":
-            if task["status"] != "PLANNED":
-                return f"[ERROR] Only PLANNED tasks can be started; current status is {task['status']}."
+            if task["status"] not in {"PLANNED", "PAUSED_RECOVERY"}:
+                return f"[ERROR] Only PLANNED or PAUSED_RECOVERY tasks can be started; current status is {task['status']}."
             task["status"] = "RUNNING"
             self._save(task)
             return self._advance(task)
