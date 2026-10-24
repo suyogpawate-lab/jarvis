@@ -173,8 +173,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/screen/analyze":
-                answer = analyze_latest_screen(str(body.get("prompt", "Describe the current screen.")))
-                self._send_json(200, {"ok": True, "response": answer, "stream": screen_receiver.status()})
+                answer = analyze_latest_screen(
+                    str(body.get("prompt", "Describe the current screen.")),
+                    ask=jarvis.ask,
+                )
+                self._send_json(200, {"ok": True, "response": answer, "perception": "accessibility_json", "stream": screen_receiver.status()})
                 return
 
             if self.path == "/chat":
