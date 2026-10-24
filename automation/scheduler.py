@@ -370,10 +370,9 @@ class AutomationScheduler:
                 automation["status"] = "FAILED" if failed else "DONE"
 
         except Exception as exc:
-            automation["last_result"] = (
-                f"[ERROR] {exc}"
-            )
+            automation["last_result"] = f"[ERROR] {exc}"
             automation["last_run"] = time.time()
+            automation["last_status"] = "FAILED"
 
             if (
                 automation.get("repeat_seconds")
