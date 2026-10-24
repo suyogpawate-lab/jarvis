@@ -1,9 +1,9 @@
-"""Safe, persistent multi-step task execution for JARVIS.
+"""Persistent multi-step task execution for JARVIS.
 
-Plans are explicit, bounded, sequential, and stored locally. Consequential
-steps pause for a one-step approval. Execution stops on the first failed step.
-This is a safety layer, not a sandbox; each step still uses the normal
-CommandDispatcher and its existing permissions/guards.
+Plans are explicit, bounded, sequential, and stored locally. Ordinary steps run
+without extra task approval; destructive data-loss steps pause for confirmation.
+Execution stops on the first failed step. This is not a sandbox: steps still use
+the normal CommandDispatcher and its existing permissions/guards.
 """
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ DEFAULT_TASK_DIR = ROOT / "data" / "tasks"
 MAX_STEPS = 10
 MAX_STEP_LENGTH = 500
 
-# Actions that can contact people, alter data/settings, install/remove software,
-# or invoke shell/background execution must be reviewed immediately before use.
-CONSEQUENTIAL = re.compile(
-    r"\b(?:send|message|text|call|phone|delete|remove|uninstall|install|"
-    r"purchase|buy|pay|transfer|shutdown|reboot|restart|format|overwrite|"
-    r"modify|change settings|enable|disable|submit|post|publish)\b"
-    r"|(?:^\s*/(?:exec|bg)\b)"
-    r"|\b(?:rm|mv|chmod|chown|pkg\s+install|pip\s+install|npm\s+install)\b",
+# Only actions likely to destroy or irreversibly replace data require an
+# extra task-level confirmation. Routine communication, installs, settings,
+# and ordinary shell steps do not trigger this blanket gate.
+DESTRUCTIVE = re.compile(
+    r"\b(?:delete|erase|wipe|shred|truncate|format|overwrite|purge|"
+    r"factory\s+reset|reset\s+(?:the\s+)?device)\b"
+    r"|(?:^|[;&|]\s*)\b(?:rm|rmdir|unlink|shred)\b"
+    r"|\bdd\s+if=",
     re.IGNORECASE,
 )
 NESTED_TASK = re.compile(r"^\s*/task\b", re.IGNORECASE)
@@ -36,7 +36,7 @@ FAILURE_PREFIXES = ("[ERROR]", "[FAIL]", "[FAILED]", "[BLOCKED]", "[NEEDS_APPROV
 
 
 class TaskExecutor:
-    """Sequential task runner with durable state and one-step approvals."""
+    """Sequential task runner with durable state and destructive-action confirmation."""
 
     def __init__(
         self,
@@ -85,8 +85,8 @@ class TaskExecutor:
         return not text or any(upper.startswith(prefix) for prefix in FAILURE_PREFIXES)
 
     @staticmethod
-    def _is_consequential(step: str) -> bool:
-        return bool(CONSEQUENTIAL.search(step))
+    def _is_destructive(step: str) -> bool:
+        return bool(DESTRUCTIVE.search(step))
 
     def create(self, steps):
         if not isinstance(steps, (list, tuple)):
@@ -112,7 +112,7 @@ class TaskExecutor:
                     "number": i,
                     "command": step,
                     "status": "PENDING",
-                    "requires_approval": self._is_consequential(step),
+                    "requires_approval": self._is_destructive(step),
                     "result": None,
                     "started_at": None,
                     "finished_at": None,
@@ -125,7 +125,7 @@ class TaskExecutor:
         self._save(task)
         preview = "\n".join(
             f"  {s['number']}. {s['command']}"
-            + (" [approval required]" if s["requires_approval"] else "")
+            + (" [destructive confirmation required]" if s["requires_approval"] else "")
             for s in task["steps"]
         )
         return (
