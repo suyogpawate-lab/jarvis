@@ -271,7 +271,7 @@ class EmailManager:
                 }
 
             uid_set = b",".join(uids)
-            status, _ = mail.uid("store", uid_set, "+FLAGS", r"(\\Seen)")
+            status, _ = mail.uid("store", uid_set, "+FLAGS", r"(\Seen)")
             if status != "OK":
                 raise RuntimeError("Gmail did not confirm the read-status update.")
 
