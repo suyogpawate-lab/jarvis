@@ -28,7 +28,10 @@ class SkillForge:
 
     @staticmethod
     def _slug(name: str) -> str:
-        value = re.sub(r"[^a-z0-9_-]+", "-", str(name or "").strip().lower())
+        raw = str(name or "").strip().lower()
+        if "/" in raw or "\\" in raw or ".." in raw:
+            raise ValueError("Skill names cannot contain path separators or '..'.")
+        value = re.sub(r"[^a-z0-9_-]+", "-", raw)
         value = re.sub(r"-{2,}", "-", value).strip("-_")
         if not _NAME_RE.fullmatch(value):
             raise ValueError("Skill names must be 1–40 characters: letters, numbers, hyphens, or underscores.")
