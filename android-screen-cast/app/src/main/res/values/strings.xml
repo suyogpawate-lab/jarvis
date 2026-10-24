@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">JARVIS Screen Cast</string>
+    <string name="accessibility_description">Allows JARVIS to perform explicitly requested taps, swipes, text entry, and navigation actions on this device.</string>
+</resources>
