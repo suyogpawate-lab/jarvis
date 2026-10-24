@@ -69,9 +69,11 @@ class AudioInput:
 
     def read(self, timeout=None):
         try:
-            return self.queue.get(timeout=timeout)
+            payload = self.queue.get(timeout=timeout)
         except queue.Empty:
             return None
+        self.queue.task_done()
+        return payload
 
     def stop(self):
         with self._lock:
