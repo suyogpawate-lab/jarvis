@@ -11,7 +11,7 @@ JARVIS itself:
 Only terminal input (jarvis.py / jarvis_ui.py) can approve. WhatsApp, the HTTP
 bridge and the model itself cannot.
 
-JARVIS_SHELL_POLICY=off in .env disables the guard completely.
+Routine shell syntax is allowed. Destructive/high-impact actions require typed approval.
 """
 
 import json
@@ -38,14 +38,10 @@ HARD_DENY = [
 
 # allowed only after you approve
 RISKY = [
-    # Shell composition can hide additional commands from simple word matching.
-    (r"`|\$\(|\$\{[^}]+\}|<\(|(?:&&|\|\||[;&|])|\n|\r", "shell composition or expansion"),
-    (r"(?<![<>=])>(?![=>])", "shell output redirection can overwrite files"),
-    (r"\b(?:python(?:\d+(?:\.\d+)?)?|node|ruby|perl|php)\b[^;&|]*\s(?:-c|-e|--eval)\b", "executes inline interpreter code"),
-    (r"\b(?:bash|sh|zsh)\s+-c\b", "executes a shell command string"),
+    # Routine shell syntax is allowed; approval is for destructive or
+    # consequential actions, not command complexity.
     (r"\b(rm|rmdir|unlink|shred|truncate)\b", "deletes files"),
     (r"\bfind\b[^|;]*-delete", "deletes files"),
-    (r"\bmv\b", "moves or overwrites files"),
     (r"\bdd\b", "raw disk copy"),
     (r"\b(kill|killall|pkill)\b", "kills processes"),
     (r"\b(chmod|chown|chgrp)\b", "changes permissions"),
@@ -98,9 +94,6 @@ def _hard_denied(low):
     for rx, why in HARD_DENY:
         if rx.search(low):
             return why
-    if re.search(r"\brm\b", low) and re.search(r"\s(-[a-z]*r|--recursive)", low) \
-            and RM_BROAD.search(low + " "):
-        return "recursive delete of a broad path"
     return None
 
 
