@@ -95,6 +95,7 @@ class AgentEngineTests(unittest.TestCase):
         self.assertEqual(dispatcher.dispatch("/health"), "health-routed")
 
     def test_natural_language_action_routes_to_agent_immediately(self):
+        from automation.command_dispatcher import CommandDispatcher
         dispatcher = object.__new__(CommandDispatcher)
         dispatcher.agent_engine = type("Agent", (), {
             "execute_goal": lambda self, goal, source="external": f"executed:{goal}"
