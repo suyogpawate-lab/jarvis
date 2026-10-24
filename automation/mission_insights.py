@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from collections import Counter
 from pathlib import Path
 
@@ -20,6 +19,14 @@ def _clean(value, limit=220):
     text = str(value or "").replace("\n", " ").strip()
     text = _SECRET.sub(r"\1\2[REDACTED]", text)
     return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _timestamp(task):
+    """Sort malformed/legacy records safely instead of breaking all insights."""
+    try:
+        return float(task.get("updated_at") or task.get("created_at") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
 
 
 class MissionInsights:
@@ -41,7 +48,7 @@ class MissionInsights:
                 continue
             if isinstance(item, dict) and item.get("id") == path.stem:
                 records.append(item)
-        return sorted(records, key=lambda item: float(item.get("updated_at") or item.get("created_at") or 0), reverse=True)
+        return sorted(records, key=_timestamp, reverse=True)
 
     @staticmethod
     def _steps(task):
@@ -147,7 +154,7 @@ class MissionInsights:
             score = sum(haystack.count(term) for term in set(terms))
             if score:
                 matches.append((score, task))
-        matches.sort(key=lambda pair: (pair[0], float(pair[1].get("updated_at") or 0)), reverse=True)
+        matches.sort(key=lambda pair: (pair[0], _timestamp(pair[1])), reverse=True)
         if not matches:
             return "No matching saved missions found. Search is local and does not call an AI provider."
         lines = [f"Local mission recall: {len(matches)} match(es), showing up to {min(limit, len(matches))}"]
