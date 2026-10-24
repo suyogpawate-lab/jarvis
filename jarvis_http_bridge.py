@@ -107,10 +107,6 @@ class JarvisHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------
-        # Return the latest screen hierarchy currently held in RAM.
-        # ----------------------------------------------------------
-
         if not self._authorized():
             self._send_json(401, {"ok": False, "error": "unauthorized"})
             return
@@ -132,21 +128,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/screen":
-            xml, timestamp = get_screen()
-
-            if not xml:
-                self._send_json(404, {
-                    "ok": False,
-                    "error": "no screen data available"
-                })
-                return
-
-            self._send_json(200, {
-                "ok": True,
-                "type": "screen_layout",
-                "timestamp": timestamp,
-                "screen_xml": xml
-            })
+            snapshot, error = get_screen_snapshot()
+            if error:
+                self._send_json(503, {"ok": False, "error": error})
+            else:
+                self._send_json(200, snapshot)
             return
 
         self._send_json(404, {
