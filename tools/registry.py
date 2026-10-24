@@ -113,7 +113,7 @@ class ToolRegistry:
         if entry is None:
             return {"ok": False, "error": f"Unknown tool: {name}"}
         schema, handler = entry
-        arguments = arguments or {}
+        arguments = {} if arguments is None else arguments
         validation_error = self._validate_arguments(schema, arguments)
         if validation_error:
             return {"ok": False, "error": f"Invalid arguments for {name}: {validation_error}"}
