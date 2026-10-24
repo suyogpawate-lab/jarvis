@@ -46,6 +46,16 @@ class AgentEngineTests(unittest.TestCase):
             self.assertIn("COMPLETED", result)
             self.assertEqual(len(calls), 2)
 
+    def test_execute_goal_plans_and_runs_without_user_task_id(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
+            engine = AgentEngine(FakeGemini(), executor)
+            result = engine.execute_goal("inspect project and run tests", source="text")
+            self.assertIn("[AGENT TASK]", result)
+            self.assertIn("COMPLETED", result)
+            self.assertEqual(len(calls), 2)
+
     def test_missing_gemini_is_reported_without_execution(self):
         class NoGemini:
             gemini_api_keys = []
@@ -83,6 +93,17 @@ class AgentEngineTests(unittest.TestCase):
         dispatcher.health_manager = type("Health", (), {"report": lambda self: "health-routed"})()
         self.assertEqual(dispatcher.dispatch("/agent help"), "agent-routed")
         self.assertEqual(dispatcher.dispatch("/health"), "health-routed")
+
+    def test_natural_language_action_routes_to_agent_immediately(self):
+        from automation.command_dispatcher import CommandDispatcher
+        dispatcher = object.__new__(CommandDispatcher)
+        dispatcher.agent_engine = type("Agent", (), {
+            "execute_goal": lambda self, goal, source="external": f"executed:{goal}"
+        })()
+        self.assertTrue(dispatcher._looks_like_agent_task("please fix the project tests"))
+        self.assertTrue(dispatcher._looks_like_agent_task("Build a CLI tool"))
+        self.assertFalse(dispatcher._looks_like_agent_task("How do I fix a test?"))
+        self.assertFalse(dispatcher._looks_like_agent_task("What should I build?"))
 
 
 class HealthManagerTests(unittest.TestCase):

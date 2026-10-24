@@ -117,7 +117,7 @@ class CommandDispatcher:
         )
 
         # Explicit multi-step plans use the same dispatcher for every step.
-        self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step))
+        self.task_executor = TaskExecutor(dispatch=lambda step: self.dispatch(step, source="agent_step"))
 
         # Coordinate existing providers, persisted workflows, and read-only health checks.
         self.health_manager = HealthManager()
@@ -482,6 +482,23 @@ class CommandDispatcher:
     # ==========================================================
     # NORMAL AI REQUEST WITH MEMORY
     # ==========================================================
+
+    @staticmethod
+    def _looks_like_agent_task(text):
+        """Recognize direct task commands without intercepting ordinary questions."""
+        value = str(text or "").strip()
+        if len(value) < 8 or value.startswith("/"):
+            return False
+        pattern = (
+            r"^(?:(?:jarvis)[,\s]+)?"
+            r"(?:(?:please|can you|could you|would you)\s+)*"
+            r"(?:build|implement|fix|debug|inspect|audit|refactor|create|write|develop|"
+            r"set up|configure|update|upgrade|install|test|run|execute|research|"
+            r"investigate|modify|add|remove|integrate|merge|commit|push|review|"
+            r"check|analyze|analyse|generate|migrate|deploy|organize|organise|"
+            r"optimize|optimise)\b"
+        )
+        return bool(re.match(pattern, value, re.IGNORECASE))
 
     def _is_fast_request(self, text):
         """Deterministic gate for genuinely lightweight requests."""
@@ -2047,6 +2064,12 @@ Rules:
                 return "Certainly, sir. " + result
             except Exception as exc:
                 return f"[ERROR] System status check failed: {exc}"
+
+        # Natural-language action requests use the Agent Engine immediately.
+        # Keep this after deterministic device routes so simple local queries
+        # remain fast and do not incur Gemini planning overhead.
+        if source != "agent_step" and self._looks_like_agent_task(text):
+            return self.agent_engine.execute_goal(text, source=source)
 
         # ======================================================
         # OSINT GATE
