@@ -518,7 +518,6 @@ class CommandDispatcher:
             return "[ERROR] Code inspection is restricted to files inside the JARVIS repository."
 
         if not target.is_file():
-            basename = target.name.casefold()
             matches = []
             excluded = {".git", "node_modules", ".venv", "venv", "__pycache__", "site-packages"}
             for current, dirs, files in os.walk(root):
