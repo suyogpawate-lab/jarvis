@@ -506,3 +506,8 @@ python skills/multi_install.py https://github.com/owner/repository/tree/main/pat
 ```
 
 The installer discovers all `SKILL.md` files in the selected repository/folder, lists them, and asks before installing the set. Add `--yes` only when you intentionally want non-interactive installation. It installs each skill into its own folder under `skills/`, refuses to overwrite existing folders, and does not execute installed skill content. Review skills from unfamiliar sources before using them. The installer downloads each discovered skill folder, including its `SKILL.md` and supporting files, with per-file/total-size limits. It does not execute installed skill content.
+
+
+## Live Android Screen Cast
+
+JARVIS now includes a live-stream receiver and an Android companion app source project in [`android-screen-cast/`](android-screen-cast/README.md). The companion uses Android's visible MediaProjection consent flow to stream continuous frames into Termux over localhost, and an optional Accessibility Service provides UI actions. JARVIS keeps frames in RAM and analyzes the latest frame on request through Gemini vision to avoid sending a model request for every video frame. See the companion README for build, permission, HTTP API, and device-test instructions.
