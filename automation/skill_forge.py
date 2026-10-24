@@ -128,7 +128,7 @@ class SkillForge:
             if not commands or any(not item for item in commands):
                 continue
             entry = groups.setdefault(commands, [])
-            entry.append(str(task.get("id") or path.stem))
+            entry.append((str(task.get("id") or path.stem), float(task.get("updated_at") or task.get("created_at") or 0)))
         repeated = []
         for commands, task_ids in groups.items():
             if len(task_ids) < 2:
@@ -144,7 +144,7 @@ class SkillForge:
                     continue
             if already_saved:
                 continue
-            latest_id = task_ids[-1]
+            latest_id = max(task_ids, key=lambda item: item[1])[0]
             suggested_name = re.sub(r"[^a-z0-9]+", "-", commands[0].lower()).strip("-")[:24] or "repeated-workflow"
             repeated.append(
                 f"{suggested_name} — repeated {len(task_ids)} times; save with: /skill save {latest_id} as {suggested_name}"
