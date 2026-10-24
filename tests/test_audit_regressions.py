@@ -11,6 +11,7 @@ from automation.job_manager import JobManager
 from automation.scheduler import AutomationScheduler
 from automation.task_executor import TaskExecutor
 from search.deep_search import DeepSearch
+from tools.mcp_client import MCPError, MCPServer
 
 
 class TaskExecutorRegressionTests(unittest.TestCase):
@@ -32,6 +33,21 @@ class TaskExecutorRegressionTests(unittest.TestCase):
                 self.assertIsNone(command_guard.check(command))
                 # Authorization is one-shot; a second attempt requires its own approval.
                 self.assertIsNotNone(command_guard.check(command))
+
+    def test_task_level_approval_does_not_trigger_a_second_guard_prompt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(command_guard, "PENDING_FILE", Path(temp) / "pending.json"), \
+                 patch.dict(os.environ, {"JARVIS_SHELL_POLICY": "strict"}):
+                def dispatch(command):
+                    verdict = command_guard.check(command)
+                    return verdict or "[EXEC] test\n[EXIT] 0"
+                executor = TaskExecutor(dispatch, task_dir=Path(temp) / "tasks")
+                created = executor.handle("/task plan rm -f /tmp/jarvis-audit-test")
+                task_id = created.split()[2]
+                executor.handle(f"/task run {task_id}", source="text")
+                result = executor.handle(f"/task approve {task_id}", source="text")
+                self.assertIn("Task " + task_id + " — COMPLETED", result)
+                self.assertNotIn("[NEEDS_APPROVAL]", result)
 
 
 class BackgroundJobRegressionTests(unittest.TestCase):
@@ -79,6 +95,13 @@ class SchedulerRegressionTests(unittest.TestCase):
         self.assertTrue(AutomationScheduler._result_failed({"ok": False, "error": "no"}))
         self.assertTrue(AutomationScheduler._result_failed("[EXIT] 3"))
         self.assertFalse(AutomationScheduler._result_failed({"ok": True, "exit_code": 0}))
+
+
+class MCPTransportRegressionTests(unittest.TestCase):
+    def test_send_after_server_close_raises_controlled_error(self):
+        server = MCPServer("closed", "unused")
+        with self.assertRaises(MCPError):
+            server._send({"jsonrpc": "2.0", "method": "ping"})
 
 
 class DeepSearchRegressionTests(unittest.TestCase):
