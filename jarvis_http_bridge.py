@@ -218,49 +218,25 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     self._send_json(200 if result.get("ok") else 503, result)
                     return
 
-            # ======================================================
-            # EXISTING SCREEN HIERARCHY INGESTION (kept compatible)
-            # ======================================================
-
+            # Legacy XML ingestion is accepted for compatibility, but the
+            # payload is discarded immediately and never cached or logged.
             screen_value = body.get("screen_xml")
-
             if (
                 body.get("type") == "screen_layout"
                 or screen_value is not None
                 or isinstance(body.get("command"), list)
             ):
-
                 if screen_value is None:
                     screen_value = body.get("command")
-
-                screen_xml = normalize_screen_xml(
-                    screen_value
-                )
-
-                if not screen_xml:
-                    self._send_json(400, {
-                        "ok": False,
-                        "error": "empty screen layout"
-                    })
+                if screen_value is None or (isinstance(screen_value, str) and not screen_value.strip()):
+                    self._send_json(400, {"ok": False, "error": "empty screen layout"})
                     return
-
-                # Store ONLY in RAM.
-                store_screen(screen_xml)
-
-                print(
-                    "[JARVIS SCREEN] Received "
-                    f"{len(screen_xml)} chars",
-                    flush=True
-                )
-
                 self._send_json(200, {
                     "ok": True,
                     "type": "screen_layout",
-                    "stored": True,
-                    "chars": len(screen_xml),
-                    "timestamp": time.time()
+                    "stored": False,
+                    "storage": "RAM only; request payload discarded"
                 })
-
                 return
 
             # ======================================================
