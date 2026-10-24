@@ -262,19 +262,24 @@ def _register_server_tools(server):
             if _tool_count >= MAX_TOOLS:
                 _log_failure("registry", f"tool cap ({MAX_TOOLS}) reached; skipping {name}")
                 break
-            _tool_count += 1
+            _tool_count += 1  # Reserve a slot while concurrent servers register.
 
         schema = tool.get("inputSchema") or {}
         if schema.get("type") != "object":
             schema = {"type": "object", "properties": {}}
 
-        registry.register(
-            _safe_name(server.name, name),
-            str(tool.get("description") or name)[:MAX_DESC_CHARS],
-            schema,
-            _make_handler(server, name),
-        )
-        added += 1
+        try:
+            registry.register(
+                _safe_name(server.name, name),
+                str(tool.get("description") or name)[:MAX_DESC_CHARS],
+                schema,
+                _make_handler(server, name),
+            )
+            added += 1
+        except Exception as exc:
+            with _count_lock:
+                _tool_count = max(0, _tool_count - 1)
+            _log_failure(server.name, f"tool registration failed for {name}: {type(exc).__name__}: {exc}")
     return added
 
 
