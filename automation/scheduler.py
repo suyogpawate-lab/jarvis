@@ -87,7 +87,9 @@ class AutomationScheduler:
         self.callback = callback
         self.timezone_name, self.timezone = _resolve_timezone(timezone)
 
-        self.base_dir = os.path.join(os.path.dirname(__file__), "..", "data", "automations")
+        # Honor caller-supplied storage paths; relative paths remain relative
+        # to the process working directory, matching the public API.
+        self.base_dir = os.path.abspath(os.path.expanduser(str(base_dir)))
         os.makedirs(self.base_dir, exist_ok=True)
 
         self._lock = threading.RLock()
@@ -318,6 +320,30 @@ class AutomationScheduler:
     # EXECUTION
     # ----------------------------------------------------------
 
+    @staticmethod
+    def _result_failed(result):
+        """Recognize structured failures and JARVIS's standard error markers."""
+        if result is None:
+            return True
+        if isinstance(result, dict):
+            if result.get("error") or result.get("ok") is False:
+                return True
+            for key in ("exit", "exit_code", "returncode"):
+                if key in result:
+                    try:
+                        return int(result[key]) != 0
+                    except (TypeError, ValueError):
+                        return True
+            return False
+        text = str(result).strip()
+        if not text:
+            return True
+        upper = text.upper()
+        if upper.startswith(("[ERROR]", "[FAIL]", "[FAILED]", "[BLOCKED]", "[NEEDS_APPROVAL]")):
+            return True
+        match = __import__("re").search(r"(?m)^\[EXIT\]\s*(-?\d+)\s*$", text)
+        return bool(match and int(match.group(1)) != 0)
+
     def _execute(self, automation):
         command = automation.get(
             "command",
@@ -329,23 +355,19 @@ class AutomationScheduler:
 
         try:
             result = self.callback(command)
+            failed = self._result_failed(result)
 
             automation["last_result"] = str(result)
             automation["last_run"] = time.time()
-            automation["run_count"] = (
-                automation.get("run_count", 0) + 1
-            )
+            automation["run_count"] = automation.get("run_count", 0) + 1
+            automation["last_status"] = "FAILED" if failed else "DONE"
 
-            if (
-                automation.get("repeat_seconds")
-                or automation.get("repeat_mode") == "daily"
-            ):
+            if automation.get("repeat_seconds") or automation.get("repeat_mode") == "daily":
                 automation["next_run"] = self._next_repeat_time(automation)
                 automation["status"] = "SCHEDULED"
-
             else:
                 automation["next_run"] = None
-                automation["status"] = "DONE"
+                automation["status"] = "FAILED" if failed else "DONE"
 
         except Exception as exc:
             automation["last_result"] = (
