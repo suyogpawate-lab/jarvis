@@ -1454,7 +1454,7 @@ Rules:
         original_text = text
 
         # Explicit agent/task/health controls are deterministic and never sent to AI.
-        if re.match(r"^/skill(?:\\s|$)", text, re.IGNORECASE):
+        if re.match(r"^/skill(?:\s|$)", text, re.IGNORECASE):
             return self.skill_forge.handle(text, source=source)
 
         if re.match(r"^/agent(?:\s|$)", text, re.IGNORECASE):
