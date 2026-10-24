@@ -508,8 +508,6 @@ class FastAgent:
             # 400/413/other: the request itself is the problem; more keys won't help.
             return response
 
-        break
-
         if last is None:
             raise RuntimeError("Could not reach Groq with any configured key.")
         return last
