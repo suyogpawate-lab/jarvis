@@ -63,6 +63,11 @@ def discover_skills(owner, repo, branch=None, subpath=""):
 
 def install_skills(owner, repo, branch, skills, destination=SKILLS_DIR):
     destination = Path(destination).resolve()
+    branch_ref = urllib.parse.quote(branch, safe="")
+    tree = _get_json(f"{API}/repos/{owner}/{repo}/git/trees/{branch_ref}?recursive=1")
+    if tree.get("truncated"):
+        raise RuntimeError("GitHub tree was truncated; use a narrower folder URL.")
+    entries = tree.get("tree", [])
     installed, failed = [], []
     for folder, skill_path in skills:
         slug = Path(folder).name if folder else repo
@@ -77,27 +82,55 @@ def install_skills(owner, repo, branch, skills, destination=SKILLS_DIR):
         if target_dir.exists():
             failed.append((skill_path, "destination already exists; refusing to overwrite"))
             continue
-        raw_url = "https://raw.githubusercontent.com/{}/{}/{}/{}".format(
-            owner, repo, urllib.parse.quote(branch, safe="/"), "/".join(urllib.parse.quote(p, safe="") for p in skill_path.split("/"))
-        )
+
+        if folder:
+            prefix = folder.rstrip("/") + "/"
+            files = [item for item in entries
+                     if item.get("type") == "blob" and item.get("path", "").startswith(prefix)]
+        else:
+            files = [item for item in entries
+                     if item.get("type") == "blob" and item.get("path") == skill_path]
+        files = sorted(files, key=lambda item: item.get("path", ""))
+        if not files or len(files) > 100:
+            failed.append((skill_path, "empty skill folder or more than 100 files"))
+            continue
+
+        payloads = []
+        total_size = 0
         try:
-            request = urllib.request.Request(raw_url, headers={"User-Agent": "JARVIS-Multi-Skill-Installer"})
-            with urllib.request.urlopen(request, timeout=20) as response:
-                content = response.read(512 * 1024 + 1)
-            if len(content) > 512 * 1024:
-                raise ValueError("SKILL.md exceeds 512 KiB")
-            text = content.decode("utf-8")
-            if not text.strip():
-                raise ValueError("empty SKILL.md")
+            for item in files:
+                source_path = item["path"]
+                relative = source_path[len(folder.rstrip("/") + "/"):] if folder else Path(source_path).name
+                parts = Path(relative).parts
+                if not parts or any(part in {"", ".", ".."} for part in parts):
+                    raise ValueError("unsafe relative file path")
+                raw_url = "https://raw.githubusercontent.com/{}/{}/{}/{}".format(
+                    owner, repo, urllib.parse.quote(branch, safe="/"),
+                    "/".join(urllib.parse.quote(part, safe="") for part in source_path.split("/"))
+                )
+                request = urllib.request.Request(raw_url, headers={"User-Agent": "JARVIS-Multi-Skill-Installer"})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    data = response.read(1024 * 1024 + 1)
+                if len(data) > 1024 * 1024:
+                    raise ValueError("a skill file exceeds 1 MiB")
+                total_size += len(data)
+                if total_size > 5 * 1024 * 1024:
+                    raise ValueError("skill folder exceeds 5 MiB total")
+                payloads.append((relative, data))
+            if not any(Path(name).name.lower() == "skill.md" for name, _ in payloads):
+                raise ValueError("skill entrypoint disappeared during download")
             target_dir.mkdir(parents=True, exist_ok=False)
-            (target_dir / "SKILL.md").write_text(text, encoding="utf-8")
+            for relative, data in payloads:
+                out_path = (target_dir / relative).resolve()
+                if target_dir not in out_path.parents:
+                    raise ValueError("unsafe destination file path")
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_bytes(data)
             installed.append((slug, str(target_dir)))
         except Exception as exc:
-            if target_dir.exists() and not (target_dir / "SKILL.md").exists():
-                try:
-                    target_dir.rmdir()
-                except OSError:
-                    pass
+            if target_dir.exists():
+                import shutil
+                shutil.rmtree(target_dir, ignore_errors=True)
             failed.append((skill_path, str(exc)))
     return installed, failed
 
