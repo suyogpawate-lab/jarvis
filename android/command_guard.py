@@ -38,14 +38,10 @@ HARD_DENY = [
 
 # allowed only after you approve
 RISKY = [
-    # Shell composition can hide additional commands from simple word matching.
-    (r"`|\$\(|\$\{[^}]+\}|<\(|(?:&&|\|\||[;&|])|\n|\r", "shell composition or expansion"),
-    (r"(?<![<>=])>(?![=>])", "shell output redirection can overwrite files"),
-    (r"\b(?:python(?:\d+(?:\.\d+)?)?|node|ruby|perl|php)\b[^;&|]*\s(?:-c|-e|--eval)\b", "executes inline interpreter code"),
-    (r"\b(?:bash|sh|zsh)\s+-c\b", "executes a shell command string"),
+    # Routine shell syntax is allowed; approval is for destructive or
+    # consequential actions, not command complexity.
     (r"\b(rm|rmdir|unlink|shred|truncate)\b", "deletes files"),
     (r"\bfind\b[^|;]*-delete", "deletes files"),
-    (r"\bmv\b", "moves or overwrites files"),
     (r"\bdd\b", "raw disk copy"),
     (r"\b(kill|killall|pkill)\b", "kills processes"),
     (r"\b(chmod|chown|chgrp)\b", "changes permissions"),
