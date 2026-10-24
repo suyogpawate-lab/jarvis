@@ -369,6 +369,67 @@ def get_memory_context(prompt):
 # WHATSAPP DAEMON
 # ==============================================================
 
+def ensure_http_bridge():
+    """Start jarvis_http_bridge.py once, and leave it running in the background."""
+    root = Path(__file__).resolve().parent
+    bridge_script = root / "jarvis_http_bridge.py"
+    bridge_url = "http://127.0.0.1:21339/health"
+
+    if not bridge_script.is_file():
+        print("[HTTP BRIDGE ERROR] jarvis_http_bridge.py not found.", flush=True)
+        return False
+
+    # Reuse an existing healthy bridge; never launch a duplicate process.
+    try:
+        response = requests.get(bridge_url, timeout=1.5)
+        if response.ok:
+            data = response.json()
+            if data.get("ok") and data.get("service") == "JARVIS":
+                print("[HTTP BRIDGE] Already running.", flush=True)
+                return True
+    except Exception:
+        pass
+
+    cache_dir = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "jarvis"
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        log_file = cache_dir / "http_bridge.log"
+        with log_file.open("a", encoding="utf-8") as log:
+            subprocess.Popen(
+                [sys.executable, str(bridge_script)],
+                cwd=str(root),
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=log,
+                start_new_session=True,
+                close_fds=True,
+            )
+    except Exception as exc:
+        print(f"[HTTP BRIDGE ERROR] Could not start bridge: {type(exc).__name__}: {exc}", flush=True)
+        return False
+
+    # Give Python a moment to bind the port, but do not block startup for long.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            response = requests.get(bridge_url, timeout=0.8)
+            if response.ok:
+                data = response.json()
+                if data.get("ok") and data.get("service") == "JARVIS":
+                    print("[HTTP BRIDGE] Started on http://127.0.0.1:21339.", flush=True)
+                    return True
+        except Exception:
+            pass
+        time.sleep(0.25)
+
+    print(
+        f"[HTTP BRIDGE WARN] Startup was not confirmed. Check {cache_dir / 'http_bridge.log'}; "
+        "JARVIS will continue starting.",
+        flush=True,
+    )
+    return False
+
+
 def ensure_whatsapp_daemon():
 
     bridge_url = "http://127.0.0.1:23841/status"
@@ -1036,6 +1097,10 @@ def start_whatsapp_autoreply():
 
 def init_services():
     global notification_watcher, voice_listener
+
+    # Start the local HTTP bridge before other services so screen-control endpoints
+    # are ready as JARVIS comes online.
+    ensure_http_bridge()
 
     # OmniRoute + Knowledge Hub start in the background while WhatsApp is checked below.
     service_launcher.start_background()
