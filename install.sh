@@ -122,8 +122,9 @@ alias omni='bash "$ROOT/omniroute_daemon.sh"'
 alias rag='nohup python "$ROOT/knowledge_hub/app.py" > /dev/null 2>&1 &'
 $ALIAS_END
 EOF
-chmod --reference="$BASHRC" "$ALIAS_TMP" 2>/dev/null || true
-mv "$ALIAS_TMP" "$BASHRC"
+# Rewrite the existing file in place to preserve its permissions and ownership.
+cat "$ALIAS_TMP" > "$BASHRC"
+rm -f "$ALIAS_TMP"
 ok "Refreshed JARVIS aliases in $BASHRC."
 # This loads aliases in the installer's shell. A child script cannot modify
 # its parent interactive shell, so users may need to run: source ~/.bashrc
