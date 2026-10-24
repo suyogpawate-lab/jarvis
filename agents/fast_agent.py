@@ -2837,6 +2837,12 @@ class FastAgent:
                     )
                 return f"I could not submit the form, sir. {result.get('error', '')}"
 
+        # Explicit complex shell/device work uses the intended bounded provider
+        # router. This method was previously defined but never called.
+        shell_result = self._route_shell_request(prompt)
+        if shell_result is not None:
+            return shell_result
+
         # RAG questions go straight to Gemini; fall back to Groq if it fails.
         if self._is_rag_request(prompt):
             print("[JARVIS ROUTER] RAG -> GEMINI")
