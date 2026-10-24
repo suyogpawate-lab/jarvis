@@ -2,7 +2,7 @@
 
 A personal assistant built for Android and Termux. JARVIS combines natural-language conversation, phone and shell actions, persistent memory, web search, optional voice input/output, Gmail and WhatsApp integrations, background jobs, scheduled actions, and a local document knowledge hub.
 
-> **Important:** JARVIS can run commands on your phone and access personal data through permissions you grant it. Risky shell commands require explicit approval by default, but this is a safety net—not a sandbox. Review actions before approving them.
+> **Important:** JARVIS can run commands on your phone and access personal data through permissions you grant it. Multi-step tasks run ordinary actions without an extra task-level approval; destructive data-loss actions still pause for confirmation. The shell command guard remains a separate safety layer, not a sandbox.
 
 ## Install
 
@@ -189,7 +189,7 @@ Explicit dispatcher commands include:
 /notifications
 ```
 
-Multi-step plans use the explicit `/task` commands above. Plans are limited to 10 steps, run sequentially, persist under `data/tasks/`, and stop on the first reported failure. Review a plan before `/task run`; steps that can send messages, call people, alter data/settings, install/remove software, or invoke shell execution pause for a separate one-step approval. `/task approve <id>` (typed in the plain CLI terminal) approves only the currently paused step; voice and external sources cannot approve a consequential step; `/task deny <id>` cancels the remaining plan. Each step still goes through the normal dispatcher and its existing guards. This is a safety layer, not a sandbox; outcomes are based on the tool/dispatcher result and still require user verification for external effects.
+Multi-step plans use the explicit `/task` commands above. Plans are limited to 10 steps, run sequentially, persist under `data/tasks/`, and stop on the first reported failure. Routine actions—including messages, calls, settings changes, and installs—run without an extra task-level approval. Destructive data-loss actions (such as deleting, wiping, formatting, or overwriting data) pause before execution. For a paused destructive step, `/task approve <id>` (typed in the plain CLI terminal) confirms only that step; `/task deny <id>` cancels the remaining plan. Voice and external sources cannot confirm the destructive step. Each step still goes through the normal dispatcher and its existing guards. This is not a sandbox; outcomes are based on the tool/dispatcher result and still require user verification for external effects.
 
 These let you run a shell command, start/manage background jobs, inspect job output and retrieve active Android notifications. JARVIS can also route many shell/device tasks from natural-language requests.
 
