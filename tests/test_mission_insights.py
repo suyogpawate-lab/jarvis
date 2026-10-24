@@ -73,6 +73,11 @@ class MissionInsightsTests(unittest.TestCase):
         (self.root / "not-a-task.json").write_text("{}", encoding="utf-8")
         self.assertIn("no saved tasks", self.insights.insights())
 
+    def test_malformed_timestamps_do_not_break_history(self):
+        self.write_task("task-1234abcd", "COMPLETED", [], updated_at="not-a-number")
+        self.assertIn("Saved tasks: 1", self.insights.insights())
+        self.assertIn("task-1234abcd", self.insights.recall("battery"))
+
 
 if __name__ == "__main__":
     unittest.main()
