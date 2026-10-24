@@ -51,6 +51,17 @@ class ControlAccessibilityService : AccessibilityService() {
 
     private fun runAction(req: JSONObject): JSONObject {
         val action = req.optString("action", "")
+        if (action == "snapshot") return buildSnapshot()
+        if (action == "click_element") {
+            val index = req.optInt("element_index", -1)
+            if (index !in 0..249) return JSONObject().put("ok", false).put("error", "invalid element_index")
+            val root = rootInActiveWindow ?: return JSONObject().put("ok", false).put("error", "no active accessibility window")
+            return try {
+                val target = findNodeByIndex(root, index)
+                val clicked = try { target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false } finally { target?.recycle() }
+                JSONObject().put("ok", clicked).put("action", action).put("element_index", index)
+            } finally { root.recycle() }
+        }
         val ok = when (action) {
             "tap" -> {
                 val x = req.getInt("x").toFloat()
@@ -70,6 +81,84 @@ class ControlAccessibilityService : AccessibilityService() {
             else -> return JSONObject().put("ok", false).put("error", "unsupported action")
         }
         return JSONObject().put("ok", ok).put("action", action)
+    }
+
+    private fun buildSnapshot(): JSONObject {
+        val root = rootInActiveWindow
+            ?: return JSONObject().put("ok", false).put("error", "no active accessibility window")
+        val elements = org.json.JSONArray()
+        val counter = intArrayOf(0)
+        try {
+            collectNodes(root, elements, 0, counter)
+            val dm = resources.displayMetrics
+            return JSONObject()
+                .put("ok", true)
+                .put("type", "screen_accessibility")
+                .put("package", root.packageName?.toString() ?: "")
+                .put("screen", JSONObject().put("width", dm.widthPixels).put("height", dm.heightPixels))
+                .put("element_count", elements.length())
+                .put("truncated", elements.length() >= 250)
+                .put("elements", elements)
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun collectNodes(
+        node: AccessibilityNodeInfo,
+        output: org.json.JSONArray,
+        depth: Int,
+        counter: IntArray
+    ) {
+        if (depth > 18 || counter[0] >= 250) return
+        val index = counter[0]++
+        val rect = android.graphics.Rect()
+        node.getBoundsInScreen(rect)
+        val item = JSONObject()
+            .put("element_index", index)
+            .put("parent_depth", depth)
+            .put("class", node.className?.toString()?.substringAfterLast('.')?.take(80) ?: "")
+            .put("text", node.text?.toString()?.take(300) ?: "")
+            .put("description", node.contentDescription?.toString()?.take(300) ?: "")
+            .put("bounds", org.json.JSONArray().put(rect.left).put(rect.top).put(rect.right).put(rect.bottom))
+            .put("clickable", node.isClickable)
+            .put("long_clickable", node.isLongClickable)
+            .put("enabled", node.isEnabled)
+            .put("focusable", node.isFocusable)
+            .put("focused", node.isFocused)
+            .put("editable", node.isEditable)
+            .put("scrollable", node.isScrollable)
+            .put("selected", node.isSelected)
+            .put("checked", node.isChecked)
+            .put("child_count", node.childCount)
+        output.put(item)
+        for (i in 0 until node.childCount) {
+            if (counter[0] >= 250) break
+            val child = node.getChild(i) ?: continue
+            try { collectNodes(child, output, depth + 1, counter) } finally { child.recycle() }
+        }
+    }
+
+    private fun findNodeByIndex(root: AccessibilityNodeInfo, wanted: Int): AccessibilityNodeInfo? {
+        return findNodeRecursive(root, wanted, 0, intArrayOf(0))
+    }
+
+    private fun findNodeRecursive(
+        node: AccessibilityNodeInfo,
+        wanted: Int,
+        depth: Int,
+        counter: IntArray
+    ): AccessibilityNodeInfo? {
+        if (depth > 18 || counter[0] >= 250) return null
+        val current = counter[0]++
+        if (current == wanted) return AccessibilityNodeInfo.obtain(node)
+        for (i in 0 until node.childCount) {
+            if (counter[0] >= 250) break
+            val child = node.getChild(i) ?: continue
+            val found = try { findNodeRecursive(child, wanted, depth + 1, counter) } finally { child.recycle() }
+            if (found != null) return found
+        }
+        return null
     }
 
     private fun performSwipe(x1: Float, y1: Float, x2: Float, y2: Float, duration: Long): Boolean {
