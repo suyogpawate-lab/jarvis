@@ -2754,8 +2754,10 @@ class FastAgent:
             r"\b(?:send|message|whatsapp|email|call|execute|run|terminal|shell|termux|"
             r"install|uninstall|delete|remove|create|edit|modify|fix|debug|inspect|"
             r"search|look\s+up|latest|today|tonight|current|right\s+now|"
-            r"alarm|timer|file|files|code|repository|repo|project|github|website|"
-            r"web|internet|battery|storage|wifi|wi-fi|notifications?|launch|open\s+app)\b",
+            r"alarm|timer|file|files|document|docs|knowledge|memory|notes?|history|"
+            r"conversation|chat|mail|inbox|code|repository|repo|project|github|website|"
+            r"web|internet|device|system|ram|process|package|app|application|"
+            r"battery|storage|wifi|wi-fi|notifications?|launch|open\s+app)\b",
             low,
         ):
             return None
