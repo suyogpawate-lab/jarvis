@@ -40,7 +40,7 @@ Configure GEMINI_API_KEYS (or GEMINI_API_KEY) in Termux for visual interpretatio
 
 Example:
 ```sh
-curl -H "X-Token: $JARVIS_HTTP_TOKEN" http://127.0.0.1:21339/screen/stream/status
+TOKEN=$(python -c 'import os; from jarvis_env import load_env; load_env(); print(os.environ["JARVIS_HTTP_TOKEN"])'); curl -H "X-Token: $TOKEN" http://127.0.0.1:21339/screen/stream/status
 ```
 
 Coordinates are physical screen pixels. Android can block capture of secure/DRM content, and Accessibility actions cannot operate every protected screen. Enable Accessibility only if you understand the access it grants.
