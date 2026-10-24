@@ -2745,7 +2745,7 @@ class FastAgent:
         # those historical words turn a simple current message into a Gemini plan.
         marker = "CURRENT USER MESSAGE:"
         if marker in raw:
-            raw = raw.split(marker, 1)[1].split("\\n", 1)[0]
+            raw = raw.split(marker, 1)[1].splitlines()[0]
         text = " ".join(raw.lower().split())
         project_cues = re.search(
             r"\b(project|repository|repo|codebase|code base|implement|refactor|"
