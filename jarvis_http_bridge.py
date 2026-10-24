@@ -254,10 +254,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            print(
-                f"[JARVIS HTTP] → {command}",
-                flush=True
-            )
+            print("[JARVIS HTTP] Processing chat request.", flush=True)
 
             result = dispatcher.dispatch(command)
 
@@ -266,10 +263,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
             result = str(result).strip()
 
-            print(
-                f"[JARVIS HTTP] ← {result[:200]}",
-                flush=True
-            )
+            print("[JARVIS HTTP] Chat response ready.", flush=True)
 
             self._send_json(200, {
                 "ok": True,
