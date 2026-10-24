@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from android.command_guard import authorize_command_once, requires_approval
+from android.command_guard import authorize_command_once, requires_approval, revoke_command_authorization
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -190,7 +190,11 @@ class TaskExecutor:
             try:
                 if task_approved:
                     authorize_command_once(step["command"])
-                result = self.dispatch(step["command"])
+                try:
+                    result = self.dispatch(step["command"])
+                finally:
+                    if task_approved:
+                        revoke_command_authorization(step["command"])
             except Exception as exc:
                 result = f"[ERROR] {type(exc).__name__}: {exc}"
             step["result"] = result if isinstance(result, (str, int, float, bool, dict, list)) else str(result)
