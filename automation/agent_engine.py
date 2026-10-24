@@ -119,6 +119,11 @@ class AgentEngine:
             if self.health_manager is None:
                 return "[ERROR] Health monitoring is unavailable."
             return self.health_manager.report()
+        if action in {"history", "events"}:
+            runtime = getattr(self.task_executor, "runtime", None)
+            if runtime is None:
+                return "[ERROR] Agent execution history is unavailable."
+            return runtime.history_text()
         if action in {"do", "execute", "run-now"}:
             if not value:
                 return f"Usage: /agent {action} <goal>"
@@ -158,5 +163,6 @@ class AgentEngine:
             "/agent list — list saved workflows\n"
             "/agent approve|deny|cancel <task-id> — manage a paused workflow\n"
             "/agent health — inspect device and service health\n"
+            "/agent history — inspect recent workflow execution events\n"
             "Plans are persisted; each step uses the existing dispatcher and safety checks."
         )
