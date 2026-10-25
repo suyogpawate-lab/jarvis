@@ -694,112 +694,51 @@ def step_apps(env):
 
 def step_voice(env):
     heading("Speech output")
-    current = (env.get("JARVIS_TTS_PROVIDER", "say") or "say").strip().lower()
-    if current not in ("say", "edge", "piper", "sherpa"):
-        current = "say"
-    info("ZIP say uses the supplied persistent server.py + say client and caches the Alan/Bryce Sherpa models locally.")
-    print("  1) ZIP say (recommended; local Alan + Bryce, persistent server)")
-    print("  2) Edge TTS (network-based)")
-    print("  3) Piper C-API (local, single voice)")
-    print("  4) Sherpa-ONNX project server (local, Alan + Bryce)")
-    defaults = {"say": "1", "edge": "2", "piper": "3", "sherpa": "4"}
-    choice = ask("Choose speech provider: 1=ZIP say, 2=Edge, 3=Piper, 4=Sherpa", default=defaults[current])
-    if choice.strip().lower() in ("1", "say", "zip"):
-        provider = "say"
-    elif choice.strip().lower() in ("4", "sherpa", "sherpa-onnx"):
-        provider = "sherpa"
-    elif choice.strip().lower() in ("3", "piper"):
-        provider = "piper"
-    else:
-        provider = "edge"
-    env.set("JARVIS_TTS_PROVIDER", provider)
-    if provider == "piper":
-        migration = ROOT / "scripts" / "prepare_piper_assets.py"
+    info("JARVIS replies use the exact ZIP say client and persistent server.py (Alan/Bryce).")
+    env.set("JARVIS_TTS_PROVIDER", "say")
+    selected_voice = ask(
+        "Default ZIP voice: 1=Alan (British), 2=Bryce (American)",
+        default="2" if env.get("JARVIS_SHERPA_VOICE", "alan").lower() == "bryce" else "1",
+    )
+    env.set("JARVIS_SHERPA_VOICE", "bryce" if selected_voice.strip().lower() in ("2", "bryce") else "alan")
+    env.save()
+
+    info("Preparing the supplied ZIP voice models (~125 MiB total if not already present).")
+    prepare = ROOT / "scripts" / "prepare_sherpa_assets.py"
+    result = subprocess.run([sys.executable, str(prepare)], check=False)
+    if result.returncode != 0:
+        warn("Sherpa model download did not complete. Retry: python scripts/prepare_sherpa_assets.py")
+
+    prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+    espeak = Path(env.get("JARVIS_ESPEAK_DATA") or prefix / "share/espeak-ng-data").expanduser()
+    if not espeak.is_dir() or not any(espeak.iterdir()):
+        warn("eSpeak NG data is missing. Install it with: pkg install espeak-ng")
+
+    try:
+        import sherpa_onnx  # noqa: F401
+        import soundfile  # noqa: F401
+    except ImportError:
+        info("Installing optional Sherpa runtime dependencies...")
         try:
-            subprocess.run([sys.executable, str(migration)], check=False)
-        except OSError as exc:
-            warn(f"Could not prepare repository-local Piper assets: {exc}")
-        defaults = {
-            "JARVIS_PIPER_LIBRARY": str(ROOT / "lib/piper/libpiper.so"),
-            "JARVIS_PIPER_MODEL": str(ROOT / "models/piper/en_GB-alan-medium.onnx"),
-            "JARVIS_PIPER_CONFIG": str(ROOT / "models/piper/en_GB-alan-medium.onnx.json"),
-            "JARVIS_ESPEAK_DATA": str(ROOT / "voice/data/espeak-ng-data"),
-            "JARVIS_PIPER_OUTPUT_DIR": str(ROOT / "cache/piper"),
-        }
-        for key, default in defaults.items():
-            env.set(key, default)
-        cfg = {
-            "JARVIS_PIPER_LIBRARY": Path(env.get("JARVIS_PIPER_LIBRARY")).expanduser(),
-            "JARVIS_PIPER_MODEL": Path(env.get("JARVIS_PIPER_MODEL")).expanduser(),
-            "JARVIS_PIPER_CONFIG": Path(env.get("JARVIS_PIPER_CONFIG")).expanduser(),
-            "JARVIS_ESPEAK_DATA": Path(env.get("JARVIS_ESPEAK_DATA")).expanduser(),
-            "JARVIS_PIPER_OUTPUT_DIR": Path(env.get("JARVIS_PIPER_OUTPUT_DIR", str(ROOT / "cache/piper"))).expanduser(),
-        }
-        env.save()
-        missing = [f"{key}: {path}" for key, path in cfg.items()
-                   if not (
-                       (path.is_dir() and any(path.iterdir())) if key == "JARVIS_ESPEAK_DATA"
-                       else path.is_dir() if key == "JARVIS_PIPER_OUTPUT_DIR"
-                       else path.is_file()
-                   )]
-        if missing:
-            warn("Piper selected, but these paths need attention:")
-            for item in missing:
-                warn("  " + item)
-            info("Install a compatible Piper C-API package and voice model, then rerun ./voice-config.")
-        else:
-            ok("Piper paths exist. A live synthesis test will happen on first speech.")
-    elif provider in ("say", "sherpa"):
-        selected_voice = ask(
-            "Default Sherpa voice: 1=Alan (British), 2=Bryce (American)",
-            default="1" if env.get("JARVIS_SHERPA_VOICE", "alan").lower() != "bryce" else "2",
-        )
-        env.set("JARVIS_SHERPA_VOICE", "bryce" if selected_voice.strip().lower() in ("2", "bryce") else "alan")
-        env.save()
-        info("Preparing both voice models (~125 MiB total download; assets stay in ignored models/sherpa/).")
-        prepare = ROOT / "scripts" / "prepare_sherpa_assets.py"
-        result = subprocess.run([sys.executable, str(prepare)], check=False)
-        if result.returncode != 0:
-            warn("Sherpa model download did not complete. Retry: python scripts/prepare_sherpa_assets.py")
-        prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
-        espeak = Path(env.get("JARVIS_ESPEAK_DATA") or prefix / "share/espeak-ng-data").expanduser()
-        if not espeak.is_dir() or not any(espeak.iterdir()):
-            warn("eSpeak NG data is missing. Install it with: pkg install espeak-ng")
-        try:
-            import sherpa_onnx  # noqa: F401
-            import soundfile  # noqa: F401
-        except ImportError:
-            info("Installing optional Sherpa runtime dependencies...")
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements-sherpa.txt")],
-                    check=False,
-                    timeout=180,
-                )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                result = None
-                warn(f"Could not finish the optional Sherpa dependency install: {exc}")
-            if result is not None and result.returncode != 0:
-                warn("pip could not install the Sherpa runtime on this Android build.")
-        try:
-            import sherpa_onnx  # noqa: F401
-            import soundfile  # noqa: F401
-            ok("Sherpa-ONNX and soundfile are importable.")
-        except ImportError:
-            warn("Sherpa Python runtime is still unavailable.")
-            info("Use a Termux-compatible sherpa-onnx build; see requirements-sherpa.txt.")
-        if provider == "say":
-            try:
-                from voice.jarvis_voice_runtime import prepare_layout
-                prepare_layout()
-                ok("ZIP say files are linked to the repository-local Sherpa models.")
-            except Exception as exc:
-                warn(f"ZIP say layout is not ready yet: {exc}")
-                info("Retry after installing models: python scripts/prepare_sherpa_assets.py")
-    else:
-        env.save()
-        ok("Edge TTS selected.")
-    info("You can change this later with ./voice-config")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements-sherpa.txt")],
+                check=False,
+                timeout=180,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            result = None
+            warn(f"Could not finish the Sherpa dependency install: {exc}")
+        if result is not None and result.returncode != 0:
+            warn("Sherpa dependencies could not be installed on this Android build.")
+
+    try:
+        from voice.jarvis_voice_runtime import prepare_layout
+        prepare_layout()
+        ok("ZIP say assets are ready. server.py will be started when JARVIS launches.")
+    except Exception as exc:
+        warn(f"ZIP say layout is not ready yet: {exc}")
+        info("Install the models and runtime, then rerun: python setup.py voice")
+    info("JARVIS replies are routed to the ZIP say client.")
 
 
 # ─────────────────────── wake acknowledgements ───────────────────────
