@@ -33,9 +33,13 @@ def analyze_latest_screen(
             + (error or "Enable the JARVIS Accessibility service and try again.")
         )
 
+    # Accessibility trees can be enormous. Bound prompt size to reduce latency
+    # and token-per-minute usage. The snapshot remains ephemeral and is never saved.
     compact = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
-    if len(compact) > 80_000:
-        compact = compact[:80_000] + '"[snapshot truncated for bounded processing]"'
+    import os
+    max_chars = max(4000, min(18000, int(os.getenv("JARVIS_SCREEN_PROMPT_MAX_CHARS", "18000"))))
+    if len(compact) > max_chars:
+        compact = compact[:max_chars] + "[snapshot truncated for bounded processing]"
 
     safe_prompt = (prompt or "Describe the current screen.").strip()[:1200]
     model_prompt = (
