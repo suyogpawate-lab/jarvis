@@ -694,18 +694,21 @@ def step_apps(env):
 
 def step_voice(env):
     heading("Speech output")
-    current = (env.get("JARVIS_TTS_PROVIDER", "edge") or "edge").strip().lower()
-    if current not in ("edge", "piper", "sherpa"):
-        current = "edge"
-    info("Edge is network-based; Piper and Sherpa are local after their runtime assets are installed.")
-    print("  1) Edge TTS (default)")
-    print("  2) Piper C-API (local, single voice)")
-    print("  3) Sherpa-ONNX (local, Alan + Bryce voices)")
-    defaults = {"edge": "1", "piper": "2", "sherpa": "3"}
-    choice = ask("Choose speech provider: 1=Edge, 2=Piper, 3=Sherpa dual voice", default=defaults[current])
-    if choice.strip().lower() in ("3", "sherpa", "sherpa-onnx"):
+    current = (env.get("JARVIS_TTS_PROVIDER", "say") or "say").strip().lower()
+    if current not in ("say", "edge", "piper", "sherpa"):
+        current = "say"
+    info("ZIP say uses the supplied persistent server.py + say client and caches the Alan/Bryce Sherpa models locally.")
+    print("  1) ZIP say (recommended; local Alan + Bryce, persistent server)")
+    print("  2) Edge TTS (network-based)")
+    print("  3) Piper C-API (local, single voice)")
+    print("  4) Sherpa-ONNX project server (local, Alan + Bryce)")
+    defaults = {"say": "1", "edge": "2", "piper": "3", "sherpa": "4"}
+    choice = ask("Choose speech provider: 1=ZIP say, 2=Edge, 3=Piper, 4=Sherpa", default=defaults[current])
+    if choice.strip().lower() in ("1", "say", "zip"):
+        provider = "say"
+    elif choice.strip().lower() in ("4", "sherpa", "sherpa-onnx"):
         provider = "sherpa"
-    elif choice.strip().lower() in ("2", "piper"):
+    elif choice.strip().lower() in ("3", "piper"):
         provider = "piper"
     else:
         provider = "edge"
@@ -746,7 +749,7 @@ def step_voice(env):
             info("Install a compatible Piper C-API package and voice model, then rerun ./voice-config.")
         else:
             ok("Piper paths exist. A live synthesis test will happen on first speech.")
-    elif provider == "sherpa":
+    elif provider in ("say", "sherpa"):
         selected_voice = ask(
             "Default Sherpa voice: 1=Alan (British), 2=Bryce (American)",
             default="1" if env.get("JARVIS_SHERPA_VOICE", "alan").lower() != "bryce" else "2",
@@ -785,6 +788,14 @@ def step_voice(env):
         except ImportError:
             warn("Sherpa Python runtime is still unavailable.")
             info("Use a Termux-compatible sherpa-onnx build; see requirements-sherpa.txt.")
+        if provider == "say":
+            try:
+                from voice.jarvis_voice_runtime import prepare_layout
+                prepare_layout()
+                ok("ZIP say files are linked to the repository-local Sherpa models.")
+            except Exception as exc:
+                warn(f"ZIP say layout is not ready yet: {exc}")
+                info("Retry after installing models: python scripts/prepare_sherpa_assets.py")
     else:
         env.save()
         ok("Edge TTS selected.")
