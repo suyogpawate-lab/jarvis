@@ -523,6 +523,32 @@ class FastAgent:
 
         if last is None:
             raise RuntimeError("Could not reach Groq with any configured key.")
+
+        # If every Groq key is TPM/RPM-limited, let the already-configured
+        # Gemini provider continue the current tool round. This avoids restarting
+        # a multi-step screen workflow or waiting on a slow OmniRoute fallback.
+        if last.status_code == 429 and self.gemini_api_keys:
+            fallback_payload = dict(payload)
+            fallback_payload["model"] = self.gemini_model
+            for index, key in enumerate(self.gemini_api_keys[:2], 1):
+                try:
+                    response = requests.post(
+                        f"{self.gemini_base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=fallback_payload,
+                        timeout=min(timeout, 12),
+                    )
+                    if response.status_code == 200:
+                        print(f" Gemini account {index}: continuing after Groq rate limit.", flush=True)
+                        return response
+                    if response.status_code >= 500:
+                        continue
+                except requests.exceptions.RequestException:
+                    continue
+
         return last
 
     def _groq_limit_message(self, response):
