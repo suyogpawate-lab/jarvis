@@ -1,14 +1,16 @@
+import time
 import unittest
 
 from voice.listener import WhistleWakeListener
 
 
 class FakeTTSManager:
-    def __init__(self, spoken, started=100.0, finished=105.0):
+    def __init__(self, spoken):
+        now = time.monotonic()
         self._status = {
             "last_spoken_text": spoken,
-            "last_started": started,
-            "last_finished": finished,
+            "last_started": now - 2.0,
+            "last_finished": now - 1.0,
         }
 
     def status(self):
