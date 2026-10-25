@@ -20,7 +20,7 @@ if [ -n "$ANDROID_API_LEVEL" ]; then
     echo "[+] Found Android API Level: $ANDROID_API_LEVEL"
 else
     # Fallback option if getprop fails or if you're testing inside a container
-    export ANDROID_API_LEVEL=24
+    export ANDROID_API_LEVEL=29
     echo "[-] Warning: Could not resolve Android API level natively. FALLBACK TO 24"
 fi
 
@@ -58,8 +58,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak-ng ollama python-onnxruntime libjpeg-turbo rust binutils \
-    python-numpy libxml2 libxslt clang make pkg-config
+pkg install -y 'python git curl jq tmux termux-api nodejs mpv sox espeak ollama python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make'
 
 if [ "$WITH_VOICE" -eq 1 ]; then
     pkg install -y portaudio
@@ -95,7 +94,7 @@ if [ "$WITH_OSINT" -eq 1 ]; then
 fi
 
 if [ "$WITH_VOICE" -eq 1 ]; then
-    pkg install -y espeak-ng \
+    pkg install -y espeak \
         || warn "Could not install eSpeak NG data; local Sherpa TTS may need JARVIS_ESPEAK_DATA configured manually."
     python -m pip install -r requirements-voice.txt \
         || warn "Voice packages failed; wake-word support may be unavailable on this device."
@@ -105,6 +104,7 @@ fi
 mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper cache/sherpa "$HOME/jarvis_voice/fx" "${PREFIX:-/data/data/com.termux/files/usr}/tmp"
 chmod +x "$ROOT/voice-config" 2>/dev/null || true
 chmod +x "$ROOT/voice/jarvis_voice/say" 2>/dev/null || true
+chmod +x "$ROOT/setup" 2>/dev/null || true
 info "Preparing repository-local Piper assets..."
 python scripts/prepare_piper_assets.py || warn "Could not migrate existing Piper assets; run python scripts/prepare_piper_assets.py to retry."
 info "Preparing ZIP say voice models and socket-server layout..."
@@ -226,7 +226,7 @@ fi
 
 # ───────────────────────── voice (optional) ─────────────────────────
 if [ "$WITH_VOICE" -eq 1 ]; then
-    info "Setting up local speech recognition (Needle + Whistle)..."
+    info "Setting up local speech recognition (Needle–Whistle)..."
     # Install Needle and prepare the Android ARM64 runtime directory.
     python -m pip install --upgrade cactus-needle \
         || warn "Could not install the Needle downloader; check Python/pip."
