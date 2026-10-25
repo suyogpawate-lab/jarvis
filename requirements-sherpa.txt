@@ -1,0 +1,5 @@
+# Optional Sherpa-ONNX local TTS backend (install only if choosing JARVIS_TTS_PROVIDER=sherpa).
+# Android/Termux wheel availability varies; use a Termux-compatible build if pip has none.
+sherpa-onnx
+soundfile
+numpy
