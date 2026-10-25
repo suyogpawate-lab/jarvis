@@ -915,12 +915,8 @@ def speak(text, quiet=False):
 
 
 def stop_speaking():
-    """Cut off any speech in progress (called when a new prompt is submitted)."""
-    try:
-        from voice.tts_manager import tts
-        tts.interrupt()
-    except Exception:
-        pass
+    """The ZIP say server owns playback; do not initialize the legacy TTS queue."""
+    return None
 
 
 def handle_prompt(prompt, source="external"):
