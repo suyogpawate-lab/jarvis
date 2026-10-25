@@ -102,7 +102,7 @@ if [ "$WITH_VOICE" -eq 1 ]; then
 fi
 
 # ───────────────────────── folders ─────────────────────────
-mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper cache/sherpa "$HOME/jarvis_voice/fx" "$PREFIX/tmp"
+mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper cache/sherpa "$HOME/jarvis_voice/fx" "${PREFIX:-/data/data/com.termux/files/usr}/tmp"
 chmod +x "$ROOT/voice-config" 2>/dev/null || true
 chmod +x "$ROOT/voice/jarvis_voice/say" 2>/dev/null || true
 info "Preparing repository-local Piper assets..."
