@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import difflib
 import subprocess
 import threading
 import time
@@ -52,8 +53,10 @@ class WhistleWakeListener:
 
         # Use the provider-neutral manager so Edge and Piper playback are
         # both covered, including speech queued but not yet playing.
+        self._tts_manager = None
         try:
             from voice.tts_manager import tts as _tts_manager
+            self._tts_manager = _tts_manager
             def _tts_active():
                 status = _tts_manager.status()
                 return bool(status.get("active_playback")) or bool(status.get("queue_pending"))
@@ -187,6 +190,40 @@ class WhistleWakeListener:
                 wav_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+    def _is_recent_tts_echo(self, transcript):
+        """Return True when STT closely matches speech JARVIS played moments ago."""
+        manager = getattr(self, "_tts_manager", None)
+        if manager is None:
+            return False
+        try:
+            status = manager.status()
+            spoken = str(status.get("last_spoken_text") or "").strip()
+            finished = float(status.get("last_finished") or 0.0)
+            started = float(status.get("last_started") or 0.0)
+            now = time.monotonic()
+            # Only compare against recent output; don't suppress a later genuine request.
+            reference_time = max(finished, started)
+            if not spoken or not reference_time or now - reference_time > 18.0:
+                return False
+
+            def normalize(value):
+                return re.sub(r"[^a-z0-9 ]+", " ", value.lower()).split()
+
+            heard_words = normalize(transcript)
+            spoken_words = normalize(spoken)
+            if len(heard_words) < 5 or len(spoken_words) < 5:
+                return False
+            heard = " ".join(heard_words)
+            said = " ".join(spoken_words)
+            similarity = difflib.SequenceMatcher(None, heard, said).ratio()
+            # Needle may paraphrase the exact phrasing slightly; token overlap
+            # catches partial captures and trailing hallucinated filler.
+            heard_set, said_set = set(heard_words), set(spoken_words)
+            overlap = len(heard_set & said_set) / max(1, len(heard_set))
+            return similarity >= 0.62 or overlap >= 0.72
+        except Exception:
+            return False
 
     def _loop(self):
         # Try the Termux-packaged ONNX Runtime first, then TFLite if available.
@@ -411,6 +448,17 @@ class WhistleWakeListener:
 
                         combined = np.concatenate(command_frames)
                         text = self._transcribe(combined)
+
+                        if text:
+                            # STT can mistake the speaker output for a new user command
+                            # when acoustic playback leaks into the microphone. Compare
+                            # against recent JARVIS speech and discard likely echoes.
+                            if self._is_recent_tts_echo(text):
+                                self._log(
+                                    f"[VOICE] Suppressed likely speaker echo: {text}",
+                                    flush=True,
+                                )
+                                text = ""
 
                         if text:
                             if exit_phrase.fullmatch(text.strip()):
