@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from voice.tts import speak as edge_speak, interrupt as edge_interrupt
+from voice.text_chunking import chunk_text
 
 _ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
 
@@ -41,6 +42,19 @@ class TTSManager:
         self._active_playback = False
         self._thread = threading.Thread(target=self._queue_worker, daemon=True, name="JarvisTTS")
         self._thread.start()
+        # Piper's model is warmed asynchronously at startup, not on the first
+        # user-facing response. Native-library failures remain visible in logs.
+        if _provider() == "piper":
+            threading.Thread(target=self._warm_piper, daemon=True, name="PiperWarmup").start()
+
+    def _warm_piper(self):
+        try:
+            from voice.piper_tts import warmup
+            warmup()
+            print("[TTS] Piper localhost service ready; model preloaded.", flush=True)
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"[TTS ERROR] Piper preload failed: {exc}", flush=True)
 
     def _run_provider(self, text, speed=1.0):
         provider = _provider()
@@ -98,58 +112,10 @@ class TTSManager:
 
     @staticmethod
     def _chunk_text(text, max_chars=4500):
-        """Split at sentence punctuation first, protecting decimals and common abbreviations."""
-        text = re.sub(r"\s+", " ", str(text)).strip()
-        if not text:
-            return []
-        # Speak sentence-by-sentence for lower perceived latency and cleaner
-        # interruption. Long individual sentences are further split below.
-        if len(text) <= max_chars and not re.search(r"[.!?]+(?=\\s|$)", text):
-            return [text]
-        sentences, start = [], 0
-        for match in re.finditer(r"[.!?]+(?=\s|$)", text):
-            end = match.end()
-            token_start = text.rfind(" ", start, match.start()) + 1
-            token = text[token_start:end].lower()
-            if token in _ABBREVIATIONS or re.fullmatch(r"\d+\.", token):
-                continue
-            if text[match.start():match.end()] == "." and match.start() > 0 and end < len(text) and text[match.start()-1].isdigit() and text[end].isdigit():
-                continue
-            piece = text[start:end].strip()
-            if piece:
-                sentences.append(piece)
-            start = end
-            while start < len(text) and text[start].isspace():
-                start += 1
-        if text[start:].strip():
-            sentences.append(text[start:].strip())
-        merged = []
-        for sentence in sentences:
-            if merged and merged[-1].split()[-1].lower() in _ABBREVIATIONS:
-                merged[-1] += " " + sentence
-            else:
-                merged.append(sentence)
-        chunks = []
-        for sentence in merged:
-            if len(sentence) <= max_chars:
-                chunks.append(sentence)
-                continue
-            current = ""
-            for part in re.split(r"(?<=[,;:])\s+", sentence):
-                if len(part) > max_chars:
-                    for word in part.split():
-                        if current and len(current) + len(word) + 1 > max_chars:
-                            chunks.append(current.strip())
-                            current = ""
-                        current = f"{current} {word}".strip()
-                elif current and len(current) + len(part) + 1 > max_chars:
-                    chunks.append(current.strip())
-                    current = part
-                else:
-                    current = f"{current} {part}".strip()
-            if current:
-                chunks.append(current.strip())
-        return [chunk for chunk in chunks if chunk]
+        """Group long replies near 15 words at sentence punctuation only."""
+        # max_chars remains accepted for compatibility with existing callers;
+        # normal chunk boundaries are sentence-ending .?!, never commas.
+        return chunk_text(text, target_words=15, threshold_words=20)
 
     def speak(self, text, speed=1.0):
         if text is None:
@@ -161,7 +127,7 @@ class TTSManager:
         # Sherpa's localhost service owns sentence splitting and look-ahead
         # synthesis; send the full response so it can prepare sentence N+1
         # while sentence N is playing. Other providers use the local queue.
-        chunks = [text] if _provider() == "sherpa" else self._chunk_text(text)
+        chunks = [text] if _provider() in ("sherpa", "piper") else self._chunk_text(text)
         if not chunks:
             return False
         try:
