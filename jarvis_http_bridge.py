@@ -112,26 +112,29 @@ class JarvisHandler(BaseHTTPRequestHandler):
             ensure_ascii=False
         ).encode("utf-8")
 
-        self.send_response(status)
-        self.send_header(
-            "Content-Type",
-            "application/json; charset=utf-8"
-        )
-        self.send_header(
-            "Content-Length",
-            str(len(data))
-        )
-        self.send_header(
-            "Access-Control-Allow-Origin",
-            "*"
-        )
-        self.end_headers()
-
         try:
+            self.send_response(status)
+            self.send_header(
+                "Content-Type",
+                "application/json; charset=utf-8"
+            )
+            self.send_header(
+                "Content-Length",
+                str(len(data))
+            )
+            self.send_header(
+                "Cache-Control",
+                "no-store"
+            )
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                "*"
+            )
+            self.end_headers()
             self.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError):
-            # The client may time out while a model request is in flight.
-            # Never log response content or attempt a second response.
+            # A client may disconnect during headers or body transmission.
+            # Do not log response content or attempt a second response.
             return
 
     def do_OPTIONS(self):
