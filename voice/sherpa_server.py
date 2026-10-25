@@ -37,14 +37,15 @@ def synthesize(voice: str, text: str) -> Path:
     import soundfile as sf
     engine = _engine(voice)  # cached by sherpa_tts for this server's lifetime
     audio = engine.generate(text, sid=0, speed=1.0)
-    if not getattr(audio, "samples", None):
+    samples = getattr(audio, "samples", None)
+    if samples is None or len(samples) == 0:
         raise RuntimeError("Sherpa returned no audio samples.")
     output_dir = _paths(voice)["output"]
     output_dir.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="sentence-", suffix=".wav", dir=str(output_dir))
     os.close(fd)
     path = Path(name)
-    sf.write(str(path), audio.samples, audio.sample_rate)
+    sf.write(str(path), samples, audio.sample_rate)
     return path
 
 
