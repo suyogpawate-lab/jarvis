@@ -20,8 +20,11 @@ def _link(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.is_symlink() and target.resolve() == source.resolve():
         return
-    if target.exists() or target.is_symlink():
-        if target.is_dir() and not target.is_symlink():
+    if target.exists() and not target.is_symlink():
+        # Preserve any voice assets already installed in ~/jarvis_voice.
+        return
+    if target.is_symlink():
+        if target.resolve() == source.resolve():
             return
         target.unlink()
     target.symlink_to(source, target_is_directory=source.is_dir())
