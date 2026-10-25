@@ -372,6 +372,11 @@ def get_memory_context(prompt):
 def ensure_http_bridge():
     """Start jarvis_http_bridge.py once, and leave it running in the background."""
     root = Path(__file__).resolve().parent
+    try:
+        from jarvis_env import load_env
+        load_env()
+    except Exception:
+        pass
     bridge_script = root / "jarvis_http_bridge.py"
     bridge_url = "http://127.0.0.1:21339/health"
 
@@ -554,6 +559,64 @@ def ensure_whatsapp_daemon():
     return False
 
 
+
+
+# ==============================================================
+# ON-DEMAND SCREEN PERCEPTION
+# ==============================================================
+_SCREEN_QUESTION_RE = re.compile(
+    r"^(?:what(?:'s| is) on my screen|describe my screen|look at my screen|"
+    r"analyze my screen|read my screen|what(?:'s| is) open|"
+    r"what does this screen(?: show)?|tell me what is on my screen)[?.! ]*$",
+    re.IGNORECASE,
+)
+
+
+def handle_screen_question(prompt):
+    """Ask the local HTTP bridge for a fresh Accessibility snapshot only on request.
+
+    Do not save the prompt or answer to conversation memory: answers may contain
+    private screen contents, and screen perception is explicitly ephemeral.
+    """
+    if not _SCREEN_QUESTION_RE.fullmatch(prompt.strip()):
+        return None
+
+    try:
+        from jarvis_env import load_env
+        load_env()
+    except Exception:
+        pass
+
+    token = os.environ.get("JARVIS_HTTP_TOKEN", "").strip()
+    if not token:
+        return (
+            "Sir, screen perception is not configured: JARVIS_HTTP_TOKEN is missing "
+            "from the environment and .env file."
+        )
+
+    try:
+        response = requests.post(
+            "http://127.0.0.1:21339/screen/analyze",
+            headers={"X-Token": token},
+            json={"prompt": prompt.strip()},
+            timeout=15,
+        )
+        if response.status_code == 401:
+            return "Sir, the screen bridge rejected its authentication token. Check JARVIS_HTTP_TOKEN in .env."
+        response.raise_for_status()
+        payload = response.json()
+        answer = str(payload.get("response", "")).strip()
+        if not answer:
+            return "Sir, the screen bridge returned an empty response."
+        return answer
+    except requests.RequestException as exc:
+        return (
+            "Sir, I couldn't reach the screen-perception bridge. "
+            "JARVIS will try to start it at startup; check ~/.cache/jarvis/http_bridge.log. "
+            f"({type(exc).__name__})"
+        )
+    except (ValueError, TypeError):
+        return "Sir, the screen bridge returned an invalid response."
 
 
 # ==============================================================
@@ -903,6 +966,13 @@ def handle_prompt(prompt, source="external"):
         save_message("user", prompt)
         save_message("assistant", answer)
         return answer, False
+
+    # ----------------------------------------------------------
+    # On-demand screen perception (ephemeral; bypass conversation memory)
+    # ----------------------------------------------------------
+    screen_answer = handle_screen_question(prompt)
+    if screen_answer is not None:
+        return screen_answer, False
 
     # ----------------------------------------------------------
     # Local Android actions (no LLM)
