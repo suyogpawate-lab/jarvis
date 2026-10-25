@@ -904,14 +904,13 @@ def format_memory():
 
 
 def speak(text, quiet=False):
-    """Speak text through TTS. Returns True if it was handed to TTS, False on failure."""
+    """Route JARVIS responses through the supplied ZIP say socket client."""
     try:
-        from voice.tts_manager import tts
-        tts.speak(text)
-        return True
+        from voice.jarvis_voice_runtime import speak as say_speak
+        return bool(say_speak(text))
     except Exception as exc:
         if not quiet:
-            print(f"[TTS ERROR] {exc}")
+            print(f"[TTS ERROR] {exc}", flush=True)
         return False
 
 
