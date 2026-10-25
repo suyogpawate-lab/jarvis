@@ -904,10 +904,11 @@ def format_memory():
 
 
 def speak(text, quiet=False):
-    """Route JARVIS responses through the supplied ZIP say socket client."""
+    """Speak a JARVIS response through the configured TTS provider."""
     try:
-        from voice.jarvis_voice_runtime import speak as say_speak
-        return bool(say_speak(text))
+        from voice.tts_manager import tts
+        tts.speak(text)
+        return True
     except Exception as exc:
         if not quiet:
             print(f"[TTS ERROR] {exc}", flush=True)
@@ -915,8 +916,12 @@ def speak(text, quiet=False):
 
 
 def stop_speaking():
-    """The ZIP say server owns playback; do not initialize the legacy TTS queue."""
-    return None
+    """Interrupt the currently configured speech provider."""
+    try:
+        from voice.tts_manager import tts
+        tts.interrupt()
+    except Exception:
+        pass
 
 
 def handle_prompt(prompt, source="external"):
@@ -1353,14 +1358,16 @@ def read_prompt():
 
 def main():
 
-    # Start the supplied ZIP voice server detached at JARVIS startup so the
-    # first response does not pay the model-load cost.
+    # Preload the supplied ZIP voice server only when Alan/Bryce is selected.
+    # Edge TTS remains the default and does not start the local Sherpa server.
     try:
-        from voice.jarvis_voice_runtime import ensure_server
-        ensure_server()
-        print("[VOICE] ZIP say server is ready.", flush=True)
+        from voice.tts_manager import _provider
+        if _provider() == "say":
+            from voice.jarvis_voice_runtime import ensure_server
+            ensure_server()
+            print("[VOICE] ZIP say server is ready.", flush=True)
     except Exception as exc:
-        print(f"[VOICE WARN] ZIP say server unavailable: {exc}", flush=True)
+        print(f"[VOICE WARN] Local ZIP voice server unavailable: {exc}", flush=True)
 
     init_services()
 
