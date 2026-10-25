@@ -28,7 +28,7 @@ def _provider():
 
 
 class TTSManager:
-    """Queued Edge/Piper TTS manager with a stable API."""
+    """Queued Edge, Piper C-API, or Sherpa-ONNX TTS manager."""
     def __init__(self):
         self.queue = queue.Queue(maxsize=64)
         self.running = True
@@ -47,10 +47,13 @@ class TTSManager:
         if provider == "piper":
             from voice.piper_tts import speak as piper_speak
             result = piper_speak(text, wait=True, speed=speed)
+        elif provider == "sherpa":
+            from voice.sherpa_tts import speak as sherpa_speak
+            result = sherpa_speak(text, wait=True, speed=speed)
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         else:
-            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose edge or piper.")
+            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose edge, piper, or sherpa.")
         if not result:
             raise RuntimeError(f"{provider} TTS playback failed")
         return provider
@@ -187,6 +190,11 @@ class TTSManager:
             piper_interrupt()
         except Exception:
             pass
+        try:
+            from voice.sherpa_tts import interrupt as sherpa_interrupt
+            sherpa_interrupt()
+        except Exception:
+            pass
 
     def clear(self):
         try:
@@ -213,6 +221,13 @@ class TTSManager:
         if provider == "piper":
             model = str(Path(__file__).resolve().parents[1] / "models/piper/en_GB-alan-medium.onnx")
             primary = f"piper/{Path(model).name}"
+        elif provider == "sherpa":
+            voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
+            if voice not in ("alan", "bryce"):
+                voice = "alan"
+            model_name = "en_GB-alan-medium.onnx" if voice == "alan" else "en_US-bryce-medium.onnx"
+            model = str(Path(__file__).resolve().parents[1] / "models" / "sherpa" / voice / model_name)
+            primary = f"sherpa/{voice}/{model_name}"
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model
@@ -226,7 +241,7 @@ class TTSManager:
             "last_finished": self.last_finished,
             "queue_pending": self.queue.qsize(),
             "fish_available": False,
-            "sherpa_available": False,
+            "sherpa_available": provider == "sherpa",
             "android_tts_available": False,
             "socket": None,
             "model": model,
