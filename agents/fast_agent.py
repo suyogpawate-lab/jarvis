@@ -1370,15 +1370,22 @@ class FastAgent:
                     json={"prompt": question.strip()[:1200]},
                     timeout=(3, 22),
                 )
-                response.raise_for_status()
-                data = response.json()
-                if not data.get("ok"):
-                    return {"ok": False, "error": str(data.get("error", "Screen analysis failed."))[:300]}
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = {}
+                if response.status_code >= 400 or not data.get("ok"):
+                    detail = str(data.get("error", "")).strip()
+                    if response.status_code == 401:
+                        detail = "HTTP bridge token rejected; restart JARVIS after checking JARVIS_HTTP_TOKEN."
+                    elif not detail:
+                        detail = f"HTTP bridge returned status {response.status_code}."
+                    return {"ok": False, "error": "Screen view failed: " + detail[:260]}
                 return {"ok": True, "answer": str(data.get("response", "")).strip()[:5000],
                         "perception": data.get("perception", "accessibility_json"),
                         "storage": "RAM only; snapshot discarded after analysis"}
             except requests.exceptions.RequestException as exc:
-                return {"ok": False, "error": f"Screen-view bridge failed ({type(exc).__name__}). Ensure the JARVIS HTTP bridge and Accessibility service are running."}
+                return {"ok": False, "error": f"Screen-view bridge connection failed ({type(exc).__name__}). Check that the bridge and Accessibility service are running."}
             except (ValueError, TypeError) as exc:
                 return {"ok": False, "error": f"Invalid screen-view response ({type(exc).__name__})."}
 
@@ -1403,10 +1410,17 @@ class FastAgent:
                     json=payload,
                     timeout=(3, 9),
                 )
-                response.raise_for_status()
-                data = response.json()
-                if not data.get("ok"):
-                    return {"ok": False, "error": str(data.get("error", "Android screen action failed."))[:300]}
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = {}
+                if response.status_code >= 400 or not data.get("ok"):
+                    detail = str(data.get("error", "")).strip()
+                    if response.status_code == 401:
+                        detail = "HTTP bridge token rejected; check JARVIS_HTTP_TOKEN."
+                    elif not detail:
+                        detail = f"HTTP bridge returned status {response.status_code}."
+                    return {"ok": False, "error": "Android screen action failed: " + detail[:260]}
                 # Snapshot hierarchy is ephemeral; return only a bounded response.
                 if action == "snapshot":
                     encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
