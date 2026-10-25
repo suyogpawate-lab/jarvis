@@ -15,7 +15,7 @@ from screen_cast.receiver import get_receiver
 from screen_cast.perception import analyze_latest_screen, get_screen_snapshot
 
 
-import os, hmac
+import os
 import requests
 from jarvis_env import load_env
 load_env()
@@ -178,9 +178,10 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _authorized(self):
-        if not TOKEN:
-            return False
-        return hmac.compare_digest(self.headers.get("X-Token", ""), TOKEN)
+        # This server binds exclusively to 127.0.0.1. No separate secret is needed
+        # for same-device calls; reject non-loopback peers if the bind ever changes.
+        peer = self.client_address[0].split("%", 1)[0]
+        return peer in ("127.0.0.1", "::1")
 
     def do_GET(self):
 
@@ -188,7 +189,26 @@ class JarvisHandler(BaseHTTPRequestHandler):
             self._send_json(200, {
                 "ok": True,
                 "service": "JARVIS",
-                "status": "online"
+                "status": "online",
+                "screen_stream_port": screen_receiver.port,
+                "screen_control_port": int(os.environ.get("JARVIS_SCREEN_CONTROL_PORT", "21341")),
+                "auth": "loopback-only"
+            })
+            return
+
+        if self.path == "/screen/diagnostics":
+            # Never return screen text or pixels from diagnostics.
+            result = screen_receiver.control({"action": "snapshot"})
+            self._send_json(200, {
+                "ok": bool(result.get("ok") and result.get("type") == "screen_accessibility"),
+                "service": "jarvis-screen-diagnostics",
+                "stream": screen_receiver.status(),
+                "accessibility": {
+                    "available": bool(result.get("ok") and result.get("type") == "screen_accessibility"),
+                    "response_type": result.get("type"),
+                    "error": result.get("error")
+                },
+                "storage": "RAM only; snapshot discarded"
             })
             return
 
