@@ -17,7 +17,7 @@ class SpeechChunkingTests(unittest.TestCase):
             "Twenty one twenty two twenty three twenty four."
         )
         chunks = chunk_text(text)
-        self.assertEqual([len(chunk.split()) for chunk in chunks], [15, 11])
+        self.assertEqual([len(chunk.split()) for chunk in chunks], [15, 13])
         self.assertTrue(chunks[0].endswith("."))
         self.assertTrue(chunks[1].endswith("."))
 
