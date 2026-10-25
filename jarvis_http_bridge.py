@@ -32,7 +32,7 @@ def ask_screen_with_groq(prompt, image_bytes=None):
 
     def keys_from(list_name, single_name):
         raw = os.getenv(list_name) or os.getenv(single_name, "")
-        return [item.strip() for item in raw.replace("\\n", ",").split(",") if item.strip()]
+        return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
 
     prompt = str(prompt or "")[:22000]
     groq_keys = keys_from("GROQ_API_KEYS", "GROQ_API_KEY")
