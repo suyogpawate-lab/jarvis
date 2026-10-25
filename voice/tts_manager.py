@@ -124,9 +124,8 @@ class TTSManager:
         if not text or not self.running:
             return False
         self.interrupt()
-        # Sherpa's localhost service owns sentence splitting and look-ahead
-        # synthesis; send the full response so it can prepare sentence N+1
-        # while sentence N is playing. Other providers use the local queue.
+        # Piper and Sherpa localhost services own sentence splitting and
+        # synthesize chunk N+1 while chunk N is playing.
         chunks = [text] if _provider() in ("sherpa", "piper") else self._chunk_text(text)
         if not chunks:
             return False
@@ -143,7 +142,7 @@ class TTSManager:
         if text is None or not str(text).strip():
             return False
         self.last_started = time.monotonic()
-        chunks = [str(text).strip()] if _provider() == "sherpa" else self._chunk_text(text)
+        chunks = [str(text).strip()] if _provider() in ("sherpa", "piper") else self._chunk_text(text)
         for chunk in chunks:
             if not self._speak_with_fallbacks(chunk, speed):
                 return False
