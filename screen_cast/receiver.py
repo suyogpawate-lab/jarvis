@@ -171,7 +171,9 @@ class ScreenCastReceiver:
             clean["text"] = value
         try:
             with socket.create_connection((host, port), timeout=3) as conn:
-                conn.settimeout(5)
+                # Accessibility responses may contain a large UI hierarchy.
+                # Bound the wait while allowing slower Android devices to respond.
+                conn.settimeout(12)
                 conn.sendall((json.dumps(clean, ensure_ascii=False) + "\n").encode("utf-8"))
                 response = bytearray()
                 while len(response) < MAX_CONTROL_RESPONSE_BYTES:
@@ -186,8 +188,18 @@ class ScreenCastReceiver:
             if not response:
                 return {"ok": False, "error": "Android control service closed without a response"}
             return json.loads(bytes(response).split(b"\n", 1)[0].decode("utf-8"))
+        except socket.timeout:
+            return {
+                "ok": False,
+                "error": (
+                    f"Timed out waiting for the Android Accessibility control service "
+                    f"on {host}:{port}. Live screen casting on port {self.port} is a "
+                    "separate channel; open the JARVIS companion app and verify its "
+                    "Accessibility Service is enabled and connected."
+                ),
+            }
         except OSError as exc:
-            return {"ok": False, "error": f"Android control service unavailable: {exc}. Start the companion app and enable its Accessibility Service."}
+            return {"ok": False, "error": f"Android control service unavailable at {host}:{port} ({type(exc).__name__}). Open the companion app and enable its Accessibility Service."}
 
 
 def _coordinate(value: Any, field: str) -> int:
