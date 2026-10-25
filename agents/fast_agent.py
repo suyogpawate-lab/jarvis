@@ -366,7 +366,7 @@ class FastAgent:
             "only when clearly requested, and report actual tool results.\n\n"
             "ALARMS: Use alarm/timer tools, never shell commands, for alarms and timers. "
             "For website IP lookups, use the website_ip tool.\n\n"
-            "ANDROID SCREEN WORKFLOWS: For tasks involving the visible Android UI or browser, use "
+            "ANDROID SCREEN WORKFLOWS: If the user names a website/domain or says search for a URL, use open_url to open its http(s) URL in Chrome; never pass a URL to launch_android_app or treat it as a filename. After opening, use screen_view to verify and continue. For tasks involving the visible Android UI or browser, use "
             "screen_view to inspect the current screen and screen_control for one action at a time. "
             "After each navigation, tap, text entry, or state-changing action, inspect again before "
             "choosing the next step. Use Accessibility element indexes from the freshest snapshot "
@@ -782,6 +782,25 @@ class FastAgent:
                         "required": ["to", "message"],
                     },
                 },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "open_url",
+                    "description": (
+                        "Open a web URL directly in Chrome or the Android default browser. "
+                        "Use for explicit website navigation; never treat a URL/domain as an app "
+                        "name or a local file. Only http and https URLs are accepted."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {"type": "string", "description": "Complete http(s) URL."},
+                            "browser": {"type": "string", "enum": ["chrome", "default"]}
+                        },
+                        "required": ["url"]
+                    }
+                }
             },
             {
                 "type": "function",
@@ -1739,6 +1758,27 @@ class FastAgent:
                 "ok": True,
                 "result": result,
             }
+
+        if name == "open_url":
+            url = str(arguments.get("url", "")).strip()
+            browser = str(arguments.get("browser", "chrome")).strip().lower()
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc or any(c.isspace() for c in url):
+                return {"ok": False, "error": "Provide a complete http(s) URL."}
+            if len(url) > 2048:
+                return {"ok": False, "error": "URL is too long."}
+            try:
+                command = "am start --user 0 -a android.intent.action.VIEW -d " + self.android._quote(url)
+                if browser == "chrome":
+                    command += " -p com.android.chrome"
+                result = self.android._run(command, timeout=15)
+                output = (result.get("stdout", "") + "\n" + result.get("stderr", "")).strip()
+                if result.get("exit") != 0 or self.android._FAIL_RE.search(output):
+                    return {"ok": False, "error": output[:240] or "Android could not open the URL."}
+                return {"ok": True, "url": url, "browser": browser, "result": output[:240]}
+            except Exception as exc:
+                return {"ok": False, "error": f"URL open failed ({type(exc).__name__})."}
 
         if name == "launch_android_app":
             package = arguments.get("package")
