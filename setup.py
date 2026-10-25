@@ -694,16 +694,35 @@ def step_apps(env):
 
 def step_voice(env):
     heading("Speech output")
-    info("JARVIS replies use the exact ZIP say client and persistent server.py (Alan/Bryce).")
-    env.set("JARVIS_TTS_PROVIDER", "say")
-    selected_voice = ask(
-        "Default ZIP voice: 1=Alan (British), 2=Bryce (American)",
-        default="2" if env.get("JARVIS_SHERPA_VOICE", "alan").lower() == "bryce" else "1",
-    )
-    env.set("JARVIS_SHERPA_VOICE", "bryce" if selected_voice.strip().lower() in ("2", "bryce") else "alan")
+    current_provider = (env.get("JARVIS_TTS_PROVIDER", "edge") or "edge").strip().lower()
+    current_voice = (env.get("JARVIS_SHERPA_VOICE", "alan") or "alan").strip().lower()
+    if current_provider == "say":
+        default_choice = "3" if current_voice == "bryce" else "2"
+    else:
+        default_choice = "1"
+
+    info("Choose one of three voices. Edge TTS is the default; Alan and Bryce use the supplied ZIP's local say server.")
+    print("  1) Edge TTS — Ryan Neural (default, online)")
+    print("  2) Alan — British English (local Sherpa voice)")
+    print("  3) Bryce — American English (local Sherpa voice)")
+    choice = ask("Choose voice: 1=Edge TTS, 2=Alan, 3=Bryce", default=default_choice).strip().lower()
+
+    if choice in ("2", "alan"):
+        env.set("JARVIS_TTS_PROVIDER", "say")
+        env.set("JARVIS_SHERPA_VOICE", "alan")
+    elif choice in ("3", "bryce"):
+        env.set("JARVIS_TTS_PROVIDER", "say")
+        env.set("JARVIS_SHERPA_VOICE", "bryce")
+    else:
+        env.set("JARVIS_TTS_PROVIDER", "edge")
     env.save()
 
-    info("Preparing the supplied ZIP voice models (~125 MiB total if not already present).")
+    if env.get("JARVIS_TTS_PROVIDER", "edge") == "edge":
+        ok("Edge TTS selected. JARVIS will use the online Ryan Neural voice.")
+        info("The ZIP voice server will not be started when JARVIS launches.")
+        return
+
+    info("Preparing the selected ZIP voice model and server layout.")
     prepare = ROOT / "scripts" / "prepare_sherpa_assets.py"
     result = subprocess.run([sys.executable, str(prepare)], check=False)
     if result.returncode != 0:
@@ -734,11 +753,11 @@ def step_voice(env):
     try:
         from voice.jarvis_voice_runtime import prepare_layout
         prepare_layout()
-        ok("ZIP say assets are ready. server.py will be started when JARVIS launches.")
+        ok(f"ZIP say assets are ready for {env.get('JARVIS_SHERPA_VOICE', 'alan').title()}.")
+        info("server.py will be started in the background when JARVIS launches.")
     except Exception as exc:
         warn(f"ZIP say layout is not ready yet: {exc}")
         info("Install the models and runtime, then rerun: python setup.py voice")
-    info("JARVIS replies are routed to the ZIP say client.")
 
 
 # ─────────────────────── wake acknowledgements ───────────────────────
