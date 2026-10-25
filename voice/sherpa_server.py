@@ -21,7 +21,7 @@ from voice.sherpa_tts import _engine, _paths
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("JARVIS_TTS_SERVER_PORT", "21342"))
 VOICE_RE = re.compile(r"(?<=[.!?])\\s+")
-_engines_lock = threading.Lock()
+ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
 _play_lock = threading.Lock()
 
 
@@ -29,8 +29,14 @@ def sentences(text: str) -> list[str]:
     text = re.sub(r"\\s+", " ", str(text or "")).strip()
     if not text:
         return []
-    # Preserve short utterances and split longer replies at sentence boundaries.
-    return [part.strip() for part in VOICE_RE.split(text) if part.strip()]
+    pieces = [part.strip() for part in VOICE_RE.split(text) if part.strip()]
+    merged: list[str] = []
+    for piece in pieces:
+        if merged and merged[-1].split()[-1].lower() in ABBREVIATIONS:
+            merged[-1] += " " + piece
+        else:
+            merged.append(piece)
+    return merged
 
 
 def synthesize(voice: str, text: str) -> Path:
