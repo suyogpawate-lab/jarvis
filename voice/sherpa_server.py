@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from voice.sherpa_tts import _engine, _paths
+from voice.text_chunking import chunk_text
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("JARVIS_TTS_SERVER_PORT", "21342"))
@@ -26,17 +27,8 @@ _play_lock = threading.Lock()
 
 
 def sentences(text: str) -> list[str]:
-    text = re.sub(r"\s+", " ", str(text or "")).strip()
-    if not text:
-        return []
-    pieces = [part.strip() for part in VOICE_RE.split(text) if part.strip()]
-    merged: list[str] = []
-    for piece in pieces:
-        if merged and merged[-1].split()[-1].lower() in ABBREVIATIONS:
-            merged[-1] += " " + piece
-        else:
-            merged.append(piece)
-    return merged
+    """Group long replies near 15 words, splitting only at .?! sentence ends."""
+    return chunk_text(text, target_words=15, threshold_words=20)
 
 
 def synthesize(voice: str, text: str) -> Path:
