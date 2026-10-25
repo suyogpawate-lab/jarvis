@@ -3030,7 +3030,16 @@ class FastAgent:
                 data = response.json()
                 message = data["choices"][0]["message"]
 
-                max_tool_rounds = int(os.getenv("JARVIS_MAX_TOOL_ROUNDS", "5"))
+                screen_workflow = bool(re.search(
+                    r"\\b(?:screen|chrome|browser|website|webpage|dashboard|login|log in|log out|sign in|sign out|click|tap|swipe|navigate)\\b",
+                    str(prompt),
+                    re.IGNORECASE,
+                ))
+                max_tool_rounds = int(os.getenv(
+                    "JARVIS_MAX_TOOL_ROUNDS_SCREEN" if screen_workflow else "JARVIS_MAX_TOOL_ROUNDS",
+                    "10" if screen_workflow else "5",
+                ))
+                max_tool_rounds = max(1, min(max_tool_rounds, 15))
                 step_no = 0
 
                 messages = [
