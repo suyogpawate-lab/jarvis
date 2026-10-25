@@ -61,7 +61,7 @@ def ask_screen_with_groq(prompt):
                     "temperature": 0.1,
                     "max_tokens": 256,
                 },
-                timeout=(4, 9),
+                timeout=(2, 5),
             )
             response.raise_for_status()
             payload = response.json()
