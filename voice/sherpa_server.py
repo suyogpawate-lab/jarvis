@@ -20,13 +20,13 @@ from voice.sherpa_tts import _engine, _paths
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("JARVIS_TTS_SERVER_PORT", "21342"))
-VOICE_RE = re.compile(r"(?<=[.!?])\\s+")
+VOICE_RE = re.compile(r"(?<=[.!?])\s+")
 ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
 _play_lock = threading.Lock()
 
 
 def sentences(text: str) -> list[str]:
-    text = re.sub(r"\\s+", " ", str(text or "")).strip()
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
     if not text:
         return []
     pieces = [part.strip() for part in VOICE_RE.split(text) if part.strip()]
