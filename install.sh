@@ -58,7 +58,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y python git curl jq tmux termux-api nodejs mpv ollama python-onnxruntime libjpeg-turbo rust binutils \
+pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak-ng ollama python-onnxruntime libjpeg-turbo rust binutils \
     python-numpy libxml2 libxslt clang make pkg-config
 
 if [ "$WITH_VOICE" -eq 1 ]; then
@@ -102,10 +102,15 @@ if [ "$WITH_VOICE" -eq 1 ]; then
 fi
 
 # ───────────────────────── folders ─────────────────────────
-mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper
+mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper cache/sherpa "$HOME/jarvis_voice/fx" "$PREFIX/tmp"
 chmod +x "$ROOT/voice-config" 2>/dev/null || true
+chmod +x "$ROOT/voice/jarvis_voice/say" 2>/dev/null || true
 info "Preparing repository-local Piper assets..."
 python scripts/prepare_piper_assets.py || warn "Could not migrate existing Piper assets; run python scripts/prepare_piper_assets.py to retry."
+info "Preparing ZIP say voice models and socket-server layout..."
+python scripts/prepare_sherpa_assets.py || warn "Could not download Sherpa voice assets; run python scripts/prepare_sherpa_assets.py."
+python -m pip install -r requirements-sherpa.txt || warn "Sherpa dependencies could not be installed on this Termux build; ZIP say needs sherpa-onnx and soundfile."
+python -c 'from voice.jarvis_voice_runtime import prepare_layout; prepare_layout()' || warn "ZIP say layout is not ready; rerun python setup.py voice after resolving model/runtime dependencies."
 ok "Runtime and voice folders ready inside $ROOT."
 
 # ───────────────────────── installed apps index ─────────────────────────
