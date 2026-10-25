@@ -5,11 +5,16 @@ The inference and playback API matches the existing TTSManager provider contract
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 _lock = threading.RLock()
@@ -108,7 +113,7 @@ def interrupt() -> None:
             pass
 
 
-def speak(text: str, wait: bool = True, speed: float = 1.0, voice: str | None = None):
+def _speak_local(text: str, wait: bool = True, speed: float = 1.0, voice: str | None = None):
     global _active_process
     text = str(text or "").strip()
     if not text:
@@ -150,3 +155,79 @@ def speak(text: str, wait: bool = True, speed: float = 1.0, voice: str | None = 
         with _lock:
             if _active_process is proc:
                 _active_process = None
+
+
+_server_lock = threading.Lock()
+_server_process = None
+
+
+def _server_url() -> str:
+    return f"http://127.0.0.1:{int(os.environ.get('JARVIS_TTS_SERVER_PORT', '21342'))}"
+
+
+def _server_healthy(timeout: float = 0.5) -> bool:
+    try:
+        request = urllib.request.Request(_server_url() + "/health", method="GET")
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            return bool(payload.get("ok") and payload.get("service") == "jarvis-sherpa-tts")
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+
+
+def _ensure_server() -> None:
+    global _server_process
+    if _server_healthy():
+        return
+    with _server_lock:
+        if _server_healthy():
+            return
+        root = Path(__file__).resolve().parents[1]
+        _server_process = subprocess.Popen(
+            [sys.executable, "-m", "voice.sherpa_server"],
+            cwd=str(root),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            if _server_healthy():
+                return
+            if _server_process.poll() is not None:
+                break
+            time.sleep(0.25)
+    raise RuntimeError("Local Sherpa TTS server did not become ready. Check sherpa-onnx, soundfile, model assets, and port 21342.")
+
+
+def speak(text: str, wait: bool = True, speed: float = 1.0, voice: str | None = None):
+    """Send speech to the persistent localhost service; Piper models stay cached."""
+    text = str(text or "").strip()
+    if not text:
+        return False
+    selected = (voice or os.environ.get("JARVIS_SHERPA_VOICE", "alan")).strip().lower()
+    if selected not in ("alan", "bryce"):
+        selected = "alan"
+    _ensure_server()
+    body = json.dumps({"voice": selected, "text": text}).encode("utf-8")
+    request = urllib.request.Request(
+        _server_url() + "/speak",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=300 if wait else 2) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            if not result.get("ok"):
+                raise RuntimeError(result.get("error", "Local Sherpa TTS failed"))
+            return True
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:240]
+        except Exception:
+            detail = ""
+        raise RuntimeError(f"Local Sherpa TTS HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Local Sherpa TTS request failed: {exc.reason}") from exc
