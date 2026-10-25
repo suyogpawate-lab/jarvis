@@ -1358,6 +1358,15 @@ def read_prompt():
 
 def main():
 
+    # Start the supplied ZIP voice server detached at JARVIS startup so the
+    # first response does not pay the model-load cost.
+    try:
+        from voice.jarvis_voice_runtime import ensure_server
+        ensure_server()
+        print("[VOICE] ZIP say server is ready.", flush=True)
+    except Exception as exc:
+        print(f"[VOICE WARN] ZIP say server unavailable: {exc}", flush=True)
+
     init_services()
 
     if is_float_mode():
