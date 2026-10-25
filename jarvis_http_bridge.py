@@ -32,7 +32,7 @@ def ask_screen_with_groq(prompt):
 
     def keys_from(list_name, single_name):
         raw = os.getenv(list_name) or os.getenv(single_name, "")
-        return [item.strip() for item in raw.replace("\\n", ",").split(",") if item.strip()]
+        return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
 
     # Keep the payload bounded; the perception layer also caps the snapshot.
     prompt = str(prompt or "")[:22000]
@@ -54,13 +54,13 @@ def ask_screen_with_groq(prompt):
     last_status = None
 
     # Try configured Groq keys without sleeping or repeating a failed request.
-    for key in groq_keys:
+    for key in groq_keys[:2]:
         try:
             response = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 220},
-                timeout=(1.5, 3.5),
+                timeout=(1.0, 2.0),
             )
             if response.status_code == 200:
                 answer = response.json()["choices"][0]["message"]["content"]
@@ -76,13 +76,13 @@ def ask_screen_with_groq(prompt):
     # When Groq keys are TPM-limited, try Gemini if configured. This is still a
     # direct, tool-free request; never fall back to slow OmniRoute.
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    for key in gemini_keys:
+    for key in gemini_keys[:1]:
         try:
             response = requests.post(
                 "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={"model": gemini_model, "messages": messages, "temperature": 0.1, "max_tokens": 220},
-                timeout=(1.5, 4.0),
+                timeout=(1.0, 3.0),
             )
             if response.status_code == 200:
                 answer = response.json()["choices"][0]["message"]["content"]
