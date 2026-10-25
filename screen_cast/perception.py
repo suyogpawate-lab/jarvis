@@ -34,8 +34,8 @@ def analyze_latest_screen(
         )
 
     compact = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
-    if len(compact) > 480_000:
-        return "Sir, the screen hierarchy is too large to process safely. Try again on a simpler screen."
+    if len(compact) > 80_000:
+        compact = compact[:80_000] + '"[snapshot truncated for bounded processing]"'
 
     safe_prompt = (prompt or "Describe the current screen.").strip()[:1200]
     model_prompt = (
