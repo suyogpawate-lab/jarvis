@@ -761,10 +761,26 @@ def step_voice(env):
         try:
             import sherpa_onnx  # noqa: F401
             import soundfile  # noqa: F401
+        except ImportError:
+            info("Installing optional Sherpa runtime dependencies...")
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements-sherpa.txt")],
+                    check=False,
+                    timeout=180,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                result = None
+                warn(f"Could not finish the optional Sherpa dependency install: {exc}")
+            if result is not None and result.returncode != 0:
+                warn("pip could not install the Sherpa runtime on this Android build.")
+        try:
+            import sherpa_onnx  # noqa: F401
+            import soundfile  # noqa: F401
             ok("Sherpa-ONNX and soundfile are importable.")
         except ImportError:
-            warn("Sherpa Python runtime is not installed in this environment.")
-            info("Install a Termux-compatible sherpa-onnx build and soundfile; see requirements-sherpa.txt.")
+            warn("Sherpa Python runtime is still unavailable.")
+            info("Use a Termux-compatible sherpa-onnx build; see requirements-sherpa.txt.")
     else:
         env.save()
         ok("Edge TTS selected.")
