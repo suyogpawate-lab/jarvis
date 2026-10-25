@@ -102,9 +102,9 @@ class TTSManager:
         text = re.sub(r"\s+", " ", str(text)).strip()
         if not text:
             return []
-        # Keep ordinary responses in one synthesis/playback operation. Split only
-        # responses that exceed the practical Edge TTS text-size ceiling.
-        if len(text) <= max_chars:
+        # Speak sentence-by-sentence for lower perceived latency and cleaner
+        # interruption. Long individual sentences are further split below.
+        if len(text) <= max_chars and not re.search(r"[.!?]+(?=\\s|$)", text):
             return [text]
         sentences, start = [], 0
         for match in re.finditer(r"[.!?]+(?=\s|$)", text):
