@@ -95,6 +95,8 @@ if [ "$WITH_OSINT" -eq 1 ]; then
 fi
 
 if [ "$WITH_VOICE" -eq 1 ]; then
+    pkg install -y espeak-ng \
+        || warn "Could not install eSpeak NG data; local Sherpa TTS may need JARVIS_ESPEAK_DATA configured manually."
     python -m pip install -r requirements-voice.txt \
         || warn "Voice packages failed; wake-word support may be unavailable on this device."
 fi
