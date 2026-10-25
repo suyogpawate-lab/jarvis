@@ -695,17 +695,22 @@ def step_apps(env):
 def step_voice(env):
     heading("Speech output")
     current = (env.get("JARVIS_TTS_PROVIDER", "edge") or "edge").strip().lower()
-    if current not in ("edge", "piper"):
+    if current not in ("edge", "piper", "sherpa"):
         current = "edge"
-    info("Edge TTS uses the network; Piper is local after its native library and model are installed.")
+    info("Edge is network-based; Piper and Sherpa are local after their runtime assets are installed.")
     print("  1) Edge TTS (default)")
-    print("  2) Piper (local)")
-    choice = ask("Choose speech provider: 1=Edge, 2=Piper", default="2" if current == "piper" else "1")
-    provider = "piper" if choice.lower() in ("2", "piper") else "edge"
+    print("  2) Piper C-API (local, single voice)")
+    print("  3) Sherpa-ONNX (local, Alan + Bryce voices)")
+    defaults = {"edge": "1", "piper": "2", "sherpa": "3"}
+    choice = ask("Choose speech provider: 1=Edge, 2=Piper, 3=Sherpa dual voice", default=defaults[current])
+    if choice.strip().lower() in ("3", "sherpa", "sherpa-onnx"):
+        provider = "sherpa"
+    elif choice.strip().lower() in ("2", "piper"):
+        provider = "piper"
+    else:
+        provider = "edge"
     env.set("JARVIS_TTS_PROVIDER", provider)
     if provider == "piper":
-        # Copy any existing Piper installation into this checkout, without
-        # moving/deleting the originals or touching Termux shared libraries.
         migration = ROOT / "scripts" / "prepare_piper_assets.py"
         try:
             subprocess.run([sys.executable, str(migration)], check=False)
@@ -737,6 +742,29 @@ def step_voice(env):
             info("Install a compatible Piper C-API package and voice model, then rerun ./voice-config.")
         else:
             ok("Piper paths exist. A live synthesis test will happen on first speech.")
+    elif provider == "sherpa":
+        selected_voice = ask(
+            "Default Sherpa voice: 1=Alan (British), 2=Bryce (American)",
+            default="1" if env.get("JARVIS_SHERPA_VOICE", "alan").lower() != "bryce" else "2",
+        )
+        env.set("JARVIS_SHERPA_VOICE", "bryce" if selected_voice.strip().lower() in ("2", "bryce") else "alan")
+        env.save()
+        info("Preparing both voice models (~125 MiB total download; assets stay in ignored models/sherpa/).")
+        prepare = ROOT / "scripts" / "prepare_sherpa_assets.py"
+        result = subprocess.run([sys.executable, str(prepare)], check=False)
+        if result.returncode != 0:
+            warn("Sherpa model download did not complete. Retry: python scripts/prepare_sherpa_assets.py")
+        prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+        espeak = Path(env.get("JARVIS_ESPEAK_DATA") or prefix / "share/espeak-ng-data").expanduser()
+        if not espeak.is_dir() or not any(espeak.iterdir()):
+            warn("eSpeak NG data is missing. Install it with: pkg install espeak-ng")
+        try:
+            import sherpa_onnx  # noqa: F401
+            import soundfile  # noqa: F401
+            ok("Sherpa-ONNX and soundfile are importable.")
+        except ImportError:
+            warn("Sherpa Python runtime is not installed in this environment.")
+            info("Install a Termux-compatible sherpa-onnx build and soundfile; see requirements-sherpa.txt.")
     else:
         env.save()
         ok("Edge TTS selected.")
