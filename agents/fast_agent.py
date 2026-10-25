@@ -511,6 +511,10 @@ class FastAgent:
             if code == 429:
                 wait, kind = self._groq_rate_info(response)
                 print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
+                # TPM is commonly model/org scoped. Rotating through every key
+                # immediately repeats the same failed request and burns tool rounds.
+                if kind == "tokens per minute":
+                    return response
                 continue
             if code in (401, 403):
                 print(f" Groq account {index + 1}: key rejected (HTTP {code})")
@@ -3069,7 +3073,7 @@ class FastAgent:
                 message = data["choices"][0]["message"]
 
                 screen_workflow = bool(re.search(
-                    r"\\b(?:screen|chrome|browser|website|webpage|dashboard|login|log in|log out|sign in|sign out|click|tap|swipe|navigate)\\b",
+                    r"\b(?:screen|chrome|browser|website|webpage|dashboard|login|log in|log out|sign in|sign out|click|tap|swipe|navigate|search|open url|http|https)\b",
                     str(prompt),
                     re.IGNORECASE,
                 ))
