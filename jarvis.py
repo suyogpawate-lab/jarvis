@@ -904,24 +904,19 @@ def format_memory():
 
 
 def speak(text, quiet=False):
-    """Speak text through TTS. Returns True if it was handed to TTS, False on failure."""
+    """Route JARVIS responses through the supplied ZIP say socket client."""
     try:
-        from voice.tts_manager import tts
-        tts.speak(text)
-        return True
+        from voice.jarvis_voice_runtime import speak as say_speak
+        return bool(say_speak(text))
     except Exception as exc:
         if not quiet:
-            print(f"[TTS ERROR] {exc}")
+            print(f"[TTS ERROR] {exc}", flush=True)
         return False
 
 
 def stop_speaking():
-    """Cut off any speech in progress (called when a new prompt is submitted)."""
-    try:
-        from voice.tts_manager import tts
-        tts.interrupt()
-    except Exception:
-        pass
+    """The ZIP say server owns playback; do not initialize the legacy TTS queue."""
+    return None
 
 
 def handle_prompt(prompt, source="external"):
@@ -1357,6 +1352,15 @@ def read_prompt():
 # ==============================================================
 
 def main():
+
+    # Start the supplied ZIP voice server detached at JARVIS startup so the
+    # first response does not pay the model-load cost.
+    try:
+        from voice.jarvis_voice_runtime import ensure_server
+        ensure_server()
+        print("[VOICE] ZIP say server is ready.", flush=True)
+    except Exception as exc:
+        print(f"[VOICE WARN] ZIP say server unavailable: {exc}", flush=True)
 
     init_services()
 

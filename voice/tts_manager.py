@@ -46,6 +46,8 @@ class TTSManager:
         # user-facing response. Native-library failures remain visible in logs.
         if _provider() == "piper":
             threading.Thread(target=self._warm_piper, daemon=True, name="PiperWarmup").start()
+        elif _provider() == "say":
+            threading.Thread(target=self._warm_say, daemon=True, name="ZipSayWarmup").start()
 
     def _warm_piper(self):
         try:
@@ -56,9 +58,21 @@ class TTSManager:
             self.last_error = str(exc)
             print(f"[TTS ERROR] Piper preload failed: {exc}", flush=True)
 
+    def _warm_say(self):
+        try:
+            from voice.jarvis_voice_runtime import ensure_server
+            ensure_server()
+            print("[TTS] ZIP say server ready; Alan/Bryce model cached.", flush=True)
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"[TTS ERROR] ZIP say server startup failed: {exc}", flush=True)
+
     def _run_provider(self, text, speed=1.0):
         provider = _provider()
-        if provider == "piper":
+        if provider == "say":
+            from voice.jarvis_voice_runtime import speak as say_speak
+            result = say_speak(text)
+        elif provider == "piper":
             from voice.piper_tts import speak as piper_speak
             result = piper_speak(text, wait=True, speed=speed)
         elif provider == "sherpa":
@@ -67,7 +81,7 @@ class TTSManager:
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         else:
-            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose edge, piper, or sherpa.")
+            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, or sherpa.")
         if not result:
             raise RuntimeError(f"{provider} TTS playback failed")
         return provider
@@ -187,7 +201,11 @@ class TTSManager:
         with self._active_lock:
             active = self._active_playback
         provider = _provider()
-        if provider == "piper":
+        if provider == "say":
+            voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
+            primary = f"say/{voice if voice in ('alan', 'bryce') else 'alan'} (ZIP socket server)"
+            model = str(Path.home() / "jarvis_voice")
+        elif provider == "piper":
             model = str(Path(__file__).resolve().parents[1] / "models/piper/en_GB-alan-medium.onnx")
             primary = f"piper/{Path(model).name}"
         elif provider == "sherpa":
@@ -210,7 +228,7 @@ class TTSManager:
             "last_finished": self.last_finished,
             "queue_pending": self.queue.qsize(),
             "fish_available": False,
-            "sherpa_available": provider == "sherpa",
+            "sherpa_available": provider in ("sherpa", "say"),
             "android_tts_available": False,
             "socket": None,
             "model": model,
