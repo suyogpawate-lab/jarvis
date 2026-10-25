@@ -120,12 +120,13 @@ def speak(text: str, wait: bool = True, speed: float = 1.0, voice: str | None = 
     paths = _paths(selected)
     paths["output"].mkdir(parents=True, exist_ok=True)
     audio = engine.generate(text, sid=0, speed=max(0.5, min(2.0, float(speed))))
-    if not getattr(audio, "samples", None):
+    samples = getattr(audio, "samples", None)
+    if samples is None or len(samples) == 0:
         raise RuntimeError("Sherpa returned no audio samples.")
     fd, name = tempfile.mkstemp(prefix="speech-", suffix=".wav", dir=str(paths["output"]))
     os.close(fd)
     audio_path = Path(name)
-    sf.write(str(audio_path), audio.samples, audio.sample_rate)
+    sf.write(str(audio_path), samples, audio.sample_rate)
     command = ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(audio_path)]
     with _lock:
         proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
