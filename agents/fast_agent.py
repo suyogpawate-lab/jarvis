@@ -1389,14 +1389,10 @@ class FastAgent:
             try:
                 from jarvis_env import load_env
                 load_env()
-                token = os.getenv("JARVIS_HTTP_TOKEN", "").strip()
-                if not token:
-                    return {"ok": False, "error": "JARVIS_HTTP_TOKEN is not configured."}
                 response = requests.post(
                     "http://127.0.0.1:21339/screen/analyze",
-                    headers={"X-Token": token},
                     json={"prompt": question.strip()[:1200]},
-                    timeout=(3, 22),
+                    timeout=(3, 35),
                 )
                 try:
                     data = response.json()
@@ -1412,8 +1408,10 @@ class FastAgent:
                 return {"ok": True, "answer": str(data.get("response", "")).strip()[:5000],
                         "perception": data.get("perception", "accessibility_json"),
                         "storage": "RAM only; snapshot discarded after analysis"}
+            except requests.exceptions.Timeout:
+                return {"ok": False, "error": "Screen-view timed out waiting for the local bridge. Check /screen/diagnostics; live casting and Accessibility control use separate channels."}
             except requests.exceptions.RequestException as exc:
-                return {"ok": False, "error": f"Screen-view bridge connection failed ({type(exc).__name__}). Check that the bridge and Accessibility service are running."}
+                return {"ok": False, "error": f"Screen-view bridge connection failed ({type(exc).__name__}). Check that the bridge is running."}
             except (ValueError, TypeError) as exc:
                 return {"ok": False, "error": f"Invalid screen-view response ({type(exc).__name__})."}
 
@@ -1429,14 +1427,10 @@ class FastAgent:
             try:
                 from jarvis_env import load_env
                 load_env()
-                token = os.getenv("JARVIS_HTTP_TOKEN", "").strip()
-                if not token:
-                    return {"ok": False, "error": "JARVIS_HTTP_TOKEN is not configured."}
                 response = requests.post(
                     "http://127.0.0.1:21339/control",
-                    headers={"X-Token": token},
                     json=payload,
-                    timeout=(3, 9),
+                    timeout=(3, 18),
                 )
                 try:
                     data = response.json()
@@ -1455,8 +1449,10 @@ class FastAgent:
                     return {"ok": True, "snapshot": encoded[:18000],
                             "storage": "RAM only; do not retain snapshot"}
                 return {"ok": True, "action": action, "result": data}
+            except requests.exceptions.Timeout:
+                return {"ok": False, "error": "Screen-control timed out waiting for the local bridge. Check /screen/diagnostics and the companion Accessibility Service."}
             except requests.exceptions.RequestException as exc:
-                return {"ok": False, "error": f"Screen-control bridge failed ({type(exc).__name__}). Ensure the JARVIS HTTP bridge and Accessibility service are running."}
+                return {"ok": False, "error": f"Screen-control bridge failed ({type(exc).__name__}). Ensure the JARVIS HTTP bridge is running."}
             except (ValueError, TypeError) as exc:
                 return {"ok": False, "error": f"Invalid screen-control response ({type(exc).__name__})."}
 
