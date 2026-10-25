@@ -28,11 +28,18 @@ def _paths(voice: str) -> dict[str, Path]:
     model_name, _ = folders[voice]
     directory = root / "models" / "sherpa" / voice
     prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
-    espeak = Path(os.environ.get("JARVIS_ESPEAK_DATA", str(prefix / "share/espeak-ng-data"))).expanduser()
-    if not espeak.is_dir() or not any(espeak.iterdir()):
-        local_espeak = root / "voice" / "data" / "espeak-ng-data"
-        if local_espeak.is_dir() and any(local_espeak.iterdir()):
-            espeak = local_espeak
+    configured_espeak = os.environ.get("JARVIS_ESPEAK_DATA", "").strip()
+    candidates = []
+    if configured_espeak:
+        candidates.append(Path(configured_espeak).expanduser())
+    candidates.extend([
+        root / "voice" / "data" / "espeak-ng-data",
+        prefix / "share" / "espeak-ng-data",
+    ])
+    espeak = next(
+        (candidate for candidate in candidates if candidate.is_dir() and any(candidate.iterdir())),
+        candidates[0],
+    )
     return {
         "model": directory / (model_name + ".onnx"),
         "tokens": directory / "tokens.txt",
