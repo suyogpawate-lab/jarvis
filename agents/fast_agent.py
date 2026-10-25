@@ -161,7 +161,7 @@ class FastAgent:
                 payload_messages.extend(messages)
 
                 response = requests.post(
-                    f"{self.gemini_base_url}/chat/completions",
+                    f"{gemini_base_url}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {active_key}",
                         "Content-Type": "application/json",
@@ -527,10 +527,12 @@ class FastAgent:
         # If every Groq key is TPM/RPM-limited, let the already-configured
         # Gemini provider continue the current tool round. This avoids restarting
         # a multi-step screen workflow or waiting on a slow OmniRoute fallback.
-        if last.status_code == 429 and self.gemini_api_keys:
+        gemini_keys = getattr(self, "gemini_api_keys", [])
+        if last.status_code == 429 and gemini_keys:
             fallback_payload = dict(payload)
-            fallback_payload["model"] = self.gemini_model
-            for index, key in enumerate(self.gemini_api_keys[:2], 1):
+            fallback_payload["model"] = getattr(self, "gemini_model", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+            gemini_base_url = getattr(self, "gemini_base_url", "https://generativelanguage.googleapis.com/v1beta/openai")
+            for index, key in enumerate(gemini_keys[:2], 1):
                 try:
                     response = requests.post(
                         f"{self.gemini_base_url}/chat/completions",
