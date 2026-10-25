@@ -36,6 +36,7 @@ class TTSManager:
         self.worker_alive = False
         self.last_error = ""
         self.last_provider = ""
+        self.last_spoken_text = ""
         self.last_started = 0.0
         self.last_finished = 0.0
         self._active_lock = threading.Lock()
@@ -114,6 +115,7 @@ class TTSManager:
                     if item is None:
                         break
                     text, speed = item
+                    self.last_spoken_text = str(text).strip()
                     self.last_started = time.monotonic()
                     if not self._speak_with_fallbacks(text, speed):
                         # The public speak() API only queues work; report worker
@@ -155,6 +157,7 @@ class TTSManager:
     def speak_blocking(self, text, speed=1.0):
         if text is None or not str(text).strip():
             return False
+        self.last_spoken_text = str(text).strip()
         self.last_started = time.monotonic()
         chunks = [str(text).strip()] if _provider() in ("sherpa", "piper") else self._chunk_text(text)
         for chunk in chunks:
@@ -223,6 +226,7 @@ class TTSManager:
             "active_playback": active,
             "primary_provider": primary,
             "last_provider": self.last_provider,
+            "last_spoken_text": self.last_spoken_text,
             "last_error": self.last_error,
             "last_started": self.last_started,
             "last_finished": self.last_finished,
