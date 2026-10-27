@@ -1,7 +1,7 @@
 """Shared chunking policy for JARVIS speech synthesis.
 
-Replies of 20 words or fewer remain a single utterance. Longer replies are
-split into chunks near 15 words, preferring sentence boundaries (.?!).
+Replies of 50 words or fewer remain a single utterance. Longer replies are
+split into chunks near 20 words, preferring sentence boundaries (.?!).
 Commas are never treated as chunk boundaries.
 """
 from __future__ import annotations
@@ -71,8 +71,8 @@ def _split_long_sentence(sentence: str, target_words: int) -> list[str]:
     return chunks
 
 
-def chunk_text(text: str, target_words: int = 15, threshold_words: int = 20) -> list[str]:
-    """Keep short replies intact; chunk longer replies around 15 words.
+def chunk_text(text: str, target_words: int = 20, threshold_words: int = 50) -> list[str]:
+    """Keep replies up to 50 words intact; chunk longer replies around 20 words.
 
     Sentence boundaries are preferred. When one sentence itself exceeds the
     target, it is split at a word boundary (not at commas) to avoid one long
