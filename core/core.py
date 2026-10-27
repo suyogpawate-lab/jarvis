@@ -78,7 +78,8 @@ PERSONALITY:
 RESPONSE STYLE:
 - Be concise and precise.
 - Give the answer directly.
-- Prefer roughly 50-150 words unless more detail is necessary.
+- Maximum 120 words. Never use bullet points, numbered lists, headings or markdown.
+- Always reply in flowing, speakable sentences, as if talking aloud.
 - Use natural language suitable for text-to-speech.
 - Prefer short, naturally spoken sentences.
 - Use punctuation that produces natural pauses when spoken.
@@ -113,7 +114,7 @@ RESPONSE STYLE:
                 ],
                 "stream": False,
                 "temperature": 0.2,
-                "max_tokens": 500,
+                "max_tokens": 220,
             },
             timeout=120,
         )

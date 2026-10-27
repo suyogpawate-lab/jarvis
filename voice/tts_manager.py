@@ -1,13 +1,15 @@
 """Provider-neutral, punctuation-aware JARVIS speech queue."""
 import os
 import queue
-import re
+import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
 
 from voice.tts import speak as edge_speak, interrupt as edge_interrupt
-from voice.text_chunking import chunk_text
+from voice.text_chunking import sentence_list
+from voice.spoken import to_speakable
 
 _ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
 
@@ -29,11 +31,13 @@ def _provider():
 
 
 class TTSManager:
-    """Queued Edge, Piper C-API, or Sherpa-ONNX TTS manager."""
+    """Edge speaks the whole reply; local engines pipeline sentence by sentence."""
     def __init__(self):
         self.queue = queue.Queue(maxsize=64)
         self.running = True
         self.worker_alive = False
+        self._gen = 0
+        self._proc = None
         self.last_error = ""
         self.last_provider = ""
         self.last_spoken_text = ""
@@ -68,30 +72,35 @@ class TTSManager:
             self.last_error = str(exc)
             print(f"[TTS ERROR] ZIP say server startup failed: {exc}", flush=True)
 
-    def _run_provider(self, text, speed=1.0):
+    def _run_provider(self, text, speed=1.0, gen=None):
+        gen = self._gen if gen is None else gen
         provider = _provider()
         if provider == "say":
             from voice.jarvis_voice_runtime import speak as say_speak
-            result = say_speak(text)
+            result = True
+            for s in sentence_list(text):  # server fuses synth+play; one sentence per call
+                if self._gen != gen:
+                    break
+                say_speak(s)
         elif provider == "piper":
-            from voice.piper_tts import speak as piper_speak
-            result = piper_speak(text, wait=True, speed=speed)
+            result = self._play_pipeline(provider, text, speed, gen)
         elif provider == "sherpa":
-            from voice.sherpa_tts import speak as sherpa_speak
-            result = sherpa_speak(text, wait=True, speed=speed)
+            result = self._play_pipeline(provider, text, speed, gen)
         elif provider == "edge":
             result = edge_speak(text, wait=True)
+        elif provider == "phonon":
+            result = self._play_pipeline(provider, text, speed, gen)
         else:
-            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, or sherpa.")
+            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
         if not result:
             raise RuntimeError(f"{provider} TTS playback failed")
         return provider
 
-    def _speak_with_fallbacks(self, text, speed=1.0):
+    def _speak_with_fallbacks(self, text, speed=1.0, gen=None):
         try:
             with self._active_lock:
                 self._active_playback = True
-            self.last_provider = self._run_provider(text, speed)
+            self.last_provider = self._run_provider(text, speed, gen)
             self.last_error = ""
             return True
         except Exception as exc:
@@ -114,10 +123,10 @@ class TTSManager:
                 try:
                     if item is None:
                         break
-                    text, speed = item
+                    text, speed, gen = item
                     self.last_spoken_text = str(text).strip()
                     self.last_started = time.monotonic()
-                    if not self._speak_with_fallbacks(text, speed):
+                    if self._gen == gen and not self._speak_with_fallbacks(text, speed, gen):
                         # The public speak() API only queues work; report worker
                         # failures so a silent TTS outage is diagnosable in Termux.
                         print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
@@ -126,28 +135,88 @@ class TTSManager:
         finally:
             self.worker_alive = False
 
-    @staticmethod
-    def _chunk_text(text, max_chars=4500):
-        """Group long replies near 15 words at sentence punctuation only."""
-        # max_chars remains accepted for compatibility with existing callers;
-        # normal chunk boundaries are sentence-ending .?!, never commas.
-        return chunk_text(text, target_words=15, threshold_words=20)
+    # ---- local pipeline: synth sentence N+1 while sentence N plays ----
+    def _synth(self, provider, sentence, speed):
+        if provider == "piper":
+            from voice.piper_tts import _synthesize_to_wav
+            return _synthesize_to_wav(sentence)
+        if provider == "phonon":
+            from voice.phonon_tts import synth
+            return synth(sentence)
+        from voice import sherpa_tts as st
+        import soundfile as sf
+        voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
+        voice = voice if voice in ("alan", "bryce") else "alan"
+        audio = st._engine(voice).generate(sentence, sid=0, speed=max(0.5, min(2.0, float(speed))))
+        if audio.samples is None or len(audio.samples) == 0:
+            raise RuntimeError("Sherpa returned no audio samples.")
+        out = st._paths(voice)["output"]
+        out.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix="speech-", suffix=".wav", dir=str(out))
+        os.close(fd)
+        sf.write(name, audio.samples, audio.sample_rate)
+        return Path(name)
+
+    def _put(self, q, item, gen):
+        while self._gen == gen:
+            try:
+                q.put(item, timeout=0.2)
+                return True
+            except queue.Full:
+                pass
+        return False
+
+    def _play_pipeline(self, provider, text, speed, gen):
+        sentences = sentence_list(text)  # sentence ends only, never commas
+        q = queue.Queue(maxsize=1)
+        errors = []
+
+        def producer():
+            try:
+                for s in sentences:
+                    if self._gen != gen:
+                        break
+                    path = self._synth(provider, s, speed)
+                    if not self._put(q, path, gen):
+                        Path(path).unlink(missing_ok=True)
+                        break
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                self._put(q, None, gen)
+
+        threading.Thread(target=producer, daemon=True, name="TTSSynth").start()
+        while True:
+            try:
+                path = q.get(timeout=0.2)
+            except queue.Empty:
+                if self._gen != gen:
+                    return True
+                continue
+            if path is None:
+                break
+            try:
+                if self._gen == gen:
+                    proc = subprocess.Popen(["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(path)],
+                                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self._proc = proc
+                    proc.wait()
+            finally:
+                Path(path).unlink(missing_ok=True)
+        if errors:
+            raise errors[0]
+        return True
 
     def speak(self, text, speed=1.0):
         if text is None:
             return False
-        text = str(text).strip()
+        text = to_speakable(text)
         if not text or not self.running:
             return False
         self.interrupt()
-        # Piper and Sherpa localhost services own sentence splitting and
-        # synthesize chunk N+1 while chunk N is playing.
-        chunks = [text] if _provider() in ("sherpa", "piper") else self._chunk_text(text)
-        if not chunks:
-            return False
         try:
-            for chunk in chunks:
-                self.queue.put_nowait((chunk, speed))
+            # Edge gets the whole reply; local engines split into sentences inside _play_pipeline.
+            self.queue.put_nowait((text, speed, self._gen))
             return True
         except queue.Full:
             self.clear()
@@ -155,17 +224,21 @@ class TTSManager:
             return False
 
     def speak_blocking(self, text, speed=1.0):
-        if text is None or not str(text).strip():
+        text = to_speakable(text) if text is not None else ""
+        if not text:
             return False
-        self.last_spoken_text = str(text).strip()
+        self.last_spoken_text = text
         self.last_started = time.monotonic()
-        chunks = [str(text).strip()] if _provider() in ("sherpa", "piper") else self._chunk_text(text)
-        for chunk in chunks:
-            if not self._speak_with_fallbacks(chunk, speed):
-                return False
-        return True
+        return self._speak_with_fallbacks(text, speed, self._gen)
 
     def interrupt(self):
+        self._gen += 1
+        proc = self._proc
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except OSError:
+                pass
         self.clear()
         try:
             edge_interrupt()
@@ -218,6 +291,9 @@ class TTSManager:
             model_name = "en_GB-alan-medium.onnx" if voice == "alan" else "en_US-bryce-medium.onnx"
             model = str(Path(__file__).resolve().parents[1] / "models" / "sherpa" / voice / model_name)
             primary = f"sherpa/{voice}/{model_name}"
+        elif provider == "phonon":
+            model = "phonon/" + (os.environ.get("JARVIS_PHONON_VOICE", "").strip() or "default")
+            primary = model
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model

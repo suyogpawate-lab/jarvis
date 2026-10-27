@@ -116,14 +116,14 @@ def prepare_text(text: str) -> str:
     text = re.sub(r",\s*(sir)\b", r" \1", text, flags=re.IGNORECASE)
 
     # Replace all full stops except a final full stop with commas.
-    if text.endswith("."):
-        text = text[:-1].replace(".", ",") + "."
-    else:
-        text = text.replace(".", ",")
+    # (only real sentence ends; keeps 3.14, e.g., Dr. intact)
+    body, end = (text[:-1], ".") if text.endswith(".") else (text, "")
+    body = re.sub(r"(?<=[A-Za-z]{3})\.(?=\s)", ",", body)
+    text = body + end
 
     # Normalize punctuation spacing.
     text = re.sub(r"\s+([,.!?;:])", r"\1", text)
-    text = re.sub(r"([,.!?;:])(?=[^\s])", lambda m: m.group(0) + " ", text)
+    text = re.sub(r"(?<!\d)([,.!?;:])(?=[^\s])|([,.!?;:])(?=[^\s\d])", lambda m: m.group(0) + " ", text)
 
     return text.strip()
 

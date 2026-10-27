@@ -966,7 +966,7 @@ Rules:
 - Natural human language.
 - Put the conclusion first.
 - Prefer 40-90 words.
-- Maximum 120 words unless genuinely necessary.
+- Maximum 120 words. No bullet points or lists; speakable sentences only.
 
 FINAL ANSWER ONLY:
 """
