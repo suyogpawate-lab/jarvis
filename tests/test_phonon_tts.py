@@ -85,9 +85,9 @@ class PhononAdapterTests(unittest.TestCase):
                 self.assertEqual(quant, "q8")
                 return output
 
-            with patch.object(phonon_tts, "model_dir", return_value=model), \\
-                 patch.object(phonon_tts, "WORKER_BIN", root / "missing-worker"), \\
-                 patch.object(phonon_tts, "_synth_cli", side_effect=fake_cli) as cli, \\
+            with patch.object(phonon_tts, "model_dir", return_value=model), \
+                 patch.object(phonon_tts, "WORKER_BIN", root / "missing-worker"), \
+                 patch.object(phonon_tts, "_synth_cli", side_effect=fake_cli) as cli, \
                  patch.dict(os.environ, {
                      "JARVIS_PHONON_VOICE": "edwin",
                      "JARVIS_PHONON_QUANT": "q8",
