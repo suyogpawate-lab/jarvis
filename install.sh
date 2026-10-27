@@ -22,7 +22,7 @@ if [ -n "$ANDROID_API_LEVEL" ]; then
 else
     # Fallback option if getprop fails or if you're testing inside a container
     export ANDROID_API_LEVEL=29
-    echo "[-] Warning: Could not resolve Android API level natively. FALLBACK TO 24"
+    echo "[-] Warning: Could not resolve Android API level natively. Using fallback API level 29."
 fi
 
 set -Eeuo pipefail
@@ -61,7 +61,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y 'python git curl jq tmux termux-api nodejs mpv sox espeak ollama python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make'
+pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak ollama python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make
 
 if [ "$WITH_VOICE" -eq 1 ]; then
     pkg install -y portaudio
