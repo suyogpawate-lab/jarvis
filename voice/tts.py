@@ -229,3 +229,12 @@ if __name__ == "__main__":
         "Good morning sir, I've completed the system analysis, "
         "all systems are ready."
     )
+
+class LocalTTS:
+    """Compatibility adapter for the legacy VoiceEngine API."""
+
+    def speak(self, text: str) -> bool:
+        return speak(text, wait=True)
+
+    def stop(self) -> None:
+        interrupt()
