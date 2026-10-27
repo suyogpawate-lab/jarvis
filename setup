@@ -748,6 +748,8 @@ def step_voice(env):
         os.environ["PATH"] = str(Path.home() / ".cargo" / "bin") + os.pathsep + os.environ.get("PATH", "")
         ptts = shutil.which("ptts") or str(Path.home() / ".cargo" / "bin" / "ptts")
         model_dir = Path(env.get("JARVIS_PHONON_DIR") or Path.home() / "phonon-model").expanduser()
+        if env.get("JARVIS_PHONON_DIR"):
+            os.environ["JARVIS_PHONON_DIR"] = str(model_dir)
         ready = Path(ptts).is_file() and all(
             (model_dir / name).is_file()
             for name in ("config.json", "tokenizer.json", "model.q8.gguf")
