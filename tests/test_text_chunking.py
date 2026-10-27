@@ -1,33 +1,40 @@
 from voice.text_chunking import chunk_text
 
 
-def test_short_replies_at_or_below_twenty_words_stay_whole():
-    text = "This reply has exactly enough words to remain intact without introducing any awkward pause during normal speech playback."
-    assert len(text.split()) <= 20
+def test_replies_at_or_below_fifty_words_stay_whole():
+    text = " ".join(f"word{i}" for i in range(50)) + "."
+    assert len(text.split()) == 50
     assert chunk_text(text) == [text]
 
 
-def test_long_single_sentence_is_split_near_fifteen_words():
-    text = " ".join(f"word{i}" for i in range(29)) + "."
+def test_replies_over_fifty_words_split_near_twenty_words():
+    text = " ".join(f"word{i}" for i in range(51)) + "."
     chunks = chunk_text(text)
-    assert len(chunks) == 2
-    assert [len(chunk.split()) for chunk in chunks] == [15, 14]
-    assert " ".join(chunks).replace(" .", ".") == text
+    assert [len(chunk.split()) for chunk in chunks] == [20, 20, 11]
+    assert " ".join(chunks) == text
 
 
-def test_long_reply_uses_sentence_boundaries_and_keeps_thirteen_and_seventeen_word_chunks():
+def test_two_short_sentences_remain_together_when_reply_is_under_threshold():
     first = " ".join(f"first{i}" for i in range(13)) + "."
     second = " ".join(f"second{i}" for i in range(17)) + "."
-    chunks = chunk_text(first + " " + second)
-    assert [len(chunk.split()) for chunk in chunks] == [13, 17]
-    assert chunks == [first, second]
+    text = first + " " + second
+    assert len(text.split()) == 30
+    assert chunk_text(text) == [text]
+
+
+def test_long_reply_prefers_sentence_boundaries_near_twenty_words():
+    first = " ".join(f"first{i}" for i in range(18)) + "."
+    second = " ".join(f"second{i}" for i in range(19)) + "."
+    third = " ".join(f"third{i}" for i in range(15)) + "."
+    chunks = chunk_text(first + " " + second + " " + third)
+    assert [len(chunk.split()) for chunk in chunks] == [18, 19, 15]
 
 
 def test_commas_are_not_chunk_boundaries():
-    words = [f"word{i}" for i in range(28)]
-    words[14] += ","
+    words = [f"word{i}" for i in range(51)]
+    words[19] += ","
     text = " ".join(words) + "."
     chunks = chunk_text(text)
-    assert len(chunks) == 2
+    assert len(chunks) > 1
     assert not any(chunk.endswith(",") for chunk in chunks)
-    assert sum(len(chunk.split()) for chunk in chunks) == 28
+    assert sum(len(chunk.split()) for chunk in chunks) == 51
