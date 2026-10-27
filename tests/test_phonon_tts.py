@@ -1,27 +1,107 @@
+import json
 import os
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from voice import phonon_tts
 
 
+class FakeStdin:
+    def __init__(self):
+        self.data = ""
+
+    def write(self, value):
+        self.data = value
+
+    def flush(self):
+        pass
+
+
+class FakeWorker:
+    def __init__(self):
+        self.stdin = FakeStdin()
+        self.returncode = None
+        self.stdout = StringIO()
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = -15
+
+
 class PhononAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self.old_state = (
+            phonon_tts._WORKER_PROCESS,
+            phonon_tts._WORKER_CONFIG,
+            phonon_tts._WORKER_BUSY,
+            phonon_tts._ACTIVE_PROCESS,
+            phonon_tts._GENERATION,
+        )
+        phonon_tts._WORKER_PROCESS = None
+        phonon_tts._WORKER_CONFIG = None
+        phonon_tts._WORKER_BUSY = False
+        phonon_tts._ACTIVE_PROCESS = None
+        phonon_tts._GENERATION = 0
+
+    def tearDown(self):
+        (
+            phonon_tts._WORKER_PROCESS,
+            phonon_tts._WORKER_CONFIG,
+            phonon_tts._WORKER_BUSY,
+            phonon_tts._ACTIVE_PROCESS,
+            phonon_tts._GENERATION,
+        ) = self.old_state
+
+    def make_model(self, root):
+        model = root / "model"
+        (model / "voices").mkdir(parents=True)
+        for filename in ("config.json", "tokenizer.json", "model.q8.gguf"):
+            (model / filename).write_text("fixture", encoding="utf-8")
+        (model / "voices" / "edwin.safetensors").write_bytes(b"voice")
+        return model
+
     def test_model_dir_rejects_incomplete_checkpoint(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.dict(os.environ, {"JARVIS_PHONON_DIR": temp}):
                 with self.assertRaisesRegex(RuntimeError, "checkpoint is incomplete"):
                     phonon_tts.model_dir()
 
-    def test_synth_passes_text_before_output_option_and_returns_audio(self):
+    def test_synth_uses_persistent_worker_and_returns_audio(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            model = root / "model"
-            (model / "voices").mkdir(parents=True)
-            for filename in ("config.json", "tokenizer.json", "model.q8.gguf"):
-                (model / filename).write_text("fixture", encoding="utf-8")
-            (model / "voices" / "edwin.safetensors").write_bytes(b"voice")
+            model = self.make_model(root)
+            worker = FakeWorker()
+
+            def fake_readline(process, timeout):
+                request = json.loads(process.stdin.data)
+                Path(request["output"]).write_bytes(b"wav")
+                return json.dumps({"ok": True}) + "\n"
+
+            with patch.object(phonon_tts, "model_dir", return_value=model), \
+                 patch.object(phonon_tts, "_ensure_worker", return_value=worker), \
+                 patch.object(phonon_tts, "_readline_timeout", side_effect=fake_readline), \
+                 patch.dict(os.environ, {
+                     "PREFIX": temp,
+                     "JARVIS_PHONON_VOICE": "edwin",
+                     "JARVIS_PHONON_QUANT": "q8",
+                 }):
+                output = phonon_tts.synth("  Hello   there.  ")
+                self.assertTrue(output.is_file())
+                self.assertEqual(output.read_bytes(), b"wav")
+                request = json.loads(worker.stdin.data)
+                self.assertEqual(request["text"], "Hello there.")
+                output.unlink()
+
+    def test_synth_falls_back_to_cli_if_worker_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            model = self.make_model(root)
+            self_test = self
 
             class FakeProcess:
                 returncode = 0
@@ -44,8 +124,11 @@ class PhononAdapterTests(unittest.TestCase):
                 def terminate(self):
                     self.returncode = -15
 
-            self_test = self
+                def kill(self):
+                    self.returncode = -9
+
             with patch.object(phonon_tts, "model_dir", return_value=model), \
+                 patch.object(phonon_tts, "_ensure_worker", side_effect=RuntimeError("Cargo unavailable")), \
                  patch.object(phonon_tts, "_exe", return_value="/fake/ptts"), \
                  patch.object(phonon_tts.subprocess, "Popen", side_effect=FakeProcess), \
                  patch.dict(os.environ, {
