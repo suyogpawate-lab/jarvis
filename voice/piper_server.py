@@ -48,7 +48,7 @@ def _remove_future_audio(future):
 
 def speak_pipeline(text: str, speed: float = 1.0) -> None:
     global _active_process
-    chunks = chunk_text(text, target_words=15, threshold_words=20)
+    chunks = chunk_text(text, target_words=20, threshold_words=50)
     if not chunks:
         return
     if not shutil.which("mpv"):
