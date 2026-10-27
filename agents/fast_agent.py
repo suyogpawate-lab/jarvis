@@ -3111,8 +3111,9 @@ class FastAgent:
                 ))
                 max_tool_rounds = int(os.getenv(
                     "JARVIS_MAX_TOOL_ROUNDS_SCREEN" if screen_workflow else "JARVIS_MAX_TOOL_ROUNDS",
-                    "10" if screen_workflow else "5",
+                    "15",
                 ))
+                # Keep the configured ceiling at 15 to avoid unbounded tool loops.
                 max_tool_rounds = max(1, min(max_tool_rounds, 15))
                 step_no = 0
 
