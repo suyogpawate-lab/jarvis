@@ -127,6 +127,13 @@ if [ "$WITH_PHONON" -eq 1 ]; then
         cargo install ptts --locked --features cli \
             || warn "Could not build ptts. Retry: cargo install ptts --locked --features cli"
     fi
+    if python -c 'import ptts' >/dev/null 2>&1; then
+        ok "Phonon Python bindings already available for persistent model reuse."
+    else
+        info "Installing optional Phonon Python bindings for a persistent preloaded model..."
+        python -m pip install --retries 5 --timeout 30 "ptts>=0.4,<0.5" \
+            || warn "Phonon Python bindings could not be installed; JARVIS will retain the ptts CLI fallback (with per-chunk startup overhead)."
+    fi
     python "$ROOT/scripts/prepare_phonon_assets.py" \
         || warn "Phonon assets did not finish downloading. Retry: python scripts/prepare_phonon_assets.py"
     if command -v ptts >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/ptts" ]; then
