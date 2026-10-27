@@ -698,14 +698,21 @@ def step_voice(env):
     current_voice = (env.get("JARVIS_SHERPA_VOICE", "alan") or "alan").strip().lower()
     if current_provider == "say":
         default_choice = "3" if current_voice == "bryce" else "2"
+    elif current_provider == "piper":
+        default_choice = "4"
+    elif current_provider == "phonon":
+        default_choice = "5"
     else:
         default_choice = "1"
 
-    info("Choose one of three voices. Edge TTS is the default; Alan and Bryce use the supplied ZIP's local say server.")
-    print("  1) Edge TTS — Ryan Neural (default, online)")
+    info("Choose a speech backend. Edge is online; Piper, Sherpa and Phonon run locally after setup.")
+    print("  1) Edge TTS — Ryan Neural (online, default)")
     print("  2) Alan — British English (local Sherpa voice)")
     print("  3) Bryce — American English (local Sherpa voice)")
-    choice = ask("Choose voice: 1=Edge TTS, 2=Alan, 3=Bryce", default=default_choice).strip().lower()
+    print("  4) Piper — local Piper model")
+    print("  5) Phonon — local Rust TTS, compact q8 model (default voice: Edwin)")
+    choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon",
+                 default=default_choice).strip().lower()
 
     if choice in ("2", "alan"):
         env.set("JARVIS_TTS_PROVIDER", "say")
@@ -713,18 +720,88 @@ def step_voice(env):
     elif choice in ("3", "bryce"):
         env.set("JARVIS_TTS_PROVIDER", "say")
         env.set("JARVIS_SHERPA_VOICE", "bryce")
+    elif choice in ("4", "piper"):
+        env.set("JARVIS_TTS_PROVIDER", "piper")
+    elif choice in ("5", "phonon"):
+        env.set("JARVIS_TTS_PROVIDER", "phonon")
+        voice = (env.get("JARVIS_PHONON_VOICE", "edwin") or "edwin").strip().lower()
+        voices = {"edwin", "toby", "aldric", "trevor", "hugh", "spencer", "bramwell", "default"}
+        if voice not in voices:
+            voice = "edwin"
+        print("  Phonon voices: edwin, toby, aldric, trevor, hugh, spencer, bramwell, default")
+        voice = ask("Phonon voice", default=voice).strip().lower()
+        if voice not in voices:
+            warn("Unknown Phonon voice; using Edwin.")
+            voice = "edwin"
+        env.set("JARVIS_PHONON_VOICE", voice)
     else:
         env.set("JARVIS_TTS_PROVIDER", "edge")
     env.save()
 
-    if env.get("JARVIS_TTS_PROVIDER", "edge") == "edge":
+    provider = env.get("JARVIS_TTS_PROVIDER", "edge").strip().lower()
+    if provider == "edge":
         ok("Edge TTS selected. JARVIS will use the online Ryan Neural voice.")
-        info("The ZIP voice server will not be started when JARVIS launches.")
         return
 
-    info("Preparing the selected ZIP voice model and server layout.")
+    if provider == "phonon":
+        import shutil
+        os.environ["PATH"] = str(Path.home() / ".cargo" / "bin") + os.pathsep + os.environ.get("PATH", "")
+        ptts = shutil.which("ptts") or str(Path.home() / ".cargo" / "bin" / "ptts")
+        model_dir = Path(env.get("JARVIS_PHONON_DIR") or Path.home() / "phonon-model").expanduser()
+        ready = Path(ptts).is_file() and all(
+            (model_dir / name).is_file()
+            for name in ("config.json", "tokenizer.json", "model.q8.gguf")
+        )
+        if ready:
+            ok(f"Phonon is ready at {model_dir}; synthesis will run locally/offline.")
+            return
+        warn("Phonon needs the Rust CLI and local model/voice files before first use.")
+        if not yes_no("Install the Phonon CLI and download its model assets now?", default=True):
+            info("To finish later, run: bash install.sh --with-phonon")
+            return
+        if not shutil.which("pkg"):
+            warn("Termux pkg was not found. Run bash install.sh --with-phonon inside Termux.")
+            return
+        result = subprocess.run(
+            ["pkg", "install", "-y", "rust", "clang", "make", "cmake", "curl"],
+            check=False,
+        )
+        if result.returncode != 0:
+            warn("Could not install all Rust build prerequisites. Retry: bash install.sh --with-phonon")
+            return
+        os.environ["PATH"] = str(Path.home() / ".cargo" / "bin") + os.pathsep + os.environ.get("PATH", "")
+        if not (shutil.which("ptts") or (Path.home() / ".cargo" / "bin" / "ptts").is_file()):
+            info("Building ptts with Cargo; the first build can take several minutes.")
+            result = subprocess.run(
+                ["cargo", "install", "ptts", "--locked", "--features", "cli"],
+                check=False,
+            )
+            if result.returncode != 0:
+                warn("Cargo could not build ptts. Retry with bash install.sh --with-phonon and inspect the Cargo error.")
+                return
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "prepare_phonon_assets.py")],
+            cwd=ROOT, check=False,
+        )
+        if result.returncode == 0:
+            ok("Phonon CLI and assets are ready.")
+        else:
+            warn("Phonon model setup did not finish. Retry: python scripts/prepare_phonon_assets.py")
+        return
+
+    if provider == "piper":
+        info("Preparing Piper voice assets.")
+        prepare = ROOT / "scripts" / "prepare_piper_assets.py"
+        result = subprocess.run([sys.executable, str(prepare)], cwd=ROOT, check=False)
+        if result.returncode == 0:
+            ok("Piper assets are ready.")
+        else:
+            warn("Piper model preparation did not finish. Retry: python scripts/prepare_piper_assets.py")
+        return
+
+    info("Preparing the selected ZIP/Sherpa voice model and server layout.")
     prepare = ROOT / "scripts" / "prepare_sherpa_assets.py"
-    result = subprocess.run([sys.executable, str(prepare)], check=False)
+    result = subprocess.run([sys.executable, str(prepare)], cwd=ROOT, check=False)
     if result.returncode != 0:
         warn("Sherpa model download did not complete. Retry: python scripts/prepare_sherpa_assets.py")
 
@@ -741,8 +818,7 @@ def step_voice(env):
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements-sherpa.txt")],
-                check=False,
-                timeout=180,
+                check=False, timeout=180,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             result = None
@@ -754,7 +830,7 @@ def step_voice(env):
         from voice.jarvis_voice_runtime import prepare_layout
         prepare_layout()
         ok(f"ZIP say assets are ready for {env.get('JARVIS_SHERPA_VOICE', 'alan').title()}.")
-        info("server.py will be started in the background when JARVIS launches.")
+        info("The persistent server starts when JARVIS launches.")
     except Exception as exc:
         warn(f"ZIP say layout is not ready yet: {exc}")
         info("Install the models and runtime, then rerun: python setup.py voice")
