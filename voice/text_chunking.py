@@ -1,7 +1,8 @@
-"""Sentence-boundary chunking for streaming speech synthesis.
+"""Shared chunking policy for JARVIS speech synthesis.
 
-Long responses are grouped near 15 words, but boundaries are only placed after
-sentence-ending punctuation (.?!). Commas are deliberately not boundaries.
+Replies of 20 words or fewer remain a single utterance. Longer replies are
+split into chunks near 15 words, preferring sentence boundaries (.?!).
+Commas are never treated as chunk boundaries.
 """
 from __future__ import annotations
 
@@ -15,18 +16,17 @@ _ABBREVIATIONS = {
 
 
 def sentence_list(text: str) -> list[str]:
-    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    text = re.sub(r"\\s+", " ", str(text or "")).strip()
     if not text:
         return []
     sentences: list[str] = []
     start = 0
-    for match in re.finditer(r"[.!?]+(?=\s|$)", text):
+    for match in re.finditer(r"[.!?]+(?=\\s|$)", text):
         end = match.end()
         token_start = text.rfind(" ", start, match.start()) + 1
         token = text[token_start:end].lower()
-        if token in _ABBREVIATIONS or re.fullmatch(r"\d+\.", token):
+        if token in _ABBREVIATIONS or re.fullmatch(r"\\d+\\.", token):
             continue
-        # Do not split a decimal such as 3.14.
         if (
             text[match.start():match.end()] == "."
             and match.start() > 0
@@ -44,7 +44,6 @@ def sentence_list(text: str) -> list[str]:
     if text[start:].strip():
         sentences.append(text[start:].strip())
 
-    # Abbreviations can be split by punctuation matching; join them back.
     merged: list[str] = []
     for sentence in sentences:
         if merged and merged[-1].split()[-1].lower() in _ABBREVIATIONS:
@@ -54,49 +53,66 @@ def sentence_list(text: str) -> list[str]:
     return merged
 
 
-def chunk_text(text: str, target_words: int = 15, threshold_words: int = 20) -> list[str]:
-    """Group complete sentences near target_words for long responses.
+def _split_long_sentence(sentence: str, target_words: int) -> list[str]:
+    """Split a single long sentence at word boundaries, never at a comma."""
+    words = sentence.split()
+    if len(words) <= target_words:
+        return [sentence]
+    chunks: list[str] = []
+    while len(words) > target_words:
+        boundary = target_words
+        # Do not leave a comma at the end of a chunk; include the next word.
+        while boundary < len(words) and words[boundary - 1].endswith(","):
+            boundary += 1
+        chunks.append(" ".join(words[:boundary]).strip())
+        words = words[boundary:]
+    if words:
+        chunks.append(" ".join(words).strip())
+    return chunks
 
-    Responses of at most threshold_words stay intact. A long single sentence
-    also stays intact rather than being cut at a comma or arbitrary word.
+
+def chunk_text(text: str, target_words: int = 15, threshold_words: int = 20) -> list[str]:
+    """Keep short replies intact; chunk longer replies around 15 words.
+
+    Sentence boundaries are preferred. When one sentence itself exceeds the
+    target, it is split at a word boundary (not at commas) to avoid one long
+    playback pause. Short sentence fragments are grouped where practical.
     """
-    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    normalized = re.sub(r"\\s+", " ", str(text or "")).strip()
     if not normalized:
         return []
     words = normalized.split()
-    if len(words) <= threshold_words:
+    if len(words) <= max(0, int(threshold_words)):
         return [normalized]
 
+    target_words = max(1, int(target_words))
     sentences = sentence_list(normalized)
-    if len(sentences) <= 1:
-        return [normalized]
+    if len(sentences) == 1:
+        return _split_long_sentence(sentences[0], target_words)
+
+    # Break any exceptionally long sentence into word-sized units first.
+    units: list[str] = []
+    for sentence in sentences:
+        units.extend(_split_long_sentence(sentence, target_words))
 
     chunks: list[str] = []
     current: list[str] = []
     current_words = 0
-    target_words = max(1, int(target_words))
-
-    for sentence in sentences:
-        sentence_words = len(sentence.split())
-        if not current:
-            current = [sentence]
-            current_words = sentence_words
-            continue
-
-        combined_words = current_words + sentence_words
-        # Choose the nearest available sentence boundary to the 15-word
-        # target, without splitting at commas or inside a sentence.
-        if current_words >= target_words or (
-            combined_words > target_words
-            and abs(current_words - target_words) <= abs(combined_words - target_words)
-        ):
-            chunks.append(" ".join(current).strip())
-            current = [sentence]
-            current_words = sentence_words
-        else:
-            current.append(sentence)
-            current_words = combined_words
-
+    for unit in units:
+        unit_words = len(unit.split())
+        if current:
+            combined = current_words + unit_words
+            # Prefer a boundary near the target; do not create a comma-ending
+            # chunk merely to hit an exact count.
+            if current_words >= target_words or (
+                combined > target_words
+                and abs(current_words - target_words) <= abs(combined - target_words)
+            ):
+                chunks.append(" ".join(current).strip())
+                current = []
+                current_words = 0
+        current.append(unit)
+        current_words += unit_words
     if current:
         chunks.append(" ".join(current).strip())
     return [chunk for chunk in chunks if chunk]
