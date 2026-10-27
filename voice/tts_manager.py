@@ -78,7 +78,7 @@ class TTSManager:
         if provider == "say":
             from voice.jarvis_voice_runtime import speak as say_speak
             result = True
-            for s in chunk_text(text, target_words=15, threshold_words=20):  # one short reply or ~15-word chunks
+            for s in chunk_text(text, target_words=20, threshold_words=50):  # <=50 words intact; longer replies near 20 words
                 if self._gen != gen:
                     break
                 say_speak(s)
@@ -167,7 +167,7 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen):
-        sentences = chunk_text(text, target_words=15, threshold_words=20)  # shared policy; commas are not boundaries
+        sentences = chunk_text(text, target_words=20, threshold_words=50)  # shared policy; commas are not boundaries
         q = queue.Queue(maxsize=1)
         errors = []
 
