@@ -49,9 +49,10 @@ def main() -> int:
                 _emit({"ok": True})
                 break
             text = " ".join(str(request.get("text", "")).split())
-            output = Path(str(request.get("output", "")))
-            if not text or not str(output):
+            output_value = str(request.get("output", "")).strip()
+            if not text or not output_value:
                 raise ValueError("Request needs non-empty text and output path.")
+            output = Path(output_value)
             output.parent.mkdir(parents=True, exist_ok=True)
             tts.save(str(output), text, voice=voice)
             if not output.is_file() or output.stat().st_size == 0:
