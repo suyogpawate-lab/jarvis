@@ -10,10 +10,28 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VALID_VOICES = {"edwin", "toby", "aldric", "trevor", "hugh", "spencer", "bramwell", "default"}
+_PROCESS_LOCK = threading.Lock()
+_ACTIVE_PROCESS = None
+_GENERATION = 0
+
+
+def interrupt() -> None:
+    """Terminate an in-flight ptts synthesis so newer speech is not delayed."""
+    global _GENERATION
+    with _PROCESS_LOCK:
+        _GENERATION += 1
+        process = _ACTIVE_PROCESS
+    if process is not None and process.poll() is None:
+        try:
+            process.terminate()
+        except OSError:
+            pass
+
 
 
 def model_dir() -> Path:
@@ -84,15 +102,39 @@ def synth(text: str) -> Path:
     # ptts expects text as the positional argument before the -o output option.
     command += [text, "-o", str(output)]
 
+    global _ACTIVE_PROCESS
+    process = None
     try:
-        result = subprocess.run(
-            command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180
-        )
+        # Publish the process while holding the same lock used by interrupt(),
+        # so cancellation cannot race between process creation and registration.
+        with _PROCESS_LOCK:
+            generation = _GENERATION
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            _ACTIVE_PROCESS = process
+        try:
+            stdout, stderr = process.communicate(timeout=180)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            raise RuntimeError("ptts exceeded the 180-second synthesis timeout.")
+        with _PROCESS_LOCK:
+            interrupted = generation != _GENERATION
+        if interrupted:
+            raise RuntimeError("Phonon synthesis was interrupted.")
+        if process.returncode or not output.is_file() or output.stat().st_size == 0:
+            detail = (stderr or stdout or "no diagnostic output").strip()[-300:]
+            raise RuntimeError(f"ptts failed (exit {process.returncode}): {detail}")
+        return output
     except Exception:
         output.unlink(missing_ok=True)
         raise
-    if result.returncode or not output.is_file() or output.stat().st_size == 0:
-        output.unlink(missing_ok=True)
-        detail = (result.stderr or result.stdout or "no diagnostic output").strip()[-300:]
-        raise RuntimeError(f"ptts failed (exit {result.returncode}): {detail}")
-    return output
+    finally:
+        with _PROCESS_LOCK:
+            if _ACTIVE_PROCESS is process:
+                _ACTIVE_PROCESS = None
