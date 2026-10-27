@@ -20,7 +20,7 @@ WORKER_DIR = ROOT / "voice" / "phonon_worker"
 WORKER_BIN = WORKER_DIR / "target" / "release" / "jarvis-phonon-worker"
 VALID_VOICES = {"edwin", "toby", "aldric", "trevor", "hugh", "spencer", "bramwell", "default"}
 _PROCESS_LOCK = threading.Lock()
-_WORKER_LOCK = threading.Lock()
+_WORKER_LOCK = threading.RLock()
 _ACTIVE_PROCESS = None
 _WORKER_PROCESS = None
 _WORKER_CONFIG = None
@@ -124,7 +124,7 @@ def _readline_timeout(process, timeout: float) -> str:
 
 
 def _ensure_worker(directory: Path, voice: str, quant: str):
-    global _WORKER_PROCESS, _WORKER_CONFIG
+    global _WORKER_PROCESS, _WORKER_CONFIG, _ACTIVE_PROCESS
     config = (str(directory), voice, quant)
     with _WORKER_LOCK:
         if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_CONFIG == config:
@@ -258,6 +258,7 @@ def synth(text: str) -> Path:
     output.unlink(missing_ok=True)
 
     global _WORKER_BUSY, _ACTIVE_PROCESS, _WORKER_PROCESS, _WORKER_CONFIG
+    generation = None
     try:
         try:
             with _WORKER_LOCK:
@@ -284,9 +285,12 @@ def synth(text: str) -> Path:
                     raise RuntimeError("Phonon worker reported success but produced no WAV.")
                 return output
         except RuntimeError as exc:
+            # Never turn an explicit cancellation into a new, unwanted CLI synthesis.
+            with _PROCESS_LOCK:
+                was_interrupted = generation is not None and generation != _GENERATION
+            if was_interrupted or "interrupted" in str(exc).lower():
+                raise RuntimeError("Phonon synthesis was interrupted.") from exc
             # Keep the legacy CLI as a recovery path when the helper cannot be built or started.
-            if "interrupted" in str(exc).lower():
-                raise
             with _PROCESS_LOCK:
                 _WORKER_BUSY = False
                 _ACTIVE_PROCESS = None
