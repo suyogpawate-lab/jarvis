@@ -23,6 +23,7 @@ bash install.sh                 # core install and guided setup
 bash install.sh --skip-setup    # install dependencies without launching guided setup
 bash install.sh --skip-osint    # skip optional OSINT tool clones/dependencies
 bash install.sh --with-voice    # install OpenWakeWord dependencies + Needle/Whistle STT
+bash install.sh --with-phonon   # build ptts and download Phonon q8 model + voice embeddings
 bash install.sh --help          # show installer options
 ```
 
@@ -52,7 +53,7 @@ python setup.py --status
 | `gmail` | Gmail account(s) and a Google [App Password](https://myaccount.google.com/apppasswords), not your normal account password. Enable 2-Step Verification and ensure IMAP access is available. |
 | `whatsapp` | Link WhatsApp with a pairing code or QR code. Pairing code is convenient when WhatsApp is on the same phone. |
 | `contacts` | Optionally sync Android contacts and maintain a priority-people list. Android may ask for permission. |
-| `voice` | Select Edge TTS or configure local Piper library/model paths. You can change this later with `./voice-config`. |
+| `voice` | Select Edge TTS, local Sherpa (Alan/Bryce), Piper, or Phonon. You can change this later with `python setup.py voice` or `./voice-config`. |
 
 Press Enter to keep existing values or skip optional questions. Completed sections are saved as you go.
 
@@ -272,18 +273,27 @@ This installs OpenWakeWord dependencies and downloads the ARM64 Needle runner an
 
 ### Speech output providers and low-latency chunking
 
-JARVIS keeps Edge TTS as the default and supports Piper as an optional local provider. Choose during setup or change later:
+JARVIS keeps Edge TTS as the default and supports local Piper, Sherpa (Alan/Bryce), and Phonon. Choose during setup or change later:
 
 ```bash
 ./voice-config
 python setup.py voice
 ```
 
-Choose **Edge** for the existing network-based en-GB-RyanNeural voice. Choose **Piper** to use a compatible local Piper C API library, an ONNX voice model and its matching JSON config. All JARVIS-owned voice assets and generated audio are kept inside this repository: `lib/piper/`, `models/piper/`, `voice/data/espeak-ng-data/` and `cache/piper/`. The installer attempts to copy an existing Piper bundle, model/config and eSpeak data from legacy locations into those directories. It copies rather than moves the source files, and it never replaces Termux shared ONNX Runtime libraries. It does not download an unverified Piper binary or voice model; if assets are missing, supply a compatible bundle/model inside the documented repository directories.
+Choose **Edge** for the network-based en-GB-RyanNeural voice. **Piper** uses the configured local Piper model/runtime. **Alan/Bryce** use the persistent local Sherpa voice server. **Phonon** uses Gradium's compact English Phonon 31m q8 checkpoint through the Rust `ptts` CLI; Edwin is the default JARVIS voice.
 
-Long answers are split at sentence-ending punctuation and queued in order, so JARVIS can start speaking the first sentence while later sentences remain queued. Very long sentences are further split at punctuation and then word boundaries. Common abbreviations and decimal numbers are protected where practical. A new response interrupts current playback and discards queued chunks. Piper is local after model load; first use may take longer while the model initializes. If Piper native-library compatibility fails, switch back with ./voice-config and select Edge.
+Install Phonon explicitly (the model download and Rust compilation are optional and are not forced on core-only installs):
 
-The provider is stored in the git-ignored `.env` file. The setup helper also records the repository-local Piper paths there for visibility, but the runtime resolves its library, model, eSpeak data and audio output relative to `~/jarvis` so environment overrides cannot redirect them outside the repository. Do not commit model files or private runtime libraries.
+```bash
+bash install.sh --with-phonon
+python setup.py voice
+```
+
+The installer builds `ptts` with Cargo and downloads the checkpoint files to `~/phonon-model` by default: `config.json`, `tokenizer.json`, `model.q8.gguf`, the original `default-voice.safetensors`, and the supported voice embeddings under `voices/`. It preserves the model's original default-voice file and selects Edwin explicitly. The English q8 weights are about 64.5 MB; Rust compilation needs additional temporary storage and can take several minutes. After the first download, Phonon synthesis works offline. To use another model directory, set `JARVIS_PHONON_DIR`; select the voice with `JARVIS_PHONON_VOICE` (Edwin, Toby, Aldric, Trevor, Hugh, Spencer, Bramwell, or `default`). Optional CPU tuning is available with `JARVIS_PHONON_THREADS`.
+
+All JARVIS-owned Piper assets and generated audio remain in repository-local directories such as `lib/piper/`, `models/piper/`, and `cache/piper/`. Existing Piper asset migration copies rather than moves source files and does not replace Termux shared ONNX Runtime libraries. Sherpa model downloads and Python dependencies are installed only if you choose the Sherpa voice, rather than being downloaded during every core installation. Do not commit model files or private runtime libraries.
+
+Long answers are processed at sentence boundaries, preserving commas and phrase prosody. Local Piper, Sherpa and Phonon synthesize the next sentence while the current sentence plays. A new response interrupts playback and discards queued chunks. The provider and voice preferences are stored in the git-ignored `.env` file.
 
 The acoustic wake phrase is **“Hey Jarvis”**. After the first recognized command, voice input enters continuous-conversation mode: follow-up speech is captured without another wake phrase, and JARVIS returns to wake-word standby after 20 seconds of inactivity by default. Say **“Goodbye Jarvis”** to end the conversation immediately. Configure the idle window with `JARVIS_CONVERSATION_TIMEOUT` (seconds; minimum 5). JARVIS's own TTS playback keeps the conversation active and is muted from input capture. The detector consumes 16 kHz mono signed 16-bit PCM frames; Whistle transcribes each utterance after a pause. Run these checks from `~/jarvis`:
 
