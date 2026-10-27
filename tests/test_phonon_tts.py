@@ -23,21 +23,31 @@ class PhononAdapterTests(unittest.TestCase):
                 (model / filename).write_text("fixture", encoding="utf-8")
             (model / "voices" / "edwin.safetensors").write_bytes(b"voice")
 
-            def fake_run(command, **kwargs):
-                output = Path(command[command.index("-o") + 1])
-                output.write_bytes(b"wav")
-                self.assertEqual(command[command.index("-o") - 1], "Hello there.")
-                self.assertEqual(command[command.index("--voice") + 1], "edwin")
+            class FakeProcess:
+                returncode = 0
 
-                class Result:
-                    returncode = 0
-                    stdout = ""
-                    stderr = ""
-                return Result()
+                def __init__(self, command, **kwargs):
+                    self.command = command
+                    self.stdout = ""
+                    self.stderr = ""
 
+                def communicate(self, timeout=None):
+                    output = Path(self.command[self.command.index("-o") + 1])
+                    output.write_bytes(b"wav")
+                    self_test.assertEqual(self.command[self.command.index("-o") - 1], "Hello there.")
+                    self_test.assertEqual(self.command[self.command.index("--voice") + 1], "edwin")
+                    return ("", "")
+
+                def poll(self):
+                    return self.returncode
+
+                def terminate(self):
+                    self.returncode = -15
+
+            self_test = self
             with patch.object(phonon_tts, "model_dir", return_value=model), \
                  patch.object(phonon_tts, "_exe", return_value="/fake/ptts"), \
-                 patch.object(phonon_tts.subprocess, "run", side_effect=fake_run), \
+                 patch.object(phonon_tts.subprocess, "Popen", side_effect=FakeProcess), \
                  patch.dict(os.environ, {
                      "PREFIX": temp,
                      "JARVIS_PHONON_VOICE": "edwin",
