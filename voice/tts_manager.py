@@ -78,7 +78,7 @@ class TTSManager:
         if provider == "say":
             from voice.jarvis_voice_runtime import speak as say_speak
             result = True
-            for s in chunk_text(text, target_words=20, threshold_words=50):  # <=50 words intact; longer replies near 20 words
+            for s in chunk_text(text, target_words=22, threshold_words=60):  # <=60 words intact; longer replies near 22 words
                 if self._gen != gen:
                     break
                 say_speak(s)
@@ -167,9 +167,10 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen):
-        sentences = chunk_text(text, target_words=20, threshold_words=50)  # shared policy; commas are not boundaries
-        q = queue.Queue(maxsize=1)
+        sentences = chunk_text(text, target_words=22, threshold_words=60)  # shared policy; commas are not boundaries
+        q = queue.Queue(maxsize=2)
         errors = []
+        prebuffer_ready = threading.Event()
 
         def producer():
             try:
@@ -180,12 +181,18 @@ class TTSManager:
                     if not self._put(q, path, gen):
                         Path(path).unlink(missing_ok=True)
                         break
+                    # Buffer two chunks before playback where possible, giving
+                    # slower Android devices a head start on synthesis.
+                    if q.qsize() >= 2:
+                        prebuffer_ready.set()
             except Exception as exc:
                 errors.append(exc)
             finally:
+                prebuffer_ready.set()
                 self._put(q, None, gen)
 
         threading.Thread(target=producer, daemon=True, name="TTSSynth").start()
+        prebuffer_ready.wait()
         while True:
             try:
                 path = q.get(timeout=0.2)
