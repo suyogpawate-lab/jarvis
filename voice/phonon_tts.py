@@ -172,6 +172,12 @@ def _request_worker(text: str, output: Path) -> Path:
             if not output.is_file() or output.stat().st_size == 0:
                 raise RuntimeError("Persistent Phonon worker produced no WAV output.")
             return output
+        except PersistentWorkerUnavailable:
+            with _PROCESS_LOCK:
+                interrupted = generation != _GENERATION
+            if interrupted:
+                raise RuntimeError("Phonon synthesis was interrupted.")
+            raise
         finally:
             with _PROCESS_LOCK:
                 _WORKER_BUSY = False
