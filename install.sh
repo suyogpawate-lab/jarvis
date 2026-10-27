@@ -110,10 +110,8 @@ chmod +x "$ROOT/voice/jarvis_voice/say" 2>/dev/null || true
 chmod +x "$ROOT/setup" 2>/dev/null || true
 info "Preparing repository-local Piper assets..."
 python scripts/prepare_piper_assets.py || warn "Could not migrate existing Piper assets; run python scripts/prepare_piper_assets.py to retry."
-info "Preparing ZIP say voice models and socket-server layout..."
-python scripts/prepare_sherpa_assets.py || warn "Could not download Sherpa voice assets; run python scripts/prepare_sherpa_assets.py."
-python -m pip install -r requirements-sherpa.txt || warn "Sherpa dependencies could not be installed on this Termux build; ZIP say needs sherpa-onnx and soundfile."
-python -c 'from voice.jarvis_voice_runtime import prepare_layout; prepare_layout()' || warn "ZIP say layout is not ready; rerun python setup.py voice after resolving model/runtime dependencies."
+# Sherpa models and Python dependencies are installed only when selected in setup.py voice.
+# This keeps the core install small and avoids downloading unused voice models.
 ok "Runtime and voice folders ready inside $ROOT."
 
 # ───────────────────────── Phonon TTS (optional, local/offline) ─────────────────────────
