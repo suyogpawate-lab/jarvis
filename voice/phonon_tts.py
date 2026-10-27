@@ -96,6 +96,13 @@ def _build_worker() -> Path:
     cargo = shutil.which("cargo") or str(Path.home() / ".cargo" / "bin" / "cargo")
     if not Path(cargo).is_file():
         raise RuntimeError("Cargo is unavailable; cannot build the persistent Phonon worker.")
+    # Android networks can be very slow to fetch crates. Keep retries bounded;
+    # this build is started by background warmup, never as a prerequisite for
+    # speaking the current response.
+    build_env = os.environ.copy()
+    build_env.setdefault("CARGO_HTTP_TIMEOUT", "180")
+    build_env.setdefault("CARGO_HTTP_LOW_SPEED_LIMIT", "1")
+    build_env.setdefault("CARGO_NET_RETRY", "3")
     result = subprocess.run(
         [cargo, "build", "--release", "--manifest-path", str(WORKER_DIR / "Cargo.toml")],
         stdin=subprocess.DEVNULL,
@@ -104,6 +111,7 @@ def _build_worker() -> Path:
         text=True,
         timeout=900,
         check=False,
+        env=build_env,
     )
     if result.returncode != 0 or not WORKER_BIN.is_file():
         detail = (result.stdout or "no build output").strip()[-1200:]
@@ -245,6 +253,15 @@ def synth(text: str) -> Path:
         raise RuntimeError("Phonon received empty text.")
     directory = model_dir()
     voice, quant = _voice_and_quant(directory)
+
+    # Never make a user-facing utterance wait for Cargo to download crates or
+    # compile Rust. The TTSManager starts warmup in a background thread; until
+    # its worker binary exists, use the already-installed ptts CLI immediately.
+    # If warmup is currently loading/restarting the worker, also use the CLI
+    # rather than waiting on the worker lock.
+    if not WORKER_BIN.is_file() or not _WORKER_LOCK.acquire(blocking=False):
+        return _synth_cli(text, directory, voice, quant)
+    _WORKER_LOCK.release()
 
     prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
     temp_dir = prefix / "tmp"
