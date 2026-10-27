@@ -53,8 +53,6 @@ class TTSManager:
             threading.Thread(target=self._warm_piper, daemon=True, name="PiperWarmup").start()
         elif _provider() == "say":
             threading.Thread(target=self._warm_say, daemon=True, name="ZipSayWarmup").start()
-        elif _provider() == "phonon":
-            threading.Thread(target=self._warm_phonon, daemon=True, name="PhononWarmup").start()
 
     def _warm_piper(self):
         try:
@@ -73,15 +71,6 @@ class TTSManager:
         except Exception as exc:
             self.last_error = str(exc)
             print(f"[TTS ERROR] ZIP say server startup failed: {exc}", flush=True)
-
-    def _warm_phonon(self):
-        try:
-            from voice.phonon_tts import warmup
-            warmup()
-            print("[TTS] Phonon persistent worker ready; model preloaded.", flush=True)
-        except Exception as exc:
-            self.last_error = str(exc)
-            print(f"[TTS WARN] Phonon preload failed; CLI fallback remains available: {exc}", flush=True)
 
     def _run_provider(self, text, speed=1.0, gen=None):
         gen = self._gen if gen is None else gen
