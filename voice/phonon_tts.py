@@ -284,21 +284,20 @@ def synth(text: str) -> Path:
                 if not output.is_file() or output.stat().st_size == 0:
                     raise RuntimeError("Phonon worker reported success but produced no WAV.")
                 return output
-        except RuntimeError as exc:
+        except Exception as exc:
             # Never turn an explicit cancellation into a new, unwanted CLI synthesis.
             with _PROCESS_LOCK:
                 was_interrupted = generation is not None and generation != _GENERATION
             if was_interrupted or "interrupted" in str(exc).lower():
                 raise RuntimeError("Phonon synthesis was interrupted.") from exc
-            # Keep the legacy CLI as a recovery path when the helper cannot be built or started.
+            # Keep the legacy CLI as a recovery path when the helper cannot be built,
+            # started, or complete a request. Playback has not started yet.
             with _PROCESS_LOCK:
                 _WORKER_BUSY = False
                 _ACTIVE_PROCESS = None
             if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is not None:
                 _WORKER_PROCESS = None
                 _WORKER_CONFIG = None
-            if "worker synthesis failed" in str(exc).lower() or "reported success" in str(exc).lower():
-                raise
             output.unlink(missing_ok=True)
             return _synth_cli(text, directory, voice, quant)
     except Exception:
