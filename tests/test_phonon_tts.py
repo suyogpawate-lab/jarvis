@@ -71,11 +71,39 @@ class PhononAdapterTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "checkpoint is incomplete"):
                     phonon_tts.model_dir()
 
+    def test_synth_uses_cli_immediately_when_worker_binary_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            model = self.make_model(root)
+            output = root / "fallback.wav"
+
+            def fake_cli(text, directory, voice, quant):
+                output.write_bytes(b"wav")
+                self.assertEqual(text, "Hello there.")
+                self.assertEqual(directory, model)
+                self.assertEqual(voice, "edwin")
+                self.assertEqual(quant, "q8")
+                return output
+
+            with patch.object(phonon_tts, "model_dir", return_value=model), \\
+                 patch.object(phonon_tts, "WORKER_BIN", root / "missing-worker"), \\
+                 patch.object(phonon_tts, "_synth_cli", side_effect=fake_cli) as cli, \\
+                 patch.dict(os.environ, {
+                     "JARVIS_PHONON_VOICE": "edwin",
+                     "JARVIS_PHONON_QUANT": "q8",
+                 }):
+                result = phonon_tts.synth("  Hello   there.  ")
+                self.assertEqual(result, output)
+                cli.assert_called_once_with("Hello there.", model, "edwin", "q8")
+                output.unlink()
+
     def test_synth_uses_persistent_worker_and_returns_audio(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             model = self.make_model(root)
             worker = FakeWorker()
+            worker_bin = root / "jarvis-phonon-worker"
+            worker_bin.write_bytes(b"test binary placeholder")
 
             def fake_readline(process, timeout):
                 request = json.loads(process.stdin.data)
@@ -83,6 +111,7 @@ class PhononAdapterTests(unittest.TestCase):
                 return json.dumps({"ok": True}) + "\n"
 
             with patch.object(phonon_tts, "model_dir", return_value=model), \
+                 patch.object(phonon_tts, "WORKER_BIN", worker_bin), \
                  patch.object(phonon_tts, "_ensure_worker", return_value=worker), \
                  patch.object(phonon_tts, "_readline_timeout", side_effect=fake_readline), \
                  patch.dict(os.environ, {
