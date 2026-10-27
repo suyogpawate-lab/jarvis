@@ -3,6 +3,7 @@
 #
 #   bash install.sh                  core install, then the guided setup
 #   bash install.sh --with-voice     install Needle + Whistle STT and wake-word packages
+#   bash install.sh --with-phonon    build ptts and download the local Phonon model/voices
 #   bash install.sh --skip-osint     skip the OSINT tools
 #   bash install.sh --skip-setup     don't launch `python setup.py` at the end
 #
@@ -30,11 +31,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 WITH_VOICE=0
+WITH_PHONON=0
 WITH_OSINT=1
 RUN_SETUP=1
 for arg in "$@"; do
     case "$arg" in
         --with-voice) WITH_VOICE=1 ;;
+        --with-phonon) WITH_PHONON=1 ;;
         --skip-osint) WITH_OSINT=0 ;;
         --skip-setup) RUN_SETUP=0 ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
@@ -112,6 +115,28 @@ python scripts/prepare_sherpa_assets.py || warn "Could not download Sherpa voice
 python -m pip install -r requirements-sherpa.txt || warn "Sherpa dependencies could not be installed on this Termux build; ZIP say needs sherpa-onnx and soundfile."
 python -c 'from voice.jarvis_voice_runtime import prepare_layout; prepare_layout()' || warn "ZIP say layout is not ready; rerun python setup.py voice after resolving model/runtime dependencies."
 ok "Runtime and voice folders ready inside $ROOT."
+
+# ───────────────────────── Phonon TTS (optional, local/offline) ─────────────────────────
+if [ "$WITH_PHONON" -eq 1 ]; then
+    info "Setting up Phonon TTS (Rust CLI + q8 model + voice embeddings)..."
+    pkg install -y rust clang make cmake curl mpv sox \
+        || warn "Some Phonon build/runtime packages could not be installed."
+    export PATH="$HOME/.cargo/bin:$PATH"
+    if command -v ptts >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/ptts" ]; then
+        ok "Phonon ptts CLI already installed."
+    else
+        info "Building ptts with Cargo; the first build can take several minutes."
+        cargo install ptts --locked --features cli \
+            || warn "Could not build ptts. Retry: cargo install ptts --locked --features cli"
+    fi
+    python "$ROOT/scripts/prepare_phonon_assets.py" \
+        || warn "Phonon assets did not finish downloading. Retry: python scripts/prepare_phonon_assets.py"
+    if command -v ptts >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/ptts" ]; then
+        ok "Phonon CLI installed. Select it with: python setup.py voice"
+    else
+        warn "Phonon assets may be present, but ptts is not installed yet."
+    fi
+fi
 
 # ───────────────────────── installed apps index ─────────────────────────
 info "Capturing installed apps (data/installed_apps.json)..."
