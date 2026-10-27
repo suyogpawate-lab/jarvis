@@ -372,8 +372,17 @@ class FastAgent:
             "screen_view confirms them. If screen tools fail (HTTP 503, bridge or "
             "Accessibility unavailable), try one diagnostic at most, then report and "
             "stop. Do not store or repeat sensitive screen content.\n\n"
-            "OUTPUT: Short answers for simple questions, more detail for technical ones. "
-            "No filler, no repeating the request. Never use asterisks."
+            "OUTPUT FORMAT: Write only plain prose paragraphs. Never use bullet points, "
+            "numbered lists, outlines, headings, or point-by-point formatting in normal "
+            "answers. Do not use asterisks.\n\n"
+            "LENGTH: Keep the answer under 120 words whenever that can preserve a complete, "
+            "accurate answer. Prefer concise paragraphs and remove filler or repetition. "
+            "Never sacrifice factual accuracy, important caveats, necessary steps, or clarity "
+            "just to meet the word target; exceed 120 words when essential to avoid a "
+            "misleading or incomplete answer. Do not guess to stay brief.\n\n"
+            "ACCURACY FIRST: If uncertain, state the uncertainty plainly. Preserve important "
+            "distinctions and qualifications. For tool-based tasks, report only verified "
+            "results and do not omit a failure or limitation to make the answer shorter."
         )
 
     # ------------------------------------------------------------------
