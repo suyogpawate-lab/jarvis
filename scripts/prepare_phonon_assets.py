@@ -17,7 +17,7 @@ FILES = {
     "config.json": (f"{MODEL_URL}/config.json", 100),
     "tokenizer.json": (f"{MODEL_URL}/tokenizer.json", 100),
     "default-voice.safetensors": (f"{MODEL_URL}/default-voice.safetensors", 1000),
-    "model.q8.gguf": (f"{MODEL_URL}/model.q8.gguf", 10_000_000),
+    "model.q8.gguf": (f"{MODEL_URL}/model.q8.gguf", 50_000_000),
 }
 VOICES = {
     "edwin": "zUCxzrOrugTSis03",
