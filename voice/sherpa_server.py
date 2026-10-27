@@ -27,8 +27,8 @@ _play_lock = threading.Lock()
 
 
 def sentences(text: str) -> list[str]:
-    """Keep <=50-word replies intact; group longer replies near 20 words."""
-    return chunk_text(text, target_words=20, threshold_words=50)
+    """Keep <=60-word replies intact; group longer replies near 22 words."""
+    return chunk_text(text, target_words=22, threshold_words=60)
 
 
 def synthesize(voice: str, text: str) -> Path:
