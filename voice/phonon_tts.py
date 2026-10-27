@@ -96,6 +96,13 @@ def _build_worker() -> Path:
     cargo = shutil.which("cargo") or str(Path.home() / ".cargo" / "bin" / "cargo")
     if not Path(cargo).is_file():
         raise RuntimeError("Cargo is unavailable; cannot build the persistent Phonon worker.")
+    # Android networks can be very slow to fetch crates. Keep retries bounded;
+    # this build is started by background warmup, never as a prerequisite for
+    # speaking the current response.
+    build_env = os.environ.copy()
+    build_env.setdefault("CARGO_HTTP_TIMEOUT", "180")
+    build_env.setdefault("CARGO_HTTP_LOW_SPEED_LIMIT", "1")
+    build_env.setdefault("CARGO_NET_RETRY", "3")
     result = subprocess.run(
         [cargo, "build", "--release", "--manifest-path", str(WORKER_DIR / "Cargo.toml")],
         stdin=subprocess.DEVNULL,
@@ -104,6 +111,7 @@ def _build_worker() -> Path:
         text=True,
         timeout=900,
         check=False,
+        env=build_env,
     )
     if result.returncode != 0 or not WORKER_BIN.is_file():
         detail = (result.stdout or "no build output").strip()[-1200:]
@@ -246,60 +254,70 @@ def synth(text: str) -> Path:
     directory = model_dir()
     voice, quant = _voice_and_quant(directory)
 
-    prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
-    temp_dir = prefix / "tmp"
-    try:
-        temp_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        temp_dir = Path(tempfile.gettempdir())
-    fd, filename = tempfile.mkstemp(prefix="jarvis-phonon-", suffix=".wav", dir=str(temp_dir))
-    os.close(fd)
-    output = Path(filename)
-    output.unlink(missing_ok=True)
+    # Never make a user-facing utterance wait for Cargo to download crates or
+    # compile Rust. TTSManager starts warmup in a background thread; until the
+    # worker binary exists, or while warmup holds the worker lock, use the CLI.
+    if not WORKER_BIN.is_file() or not _WORKER_LOCK.acquire(blocking=False):
+        return _synth_cli(text, directory, voice, quant)
 
-    global _WORKER_BUSY, _ACTIVE_PROCESS, _WORKER_PROCESS, _WORKER_CONFIG
-    generation = None
     try:
+        prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+        temp_dir = prefix / "tmp"
         try:
-            with _WORKER_LOCK:
-                process = _ensure_worker(directory, voice, quant)
-                with _PROCESS_LOCK:
-                    generation = _GENERATION
-                    _WORKER_BUSY = True
-                    _ACTIVE_PROCESS = process
-                if process.stdin is None:
-                    raise RuntimeError("Phonon worker stdin is unavailable.")
-                process.stdin.write(json.dumps({"text": text, "output": str(output)}) + "\n")
-                process.stdin.flush()
-                response = json.loads(_readline_timeout(process, 180))
-                with _PROCESS_LOCK:
-                    interrupted = generation != _GENERATION
-                    if _ACTIVE_PROCESS is process:
-                        _ACTIVE_PROCESS = None
-                    _WORKER_BUSY = False
-                if interrupted:
-                    raise RuntimeError("Phonon synthesis was interrupted.")
-                if not response.get("ok"):
-                    raise RuntimeError(response.get("error", "Phonon worker synthesis failed."))
-                if not output.is_file() or output.stat().st_size == 0:
-                    raise RuntimeError("Phonon worker reported success but produced no WAV.")
-                return output
-        except Exception as exc:
-            # Never turn an explicit cancellation into a new, unwanted CLI synthesis.
-            with _PROCESS_LOCK:
-                was_interrupted = generation is not None and generation != _GENERATION
-            if was_interrupted or "interrupted" in str(exc).lower():
-                raise RuntimeError("Phonon synthesis was interrupted.") from exc
-            # Keep the legacy CLI as a recovery path when the helper cannot be built,
-            # started, or complete a request. Playback has not started yet.
-            with _PROCESS_LOCK:
-                _WORKER_BUSY = False
-                _ACTIVE_PROCESS = None
-            if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is not None:
-                _WORKER_PROCESS = None
-                _WORKER_CONFIG = None
-            output.unlink(missing_ok=True)
-            return _synth_cli(text, directory, voice, quant)
-    except Exception:
+            temp_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            temp_dir = Path(tempfile.gettempdir())
+        fd, filename = tempfile.mkstemp(prefix="jarvis-phonon-", suffix=".wav", dir=str(temp_dir))
+        os.close(fd)
+        output = Path(filename)
         output.unlink(missing_ok=True)
-        raise
+
+        global _WORKER_BUSY, _ACTIVE_PROCESS, _WORKER_PROCESS, _WORKER_CONFIG
+        generation = None
+        try:
+            try:
+                with _WORKER_LOCK:
+                    process = _ensure_worker(directory, voice, quant)
+                    with _PROCESS_LOCK:
+                        generation = _GENERATION
+                        _WORKER_BUSY = True
+                        _ACTIVE_PROCESS = process
+                    if process.stdin is None:
+                        raise RuntimeError("Phonon worker stdin is unavailable.")
+                    process.stdin.write(json.dumps({"text": text, "output": str(output)}) + "\n")
+                    process.stdin.flush()
+                    response = json.loads(_readline_timeout(process, 180))
+                    with _PROCESS_LOCK:
+                        interrupted = generation != _GENERATION
+                        if _ACTIVE_PROCESS is process:
+                            _ACTIVE_PROCESS = None
+                        _WORKER_BUSY = False
+                    if interrupted:
+                        raise RuntimeError("Phonon synthesis was interrupted.")
+                    if not response.get("ok"):
+                        raise RuntimeError(response.get("error", "Phonon worker synthesis failed."))
+                    if not output.is_file() or output.stat().st_size == 0:
+                        raise RuntimeError("Phonon worker reported success but produced no WAV.")
+                    return output
+            except Exception as exc:
+                # Never turn an explicit cancellation into a new, unwanted CLI synthesis.
+                with _PROCESS_LOCK:
+                    was_interrupted = generation is not None and generation != _GENERATION
+                if was_interrupted or "interrupted" in str(exc).lower():
+                    raise RuntimeError("Phonon synthesis was interrupted.") from exc
+                # Keep the legacy CLI as a recovery path when the helper cannot be built,
+                # started, or complete a request. Playback has not started yet.
+                with _PROCESS_LOCK:
+                    _WORKER_BUSY = False
+                    _ACTIVE_PROCESS = None
+                if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is not None:
+                    _WORKER_PROCESS = None
+                    _WORKER_CONFIG = None
+                output.unlink(missing_ok=True)
+                return _synth_cli(text, directory, voice, quant)
+        except Exception:
+            output.unlink(missing_ok=True)
+            raise
+
+    finally:
+        _WORKER_LOCK.release()
