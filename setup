@@ -750,10 +750,16 @@ def step_voice(env):
         model_dir = Path(env.get("JARVIS_PHONON_DIR") or Path.home() / "phonon-model").expanduser()
         if env.get("JARVIS_PHONON_DIR"):
             os.environ["JARVIS_PHONON_DIR"] = str(model_dir)
+        voice_name = (env.get("JARVIS_PHONON_VOICE", "edwin") or "edwin").strip().lower()
+        voice_file = (
+            model_dir / "default-voice.safetensors"
+            if voice_name == "default"
+            else model_dir / "voices" / f"{voice_name}.safetensors"
+        )
         ready = Path(ptts).is_file() and all(
             (model_dir / name).is_file()
             for name in ("config.json", "tokenizer.json", "model.q8.gguf")
-        )
+        ) and voice_file.is_file()
         if ready:
             ok(f"Phonon is ready at {model_dir}; synthesis will run locally/offline.")
             return
