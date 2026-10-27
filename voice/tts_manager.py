@@ -254,6 +254,11 @@ class TTSManager:
             sherpa_interrupt()
         except Exception:
             pass
+        try:
+            from voice.phonon_tts import interrupt as phonon_interrupt
+            phonon_interrupt()
+        except Exception:
+            pass
 
     def clear(self):
         try:
