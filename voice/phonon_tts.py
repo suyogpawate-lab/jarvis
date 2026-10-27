@@ -36,11 +36,11 @@ def interrupt() -> None:
 
 def model_dir() -> Path:
     configured = os.environ.get("JARVIS_PHONON_DIR", "").strip()
-    candidates = [
-        Path(configured).expanduser() if configured else None,
-        Path.home() / "phonon-model",
-        ROOT / "models" / "phonon",
-    ]
+    candidates = (
+        [Path(configured).expanduser()]
+        if configured
+        else [Path.home() / "phonon-model", ROOT / "models" / "phonon"]
+    )
     for candidate in candidates:
         if candidate and all(
             (candidate / filename).is_file()
