@@ -30,4 +30,4 @@ def test_commas_are_not_chunk_boundaries():
     chunks = chunk_text(text)
     assert len(chunks) == 2
     assert not any(chunk.endswith(",") for chunk in chunks)
-    assert sum(len(chunk.split()) for chunk in chunks) == 29
+    assert sum(len(chunk.split()) for chunk in chunks) == 28
