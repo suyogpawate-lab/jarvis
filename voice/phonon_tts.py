@@ -255,13 +255,10 @@ def synth(text: str) -> Path:
     voice, quant = _voice_and_quant(directory)
 
     # Never make a user-facing utterance wait for Cargo to download crates or
-    # compile Rust. The TTSManager starts warmup in a background thread; until
-    # its worker binary exists, use the already-installed ptts CLI immediately.
-    # If warmup is currently loading/restarting the worker, also use the CLI
-    # rather than waiting on the worker lock.
-    if not WORKER_BIN.is_file() or not _WORKER_LOCK.acquire(blocking=False):
+    # compile Rust. TTSManager starts warmup in a background thread; until the
+    # worker binary exists, use the already-installed ptts CLI immediately.
+    if not WORKER_BIN.is_file():
         return _synth_cli(text, directory, voice, quant)
-    _WORKER_LOCK.release()
 
     prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
     temp_dir = prefix / "tmp"
