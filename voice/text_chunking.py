@@ -16,16 +16,16 @@ _ABBREVIATIONS = {
 
 
 def sentence_list(text: str) -> list[str]:
-    text = re.sub(r"\\s+", " ", str(text or "")).strip()
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
     if not text:
         return []
     sentences: list[str] = []
     start = 0
-    for match in re.finditer(r"[.!?]+(?=\\s|$)", text):
+    for match in re.finditer(r"[.!?]+(?=\s|$)", text):
         end = match.end()
         token_start = text.rfind(" ", start, match.start()) + 1
         token = text[token_start:end].lower()
-        if token in _ABBREVIATIONS or re.fullmatch(r"\\d+\\.", token):
+        if token in _ABBREVIATIONS or re.fullmatch(r"\d+\.", token):
             continue
         if (
             text[match.start():match.end()] == "."
@@ -78,7 +78,7 @@ def chunk_text(text: str, target_words: int = 15, threshold_words: int = 20) -> 
     target, it is split at a word boundary (not at commas) to avoid one long
     playback pause. Short sentence fragments are grouped where practical.
     """
-    normalized = re.sub(r"\\s+", " ", str(text or "")).strip()
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
     if not normalized:
         return []
     words = normalized.split()
@@ -90,7 +90,6 @@ def chunk_text(text: str, target_words: int = 15, threshold_words: int = 20) -> 
     if len(sentences) == 1:
         return _split_long_sentence(sentences[0], target_words)
 
-    # Break any exceptionally long sentence into word-sized units first.
     units: list[str] = []
     for sentence in sentences:
         units.extend(_split_long_sentence(sentence, target_words))
@@ -102,8 +101,6 @@ def chunk_text(text: str, target_words: int = 15, threshold_words: int = 20) -> 
         unit_words = len(unit.split())
         if current:
             combined = current_words + unit_words
-            # Prefer a boundary near the target; do not create a comma-ending
-            # chunk merely to hit an exact count.
             if current_words >= target_words or (
                 combined > target_words
                 and abs(current_words - target_words) <= abs(combined - target_words)
