@@ -710,7 +710,7 @@ def step_voice(env):
     print("  2) Alan — British English (local Sherpa voice)")
     print("  3) Bryce — American English (local Sherpa voice)")
     print("  4) Piper — local Piper model")
-    print("  5) Phonon — local Rust TTS, compact q8 model (default voice: Edwin)")
+    print("  5) Phonon — local Rust TTS, compact q8 model (default voice: Edwin) << DEVELOPER'S PREFERRED. need atleast 500-700mb of RAM, Most Natural!")
     choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon",
                  default=default_choice).strip().lower()
 
