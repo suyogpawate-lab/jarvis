@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from voice.tts import speak as edge_speak, interrupt as edge_interrupt
-from voice.text_chunking import sentence_list
+from voice.text_chunking import chunk_text
 from voice.spoken import to_speakable
 
 _ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
@@ -78,7 +78,7 @@ class TTSManager:
         if provider == "say":
             from voice.jarvis_voice_runtime import speak as say_speak
             result = True
-            for s in sentence_list(text):  # server fuses synth+play; one sentence per call
+            for s in chunk_text(text, target_words=15, threshold_words=20):  # one short reply or ~15-word chunks
                 if self._gen != gen:
                     break
                 say_speak(s)
@@ -167,7 +167,7 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen):
-        sentences = sentence_list(text)  # sentence ends only, never commas
+        sentences = chunk_text(text, target_words=15, threshold_words=20)  # shared policy; commas are not boundaries
         q = queue.Queue(maxsize=1)
         errors = []
 
