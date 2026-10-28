@@ -48,8 +48,11 @@ DISCUSSION_MODELS = {
 }
 
 
-def get_complex_profile(task: str) -> dict:
+def get_complex_profile(task: str, profile: str = "auto") -> dict:
     """Choose a coding-specialist or general reasoning model for a task."""
+    requested = str(profile or "auto").lower().strip()
+    if requested in OMNIROUTE_PROFILES:
+        return dict(OMNIROUTE_PROFILES[requested])
     text = str(task or "").lower()
     coding_terms = (
         "code", "coding", "program", "python", "javascript", "typescript",
