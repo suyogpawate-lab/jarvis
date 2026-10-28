@@ -48,7 +48,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let result = (|| -> Result<(), Box<dyn std::error::Error>> {
             let request: Request = serde_json::from_str(&line)?;
             let selected_voice = request.voice.as_deref().unwrap_or(voice.as_str());
-            if selected_voice != "default" && !available.iter().any(|name| name == selected_voice) {
+            if selected_voice != "default" && !available.iter().any(|name| name.as_str() == selected_voice) {
                 return Err(format!(
                     "voice '{}' is not registered; available voices: {}",
                     selected_voice,
