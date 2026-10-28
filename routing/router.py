@@ -9,8 +9,10 @@ Priority:
 5. Safe fallback -> COMPLEX.
 """
 
+import os
 import re
 
+import requests
 from routing.model_registry import get_complex_profile
 
 
@@ -148,12 +150,55 @@ class DiscussionRouter:
     # PUBLIC
     # ============================================================
 
+    def _needle3_classify(self, topic: str):
+        """Ask an already-running local Needle 3 endpoint on ambiguous inputs.
+
+        Configure NEEDLE3_ROUTER_URL to the endpoint ending in /complete.
+        No server or model is launched by the router, so idle RAM stays low.
+        """
+        url = os.getenv("NEEDLE3_ROUTER_URL", "").strip()
+        if not url:
+            return None
+        if not url.endswith("/complete"):
+            url = url.rstrip("/") + "/complete"
+        try:
+            response = requests.post(
+                url,
+                json={"input": (
+                    "Classify this request as exactly SIMPLE, CREATIVE, or COMPLEX. "
+                    "SIMPLE means a straightforward factual question; CREATIVE means "
+                    "writing/brainstorming; COMPLEX means coding, research, planning, "
+                    "or multi-step reasoning. Return only the category.\n\n"
+                    f"Request: {str(topic)[:1200]}"
+                )},
+                timeout=(0.25, 1.5),
+            )
+            response.raise_for_status()
+            try:
+                payload = response.json()
+                output = " ".join(
+                    str(payload.get(key, ""))
+                    for key in ("category", "intent", "classification", "output", "text", "response", "completion")
+                )
+            except ValueError:
+                output = response.text
+            match = re.search(r"\b(simple|creative|complex)\b", output, re.IGNORECASE)
+            if match:
+                return match.group(1).lower()
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            print(
+                f"[ROUTER WARN] Needle 3 unavailable; using local fallback ({type(exc).__name__}).",
+                flush=True,
+            )
+        return None
+
     def classify(self, topic: str):
-        """Classify locally; ambiguous requests safely take the complex path."""
+        """Use zero-cost local rules first and Needle 3 only for ambiguity."""
         local = self._local_classify(topic)
-        category = local or "complex"
+        category = local or self._needle3_classify(topic) or "complex"
+        source = "local" if local else ("Needle 3" if category != "complex" else "fallback")
         print(
-            f"[ROUTER] Local classification -> {category.upper()}",
+            f"[ROUTER] {source} classification -> {category.upper()}",
             flush=True,
         )
         return category
