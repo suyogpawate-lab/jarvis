@@ -112,7 +112,7 @@ class PhononAdapterTests(unittest.TestCase):
             def fake_readline(process, timeout):
                 request = json.loads(process.stdin.data)
                 Path(request["output"]).write_bytes(b"wav")
-                return json.dumps({"ok": True}) + "\\n"
+                return json.dumps({"ok": True}) + "\n"
 
             def run_synth():
                 try:
