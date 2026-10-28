@@ -1,148 +1,77 @@
-"""
-JARVIS curated discussion model registry.
+"""Compact, curated model registry for JARVIS routing.
 
-Only models listed here may enter a discussion room.
+Complex tasks use models exposed through the local OmniRoute gateway. Model IDs
+can be overridden through environment variables when the gateway's catalog
+changes; no direct Gemini or Anthropic API keys are needed for these routes.
 """
+import os
+
+
+# Known OmniRoute model IDs already used by the project. Keep the default
+# catalog small to reduce configuration and memory overhead.
+OMNIROUTE_PROFILES = {
+    "coding": {
+        "name": "OmniRoute Qwen Coding",
+        "provider": "omniroute",
+        "model": os.getenv(
+            "OMNIROUTE_CODING_MODEL",
+            "cfp/qwen/qwen3-30b-a3b-fp8",
+        ),
+    },
+    "smart": {
+        "name": "OmniRoute Smart Reasoning",
+        "provider": "omniroute",
+        "model": os.getenv(
+            "OMNIROUTE_SMART_MODEL",
+            "gpt-5.6-luna-xhigh",
+        ),
+    },
+}
 
 DISCUSSION_MODELS = {
-
     "simple": [
-
-        {
-            "name": "Gemini Flash",
-            "provider": "omniroute",
-            "model": "gemini/gemini-3.7-flash",
-        },
-
-        {
-            "name": "Qwen",
-            "provider": "omniroute",
-            "model": "cfp/qwen/qwen3-30b-a3b-fp8",
-        },
-
-        {
-            "name": "Llama",
-            "provider": "omniroute",
-            "model": "cfp/meta-llama/llama-3.3-70b-instruct-fp8-fast",
-        },
-
-        {
-            "name": "Groq",
-            "provider": "groq",
-            "model": "openai/gpt-oss-20b",
-        },
-
-        {
-            "name": "Ollama",
-            "provider": "ollama",
-            "model": "qwen2.5:0.5b",
-        },
+        {"name": "Groq", "provider": "groq", "model": "openai/gpt-oss-20b"},
+        {"name": "Ollama", "provider": "ollama", "model": "qwen2.5:0.5b"},
     ],
-
     "creative": [
-
-        {
-            "name": "Claude Sonnet",
-            "provider": "omniroute",
-            "model": "agy/claude-sonnet-4-6",
-        },
-
-        {
-            "name": "Gemini",
-            "provider": "omniroute",
-            "model": "gemini/gemini-3.6-flash",
-        },
-
-        {
-            "name": "GPT-5.6 Luna",
-            "provider": "omniroute",
-            "model": "gpt-5.6-luna",
-        },
-
-        {
-            "name": "Qwen",
-            "provider": "omniroute",
-            "model": "cfp/qwen/qwen3-30b-a3b-fp8",
-        },
-
-        {
-            "name": "Kimi",
-            "provider": "omniroute",
-            "model": "dva/kimi-k3-max",
-        },
-
-        {
-            "name": "Groq",
-            "provider": "groq",
-            "model": "openai/gpt-oss-20b",
-        },
-
-        {
-            "name": "Ollama",
-            "provider": "ollama",
-            "model": "qwen2.5:0.5b",
-        },
+        dict(OMNIROUTE_PROFILES["smart"]),
+        dict(OMNIROUTE_PROFILES["coding"]),
+        {"name": "Groq", "provider": "groq", "model": "openai/gpt-oss-20b"},
+        {"name": "Ollama", "provider": "ollama", "model": "qwen2.5:0.5b"},
     ],
-
     "complex": [
-
-        {
-            "name": "Claude Opus",
-            "provider": "omniroute",
-            "model": "agy/claude-opus-4-6-thinking",
-        },
-
-        {
-            "name": "Gemini Pro",
-            "provider": "omniroute",
-            "model": "gemini/gemini-3.1-pro-preview",
-        },
-
-        {
-            "name": "GPT-5.6 Luna",
-            "provider": "omniroute",
-            "model": "gpt-5.6-luna-xhigh",
-        },
-
-        {
-            "name": "Claude Sonnet",
-            "provider": "omniroute",
-            "model": "agy/claude-sonnet-4-6",
-        },
-
-        {
-            "name": "Groq",
-            "provider": "groq",
-            "model": "openai/gpt-oss-20b",
-        },
-
-        {
-            "name": "Ollama",
-            "provider": "ollama",
-            "model": "qwen2.5:0.5b",
-        },
+        dict(OMNIROUTE_PROFILES["coding"]),
+        dict(OMNIROUTE_PROFILES["smart"]),
+        {"name": "Groq", "provider": "groq", "model": "openai/gpt-oss-20b"},
+        {"name": "Ollama", "provider": "ollama", "model": "qwen2.5:0.5b"},
     ],
 }
 
 
+def get_complex_profile(task: str) -> dict:
+    """Choose a coding-specialist or general reasoning model for a task."""
+    text = str(task or "").lower()
+    coding_terms = (
+        "code", "coding", "program", "python", "javascript", "typescript",
+        "node", "npm", "pip", "function", "class ", "refactor", "bug",
+        "exception", "traceback", "stack trace", "repository", "repo", "git",
+        "compile", "implementation", "script", "debug", "test suite",
+    )
+    key = "coding" if any(term in text for term in coding_terms) else "smart"
+    return dict(OMNIROUTE_PROFILES[key])
+
+
 def get_models(category: str):
     """Return curated models for a discussion category."""
-    return DISCUSSION_MODELS.get(
-        category.lower().strip(),
-        [],
-    )
+    return DISCUSSION_MODELS.get(str(category).lower().strip(), [])
 
 
 def all_models():
-    """Return every curated discussion model."""
+    """Return every curated discussion model, tagged by category."""
     result = []
-
     for category, models in DISCUSSION_MODELS.items():
-
         for model in models:
-
             item = dict(model)
             item["category"] = category
             result.append(item)
-
     return result
