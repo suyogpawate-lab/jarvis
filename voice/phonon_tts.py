@@ -254,15 +254,17 @@ def synth(text: str) -> Path:
     directory = model_dir()
     voice, quant = _voice_and_quant(directory)
 
-    # If the binary has not been built yet, don't make speech wait for Cargo:
-    # use the CLI as a temporary fallback while startup warmup builds the worker.
-    # Once the binary exists, wait for the warmup lock so we can reuse its
-    # already-loaded model instead of starting a fresh ptts process per sentence.
-    if not WORKER_BIN.is_file():
-        return _synth_cli(text, directory, voice, quant)
-
+    # Startup warmup holds this lock while compiling the worker and loading
+    # the model. Acquire it BEFORE checking the binary: otherwise every early
+    # utterance can bypass an in-progress preheat and cold-start the ptts CLI.
     _WORKER_LOCK.acquire()
     try:
+        # If warmup has finished unsuccessfully (or was never started), retain
+        # the legacy CLI fallback. While warmup is active, the lock above makes
+        # synthesis wait until the persistent worker is ready.
+        if not WORKER_BIN.is_file():
+            return _synth_cli(text, directory, voice, quant)
+
         prefix = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
         temp_dir = prefix / "tmp"
         try:
