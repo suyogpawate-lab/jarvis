@@ -11,7 +11,6 @@ import select
 import subprocess
 import tempfile
 import threading
-import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,6 +28,7 @@ _worker_lock = threading.RLock()
 _state_lock = threading.Lock()
 _worker = None
 _worker_warmed = False
+_worker_busy = False
 _generation = 0
 
 
@@ -72,11 +72,12 @@ def _exchange(process, text: str, voice: str, output: Path, timeout: float = 180
 
 
 def _stop_worker_locked() -> None:
-    global _worker, _worker_warmed
+    global _worker, _worker_warmed, _worker_busy
     with _state_lock:
         process = _worker
         _worker = None
         _worker_warmed = False
+        _worker_busy = False
     if process is not None and process.poll() is None:
         try:
             process.terminate()
@@ -160,20 +161,30 @@ def _memory_for_pid(pid: int) -> dict:
 
 
 def _synthesize_bytes(text: str, voice: str) -> bytes:
+    global _worker_busy
     with _worker_lock:
         process = _ensure_worker_locked()
+        with _state_lock:
+            request_generation = _generation
+            _worker_busy = True
         output = _temp_wav()
         try:
             _exchange(process, text, voice, output)
             data = output.read_bytes()
             if len(data) <= 44 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
                 raise RuntimeError("Phonon worker returned an invalid WAV file.")
+            with _state_lock:
+                if request_generation != _generation:
+                    raise RuntimeError("Phonon synthesis was interrupted.")
             return data
         except Exception:
             _stop_worker_locked()
             raise
         finally:
             output.unlink(missing_ok=True)
+            with _state_lock:
+                if request_generation == _generation:
+                    _worker_busy = False
 
 
 def _recover_worker() -> None:
@@ -185,20 +196,23 @@ def _recover_worker() -> None:
 
 
 def _interrupt() -> None:
-    global _generation, _worker, _worker_warmed
+    global _generation, _worker, _worker_warmed, _worker_busy
     with _state_lock:
         _generation += 1
-        process = _worker
-        _worker = None
-        _worker_warmed = False
+        busy = _worker_busy
+        process = _worker if busy else None
+        if busy:
+            _worker = None
+            _worker_warmed = False
+            _worker_busy = False
+    # Do not discard a warmed model just because a new prompt stopped nothing.
     if process is not None and process.poll() is None:
         try:
             process.terminate()
         except OSError:
             pass
-    # Keep the shared endpoint recoverable after cancellation. The next caller
-    # waits for a fresh model warmup instead of getting stuck on an unhealthy port.
-    threading.Thread(target=_recover_worker, daemon=True, name="PhononRecovery").start()
+        # Recovery waits for the cancelled request to release _worker_lock.
+        threading.Thread(target=_recover_worker, daemon=True, name="PhononRecovery").start()
 
 
 class Handler(BaseHTTPRequestHandler):
