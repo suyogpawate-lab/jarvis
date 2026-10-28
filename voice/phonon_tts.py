@@ -161,6 +161,7 @@ def ensure_server(timeout: float = 960.0) -> dict:
             return payload
 
         launched = False
+        server_process = None
         deadline = time.monotonic() + max(1.0, timeout)
         while time.monotonic() < deadline:
             payload = _health()
@@ -170,7 +171,7 @@ def ensure_server(timeout: float = 960.0) -> dict:
 
             if not launched and not _port_open():
                 with log_path.open("a", encoding="utf-8") as log:
-                    subprocess.Popen(
+                    server_process = subprocess.Popen(
                         [sys.executable, str(SERVER_SCRIPT)],
                         cwd=str(ROOT),
                         stdin=subprocess.DEVNULL,
@@ -181,6 +182,8 @@ def ensure_server(timeout: float = 960.0) -> dict:
                         env=os.environ.copy(),
                     )
                 launched = True
+            if launched and server_process is not None and server_process.poll() is not None and not _port_open():
+                break
             time.sleep(0.5)
 
     try:
