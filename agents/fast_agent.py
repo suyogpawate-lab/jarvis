@@ -2084,7 +2084,18 @@ class FastAgent:
         if not self._is_shell_reasoning_request(prompt):
             return None
         if not self._is_complex_shell_request(prompt):
-            return None
+            # Let the lightweight local router consult Needle 3 only when the
+            # shell request is ambiguous; simple commands still avoid model calls.
+            try:
+                from routing.router import DiscussionRouter
+                if DiscussionRouter().classify(prompt) != "complex":
+                    return None
+            except Exception as exc:
+                print(
+                    f"[JARVIS ROUTER] Needle 3 classification unavailable ({type(exc).__name__}); keeping fast path.",
+                    flush=True,
+                )
+                return None
 
         provider = self._select_complex_provider(prompt)
         print(
