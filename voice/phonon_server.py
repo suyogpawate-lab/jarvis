@@ -176,6 +176,14 @@ def _synthesize_bytes(text: str, voice: str) -> bytes:
             output.unlink(missing_ok=True)
 
 
+def _recover_worker() -> None:
+    try:
+        with _worker_lock:
+            _ensure_worker_locked()
+    except Exception as exc:
+        print(f"[JARVIS Phonon] Recovery warmup failed: {type(exc).__name__}: {exc}", flush=True)
+
+
 def _interrupt() -> None:
     global _generation, _worker, _worker_warmed
     with _state_lock:
@@ -188,6 +196,9 @@ def _interrupt() -> None:
             process.terminate()
         except OSError:
             pass
+    # Keep the shared endpoint recoverable after cancellation. The next caller
+    # waits for a fresh model warmup instead of getting stuck on an unhealthy port.
+    threading.Thread(target=_recover_worker, daemon=True, name="PhononRecovery").start()
 
 
 class Handler(BaseHTTPRequestHandler):
