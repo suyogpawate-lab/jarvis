@@ -18,34 +18,6 @@ class FastAgent:
         self.api_keys = [k.strip() for k in raw_groq_keys.replace("\n", ",").split(",") if k.strip()]
         self.current_key_index = 0
 
-        # Provider-local API-key fallback chains.
-        # Keys are supplied through environment variables.
-        self.gemini_api_keys = self._load_provider_keys(
-            "GEMINI_API_KEYS",
-            "GEMINI_API_KEY",
-        )
-        self.claude_api_keys = self._load_provider_keys(
-            "ANTHROPIC_API_KEYS",
-            "ANTHROPIC_API_KEY",
-        )
-
-        self.gemini_key_index = 0
-        self.claude_key_index = 0
-
-        self.gemini_base_url = (
-            "https://generativelanguage.googleapis.com/v1beta/openai"
-        )
-        self.claude_base_url = "https://api.anthropic.com"
-
-        self.gemini_model = os.getenv(
-            "GEMINI_MODEL",
-            "gemini-3.6-flash",
-        )
-
-        self.claude_model = os.getenv(
-            "CLAUDE_MODEL",
-            "claude-opus-5-5",
-        )
         # FIX: Swapped to the correct official API subdomain
         self.base_url = "https://api.groq.com/openai/v1"
         self.model = os.getenv(
@@ -67,274 +39,6 @@ class FastAgent:
             mcp_client.start_all_async()
         except Exception as exc:
             print(f"[JARVIS TOOLS] extension load failed: {exc}")
-
-    @staticmethod
-    def _load_provider_keys(list_env, single_env):
-        """
-        Load every configured API key for one provider.
-
-        Preferred:
-            PROVIDER_API_KEYS=key1,key2,key3,key4,key5
-
-        Also accepts:
-            PROVIDER_API_KEY=key1
-        """
-        raw = os.getenv(list_env, "")
-
-        keys = [
-            item.strip()
-            for item in raw.replace("\n", ",").split(",")
-            if item.strip()
-        ]
-
-        if not keys:
-            single = os.getenv(single_env, "").strip()
-            if single:
-                keys = [single]
-
-        return keys
-
-    def _provider_keys(self, provider):
-        if provider == "gemini":
-            return self.gemini_api_keys
-
-        if provider == "claude":
-            return self.claude_api_keys
-
-        raise ValueError(f"Unknown provider: {provider}")
-
-    def _provider_index(self, provider):
-        if provider == "gemini":
-            return self.gemini_key_index
-
-        if provider == "claude":
-            return self.claude_key_index
-
-        raise ValueError(f"Unknown provider: {provider}")
-
-    def _set_provider_index(self, provider, index):
-        if provider == "gemini":
-            self.gemini_key_index = index
-            return
-
-        if provider == "claude":
-            self.claude_key_index = index
-            return
-
-        raise ValueError(f"Unknown provider: {provider}")
-
-    def _gemini_request(
-        self,
-        messages,
-        system_prompt=None,
-        max_tokens=512,
-        temperature=0.1,
-        timeout=30,
-    ):
-        """
-        Gemini provider with the same provider-key fallback architecture
-        used by the existing Groq implementation.
-        """
-
-        keys = self.gemini_api_keys
-
-        if not keys:
-            raise RuntimeError(
-                "No Gemini API keys are configured."
-            )
-
-        total_keys = len(keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            index = self.gemini_key_index
-            active_key = keys[index]
-
-            try:
-                payload_messages = []
-
-                if system_prompt:
-                    payload_messages.append({
-                        "role": "system",
-                        "content": system_prompt,
-                    })
-
-                payload_messages.extend(messages)
-
-                response = requests.post(
-                    f"{gemini_base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {active_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.gemini_model,
-                        "messages": payload_messages,
-                        "temperature": temperature,
-                        "max_tokens": max_tokens,
-                        "stream": False,
-                    },
-                    timeout=timeout,
-                )
-
-                if response.status_code != 200:
-                    code = response.status_code
-                    # A 5xx (especially 503) usually indicates provider-side
-                    # capacity/service trouble, not a bad individual API key.
-                    # Cycling every key just repeats the same failing request.
-                    detail = ""
-                    try:
-                        body = response.json()
-                        err = body.get("error", body)
-                        if isinstance(err, dict):
-                            detail = str(err.get("message", ""))
-                        else:
-                            detail = str(err)
-                    except (ValueError, AttributeError):
-                        detail = str(getattr(response, "text", ""))
-                    detail = " ".join(detail.split())[:240]
-                    print(
-                        f"Gemini request failed (HTTP {code})"
-                        + (f": {detail}" if detail else "")
-                    )
-                    if code == 503 or code >= 500:
-                        raise RuntimeError(
-                            f"Gemini service unavailable (HTTP {code})"
-                            + (f": {detail}" if detail else "")
-                        )
-
-                    self.gemini_key_index = (index + 1) % total_keys
-                    attempts += 1
-                    continue
-
-                data = response.json()
-
-                content = (
-                    data["choices"][0]["message"]
-                    .get("content", "")
-                    .strip()
-                )
-
-                if content:
-                    return content
-
-                self.gemini_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-            except requests.exceptions.RequestException as exc:
-                print(
-                    f"Gemini Account {index + 1} connection error: "
-                    f"{exc}"
-                )
-
-                self.gemini_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured GEMINI API keys are exhausted or failing."
-        )
-
-    def _claude_request(
-        self,
-        messages,
-        system_prompt=None,
-        max_tokens=512,
-        temperature=0.1,
-        timeout=30,
-    ):
-        """
-        Claude provider with the same five-key fallback architecture
-        used by the existing Groq implementation.
-        """
-
-        keys = self.claude_api_keys
-
-        if not keys:
-            raise RuntimeError(
-                "No Claude API keys are configured."
-            )
-
-        total_keys = len(keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            index = self.claude_key_index
-            active_key = keys[index]
-
-            try:
-                payload = {
-                    "model": self.claude_model,
-                    "max_tokens": max_tokens,
-                    "messages": messages,
-                }
-
-                if system_prompt:
-                    payload["system"] = system_prompt
-
-                payload["temperature"] = temperature
-
-                response = requests.post(
-                    f"{self.claude_base_url}/v1/messages",
-                    headers={
-                        "x-api-key": active_key,
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                    timeout=timeout,
-                )
-
-                if response.status_code != 200:
-                    print(
-                        f"Claude Account {index + 1} failed. "
-                        f"Code: {response.status_code}"
-                    )
-
-                    self.claude_key_index = (
-                        (index + 1) % total_keys
-                    )
-
-                    attempts += 1
-                    continue
-
-                data = response.json()
-
-                content = "".join(
-                    block.get("text", "")
-                    for block in data.get("content", [])
-                    if block.get("type") == "text"
-                ).strip()
-
-                if content:
-                    return content
-
-                self.claude_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-            except requests.exceptions.RequestException as exc:
-                print(
-                    f"Claude Account {index + 1} connection error: "
-                    f"{exc}"
-                )
-
-                self.claude_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured CLAUDE API keys are exhausted or failing."
-        )
 
     def _jarvis_system_prompt(self):
         return self._jarvis_base_system_prompt() + jarvis_skills.index_text()
@@ -2767,7 +2471,7 @@ class FastAgent:
 
         return bool(self._RAG_PATTERN.search(text))
 
-    def _gemini_fallback(self, prompt):
+    def _omniroute_rag_fallback(self, prompt):
         """Compatibility name: retrieve local passages and answer via OmniRoute."""
         passages = ""
         try:
@@ -2944,11 +2648,11 @@ class FastAgent:
 
         # RAG questions go straight to Gemini; fall back to Groq if it fails.
         if self._is_rag_request(prompt):
-            print("[JARVIS ROUTER] RAG -> GEMINI")
+            print("[JARVIS ROUTER] RAG -> OMNIROUTE/SMART")
             try:
-                return self._gemini_fallback(prompt)
+                return self._omniroute_rag_fallback(prompt)
             except Exception as exc:
-                print(f"Gemini RAG route failed, using Groq: {exc}")
+                print(f"OmniRoute RAG route failed, using Groq: {exc}")
 
         # Cheap factual questions do not need the full tool catalogue or skill index.
         direct_question = self._simple_direct_request(prompt)
@@ -3010,7 +2714,7 @@ class FastAgent:
                 )
 
                 if response.status_code == 413:
-                    return self._gemini_fallback(prompt)
+                    return self._omniroute_rag_fallback(prompt)
 
                 if response.status_code != 200:
                     return self._groq_limit_message(response)
@@ -3111,7 +2815,7 @@ class FastAgent:
                     final_response = self._groq_post(final_payload, timeout=30)
 
                     if final_response.status_code == 413:
-                        return self._gemini_fallback(prompt)
+                        return self._omniroute_rag_fallback(prompt)
 
                     if final_response.status_code != 200:
                         # Tools already ran. Never restart (that would run them again).
