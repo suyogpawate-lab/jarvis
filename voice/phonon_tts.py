@@ -76,8 +76,14 @@ def _voice_and_quant(directory: Path) -> tuple[str, str]:
 
 
 def _build_worker() -> Path:
+    # Rebuild when the Rust protocol changes; an old release binary may not
+    # understand per-request voice selection even though it still exists.
     if WORKER_BIN.is_file():
-        return WORKER_BIN
+        binary_mtime = WORKER_BIN.stat().st_mtime
+        inputs = [WORKER_DIR / "Cargo.toml", WORKER_DIR / "Cargo.lock"]
+        inputs.extend((WORKER_DIR / "src").glob("*.rs"))
+        if not any(path.is_file() and path.stat().st_mtime > binary_mtime for path in inputs):
+            return WORKER_BIN
     cargo = shutil.which("cargo") or str(Path.home() / ".cargo" / "bin" / "cargo")
     if not Path(cargo).is_file():
         raise RuntimeError("Cargo is unavailable; cannot build the persistent Phonon worker.")
