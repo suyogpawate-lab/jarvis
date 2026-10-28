@@ -1,6 +1,8 @@
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -96,6 +98,52 @@ class PhononAdapterTests(unittest.TestCase):
                 self.assertEqual(result, output)
                 cli.assert_called_once_with("Hello there.", model, "edwin", "q8")
                 output.unlink()
+
+    def test_synth_waits_for_background_preheat_when_worker_binary_exists(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            model = self.make_model(root)
+            worker = FakeWorker()
+            worker_bin = root / "jarvis-phonon-worker"
+            worker_bin.write_bytes(b"test binary placeholder")
+            finished = threading.Event()
+            result = []
+
+            def fake_readline(process, timeout):
+                request = json.loads(process.stdin.data)
+                Path(request["output"]).write_bytes(b"wav")
+                return json.dumps({"ok": True}) + "\\n"
+
+            def run_synth():
+                try:
+                    with patch.object(phonon_tts, "model_dir", return_value=model), \\
+                         patch.object(phonon_tts, "WORKER_BIN", worker_bin), \\
+                         patch.object(phonon_tts, "_ensure_worker", return_value=worker), \\
+                         patch.object(phonon_tts, "_readline_timeout", side_effect=fake_readline), \\
+                         patch.object(phonon_tts, "_synth_cli", side_effect=AssertionError("CLI should not run")):
+                        result.append(phonon_tts.synth("Preheated audio."))
+                except Exception as exc:
+                    result.append(exc)
+                finally:
+                    finished.set()
+
+            # Simulate startup warmup holding the lock while loading the model.
+            phonon_tts._WORKER_LOCK.acquire()
+            thread = threading.Thread(target=run_synth, daemon=True)
+            try:
+                thread.start()
+                time.sleep(0.05)
+                self.assertFalse(finished.is_set(), "synthesis should wait for preheat")
+            finally:
+                phonon_tts._WORKER_LOCK.release()
+
+            thread.join(timeout=3)
+            self.assertTrue(finished.is_set(), "synthesis did not resume after preheat")
+            self.assertEqual(len(result), 1)
+            if isinstance(result[0], Exception):
+                raise result[0]
+            self.assertTrue(result[0].is_file())
+            result[0].unlink()
 
     def test_synth_uses_persistent_worker_and_returns_audio(self):
         with tempfile.TemporaryDirectory() as temp:
