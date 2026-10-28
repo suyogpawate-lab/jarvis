@@ -129,6 +129,15 @@ if [ "$WITH_PHONON" -eq 1 ]; then
     fi
     python "$ROOT/scripts/prepare_phonon_assets.py" \
         || warn "Phonon assets did not finish downloading. Retry: python scripts/prepare_phonon_assets.py"
+    # Build the persistent JARVIS worker during installation, not in response
+    # to the first spoken sentence. Startup warmup will then only load the model.
+    if command -v cargo >/dev/null 2>&1 && [ -f "$ROOT/voice/phonon_worker/Cargo.toml" ]; then
+        info "Building JARVIS persistent Phonon worker (one-time setup)..."
+        CARGO_HTTP_TIMEOUT=180 CARGO_HTTP_LOW_SPEED_LIMIT=1 CARGO_NET_RETRY=3 \
+            cargo build --release --manifest-path "$ROOT/voice/phonon_worker/Cargo.toml" \
+            && ok "Persistent Phonon worker built; JARVIS can preload it at startup." \
+            || warn "Persistent worker build failed; JARVIS will retry during startup and may use the slower CLI fallback."
+    fi
     if command -v ptts >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/ptts" ]; then
         ok "Phonon CLI installed. Select it with: python setup.py voice"
     else
