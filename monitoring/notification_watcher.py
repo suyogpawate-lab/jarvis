@@ -21,12 +21,15 @@ class NotificationWatcher:
         batch_window=3.0,
         max_seen=500,
         output_callback=None,
+        cooldown_seconds=30.0,
     ):
         self.output_queue = output_queue
         self.output_callback = output_callback
 
         self.poll_interval = poll_interval
         self.batch_window = batch_window
+        self.cooldown_seconds = max(0.0, float(cooldown_seconds))
+        self.last_summary_at = 0.0
         self.max_seen = max_seen
 
         self.notifications = NotificationIngestor(timeout=4)
@@ -138,9 +141,11 @@ class NotificationWatcher:
                 delivered = self.output_callback(result)
 
                 if delivered:
+                    self.last_summary_at = time.monotonic()
                     return
 
             self.output_queue.put(result)
+            self.last_summary_at = time.monotonic()
 
         except Exception:
             pass
@@ -149,9 +154,16 @@ class NotificationWatcher:
         if not self.pending:
             return
 
+        # Keep queued notifications until the cooldown expires; this prevents
+        # a sustained notification storm from triggering repeated summaries.
+        remaining = self.cooldown_seconds - (
+            time.monotonic() - self.last_summary_at
+        )
+        if remaining > 0:
+            return
+
         batch = self.pending[:]
         self.pending.clear()
-
         self._analyze_batch(batch)
 
     def _run(self):
@@ -173,6 +185,17 @@ class NotificationWatcher:
                     ):
                         self._collect_new()
                         self.stop_event.wait(0.5)
+
+                    # During cooldown, keep collecting new notifications into
+                    # the same pending batch instead of summarizing each burst.
+                    while self.pending and not self.stop_event.is_set():
+                        remaining = self.cooldown_seconds - (
+                            time.monotonic() - self.last_summary_at
+                        )
+                        if remaining <= 0:
+                            break
+                        self._collect_new()
+                        self.stop_event.wait(min(0.5, remaining))
 
                     self._flush_pending()
 
