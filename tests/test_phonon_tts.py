@@ -105,7 +105,6 @@ class PhononAdapterTests(unittest.TestCase):
             model = self.make_model(root)
             worker = FakeWorker()
             worker_bin = root / "jarvis-phonon-worker"
-            worker_bin.write_bytes(b"test binary placeholder")
             finished = threading.Event()
             result = []
 
@@ -116,10 +115,10 @@ class PhononAdapterTests(unittest.TestCase):
 
             def run_synth():
                 try:
-                    with patch.object(phonon_tts, "model_dir", return_value=model), \\
-                         patch.object(phonon_tts, "WORKER_BIN", worker_bin), \\
-                         patch.object(phonon_tts, "_ensure_worker", return_value=worker), \\
-                         patch.object(phonon_tts, "_readline_timeout", side_effect=fake_readline), \\
+                    with patch.object(phonon_tts, "model_dir", return_value=model), \
+                         patch.object(phonon_tts, "WORKER_BIN", worker_bin), \
+                         patch.object(phonon_tts, "_ensure_worker", return_value=worker), \
+                         patch.object(phonon_tts, "_readline_timeout", side_effect=fake_readline), \
                          patch.object(phonon_tts, "_synth_cli", side_effect=AssertionError("CLI should not run")):
                         result.append(phonon_tts.synth("Preheated audio."))
                 except Exception as exc:
@@ -134,6 +133,8 @@ class PhononAdapterTests(unittest.TestCase):
                 thread.start()
                 time.sleep(0.05)
                 self.assertFalse(finished.is_set(), "synthesis should wait for preheat")
+                # The worker binary appears while startup warmup owns the lock.
+                worker_bin.write_bytes(b"test binary placeholder")
             finally:
                 phonon_tts._WORKER_LOCK.release()
 
