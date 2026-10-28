@@ -9,17 +9,17 @@ Priority:
 5. Safe fallback -> COMPLEX.
 """
 
-import json
 import re
 
-from agents.providers.ollama import OllamaAgent
+from routing.model_registry import get_complex_profile
 
 
 class DiscussionRouter:
 
     def __init__(self):
-
-        self.ollama = OllamaAgent()
+        # Zero model warm-up here: routing starts with Python rules, keeping
+        # resident RAM and first-request latency low on Android.
+        pass
 
     # ============================================================
     # LOCAL CLASSIFICATION
@@ -145,116 +145,19 @@ class DiscussionRouter:
         return None
 
     # ============================================================
-    # OLLAMA CLASSIFIER
-    # ============================================================
-
-    def _ollama_classify(
-        self,
-        topic: str,
-    ):
-
-        prompt = f"""
-Classify the following user topic into exactly ONE category:
-
-SIMPLE
-CREATIVE
-COMPLEX
-
-SIMPLE:
-Straightforward factual questions and basic definitions.
-
-CREATIVE:
-Writing, storytelling, naming, brainstorming, fiction,
-design and imaginative tasks.
-
-COMPLEX:
-Science, physics, cosmology, mathematics, programming,
-engineering, research, technical analysis, difficult reasoning,
-or questions with multiple competing explanations.
-
-Topic:
-{topic}
-
-Return ONLY valid JSON:
-
-{{"category":"SIMPLE"}}
-"""
-
-        try:
-
-            result = (
-                self.ollama.ask(
-                    prompt
-                )
-                .strip()
-            )
-
-            match = re.search(
-                r"\{.*?\}",
-                result,
-                re.DOTALL,
-            )
-
-            if match:
-
-                data = json.loads(
-                    match.group(0)
-                )
-
-                category = str(
-                    data.get(
-                        "category",
-                        ""
-                    )
-                ).lower().strip()
-
-                if category in {
-                    "simple",
-                    "creative",
-                    "complex",
-                }:
-
-                    print(
-                        f"[ROUTER] Ollama -> "
-                        f"{category.upper()}",
-                        flush=True,
-                    )
-
-                    return category
-
-        except Exception as e:
-
-            print(
-                f"[ROUTER WARN] "
-                f"Ollama classifier failed: {e}",
-                flush=True,
-            )
-
-        return "complex"
-
-    # ============================================================
     # PUBLIC
     # ============================================================
 
-    def classify(
-        self,
-        topic: str,
-    ):
-
-        local = self._local_classify(
-            topic
+    def classify(self, topic: str):
+        """Classify locally; ambiguous requests safely take the complex path."""
+        local = self._local_classify(topic)
+        category = local or "complex"
+        print(
+            f"[ROUTER] Local classification -> {category.upper()}",
+            flush=True,
         )
+        return category
 
-        if local:
-
-            print(
-                f"[ROUTER] Local domain detection -> "
-                f"{local.upper()}",
-                flush=True,
-            )
-
-            return local
-
-        return self._ollama_classify(
-            topic
-        )
+    def model_profile(self, topic: str):
+        """Return the central OmniRoute coding/smart profile for a topic."""
+        return get_complex_profile(topic)
