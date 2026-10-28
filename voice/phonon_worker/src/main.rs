@@ -9,6 +9,7 @@ use std::path::PathBuf;
 struct Request {
     text: String,
     output: String,
+    voice: Option<String>,
 }
 
 fn respond(value: serde_json::Value) -> io::Result<()> {
@@ -36,7 +37,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("voice '{voice}' is not registered; available voices: {}", available.join(", ")).into());
     }
     eprintln!("[JARVIS Phonon] Model loaded once; persistent worker ready.");
-    respond(serde_json::json!({"ready": true, "voices": available}))?;
+    respond(serde_json::json!({"ready": true, "voices": available.clone()}))?;
 
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -46,7 +47,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         let result = (|| -> Result<(), Box<dyn std::error::Error>> {
             let request: Request = serde_json::from_str(&line)?;
-            let options = SpeechOptions::default().voice(voice.clone());
+            let selected_voice = request.voice.as_deref().unwrap_or(voice.as_str());
+            if selected_voice != "default" && !available.iter().any(|name| name.as_str() == selected_voice) {
+                return Err(format!(
+                    "voice '{}' is not registered; available voices: {}",
+                    selected_voice,
+                    available.join(", ")
+                ).into());
+            }
+            let options = SpeechOptions::default().voice(selected_voice.to_string());
             let pcm = tts.say_with(&request.text, &options)?;
             ptts::wav::write_wav_file(&request.output, &pcm, tts.sample_rate())?;
             respond(serde_json::json!({"ok": true}))
