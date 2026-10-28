@@ -829,15 +829,15 @@ class FastAgent:
                     "name": "escalate_to_expert",
                     "description": (
                         "Escalate genuinely complex debugging, engineering, "
-                        "or specialist analysis to Gemini or Claude. Groq "
-                        "remains the primary agent and reviews the result."
+                        "or specialist analysis to an OmniRoute coding or smart model. "
+                        "Groq remains the primary agent and reviews the result."
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "provider": {
                                 "type": "string",
-                                "enum": ["gemini", "claude"]
+                                "enum": ["auto", "coding", "smart"]
                             },
                             "task": {
                                 "type": "string",
