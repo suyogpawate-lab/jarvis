@@ -100,7 +100,7 @@ class TTSManager:
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         elif provider == "phonon":
-            result = self._play_pipeline(provider, text, speed, gen)
+            result = self._play_phonon_stream(text, gen)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
         if not result:
@@ -145,6 +145,65 @@ class TTSManager:
                     self.queue.task_done()
         finally:
             self.worker_alive = False
+
+    def _play_phonon_stream(self, text, gen):
+        """Pipe incremental Phonon PCM directly into mpv; no temporary WAV files."""
+        from voice.phonon_tts import stream_audio
+
+        audio = iter(stream_audio(text))
+        proc = None
+        try:
+            for sample_rate, pcm in audio:
+                if self._gen != gen:
+                    return True
+                if not pcm:
+                    continue
+                if proc is None:
+                    proc = subprocess.Popen(
+                        [
+                            "mpv", "--no-video", "--no-terminal", "--really-quiet",
+                            "--demuxer=rawaudio",
+                            "--demuxer-rawaudio-format=floatle",
+                            f"--demuxer-rawaudio-rate={sample_rate}",
+                            "--demuxer-rawaudio-channels=1", "-",
+                        ],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    self._proc = proc
+                if proc.poll() is not None or proc.stdin is None:
+                    raise RuntimeError("mpv stopped while Phonon was streaming audio.")
+                proc.stdin.write(pcm)
+                proc.stdin.flush()
+
+            if proc is None:
+                raise RuntimeError("Phonon stream finished without producing audio.")
+            if proc.stdin is not None and not proc.stdin.closed:
+                proc.stdin.close()
+            return proc.wait() == 0 or self._gen != gen
+        except Exception:
+            if self._gen != gen:
+                return True
+            raise
+        finally:
+            try:
+                audio.close()
+            except Exception:
+                pass
+            if proc is not None:
+                if proc.poll() is None:
+                    try:
+                        if proc.stdin is not None and not proc.stdin.closed:
+                            proc.stdin.close()
+                        proc.wait(timeout=2)
+                    except Exception:
+                        try:
+                            proc.terminate()
+                        except OSError:
+                            pass
+                if self._proc is proc:
+                    self._proc = None
 
     # ---- local pipeline: synth sentence N+1 while sentence N plays ----
     def _synth(self, provider, sentence, speed):
