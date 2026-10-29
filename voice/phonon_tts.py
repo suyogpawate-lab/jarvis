@@ -270,6 +270,60 @@ def synth(text: str) -> Path:
         raise
 
 
+
+def stream_audio(text: str):
+    """Yield (sample_rate, raw_f32le_bytes) as Phonon generates each PCM chunk."""
+    global _GENERATION
+    _load_env()
+    text = " ".join(str(text or "").split())
+    if not text:
+        raise RuntimeError("Phonon received empty text.")
+    directory = model_dir()
+    voice, _quant = _voice_and_quant(directory)
+    with _PROCESS_LOCK:
+        generation = _GENERATION
+
+    ensure_server()
+    request = urllib.request.Request(
+        BASE_URL + "/stream",
+        data=json.dumps({"text": text, "voice": voice}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=190.0) as response:
+            sample_rate = int(response.headers.get("X-Audio-Sample-Rate", "24000"))
+            if response.headers.get("X-Audio-Format", "") != "f32le":
+                raise RuntimeError("Phonon service returned an unsupported streaming audio format.")
+            while True:
+                # read1 returns available network data without waiting to fill a
+                # large application buffer, keeping playback close to generation.
+                chunk = response.read1(8192)
+                if not chunk:
+                    break
+                with _PROCESS_LOCK:
+                    interrupted = generation != _GENERATION
+                if interrupted:
+                    raise RuntimeError("Phonon stream was interrupted.")
+                yield sample_rate, chunk
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = json.loads(exc.read().decode("utf-8", errors="replace")).get("error", str(exc))
+        except (ValueError, AttributeError):
+            detail = str(exc)
+        with _PROCESS_LOCK:
+            interrupted = generation != _GENERATION
+        if interrupted:
+            raise RuntimeError("Phonon stream was interrupted.") from exc
+        raise RuntimeError(f"Phonon streaming service failed: {detail}") from exc
+    except (OSError, urllib.error.URLError) as exc:
+        with _PROCESS_LOCK:
+            interrupted = generation != _GENERATION
+        if interrupted:
+            raise RuntimeError("Phonon stream was interrupted.") from exc
+        raise RuntimeError(f"Could not read Phonon audio stream: {exc}") from exc
+
+
 def interrupt() -> None:
     """Cancel active inference; the service reloads and re-warms only if interrupted."""
     global _GENERATION
