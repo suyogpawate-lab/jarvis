@@ -178,7 +178,38 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen):
-        sentences = chunk_text(text, target_words=22, threshold_words=60)  # shared policy; commas are not boundaries
+        if provider == "phonon":
+            # Target 15 words, then round up to sentence-ending punctuation.
+            # Commas never trigger a chunk boundary.
+            from voice.text_chunking import sentence_list
+            parts = sentence_list(text)
+            sentences = []
+            pending = []
+            word_count = 0
+
+            for part in parts:
+                part = part.strip()
+                if not part:
+                    continue
+                pending.append(part)
+                word_count += len(part.split())
+
+                if word_count >= 15:
+                    sentences.append(" ".join(pending))
+                    pending = []
+                    word_count = 0
+
+            if pending:
+                remainder = " ".join(pending)
+                if sentences:
+                    sentences[-1] += " " + remainder
+                else:
+                    sentences.append(remainder)
+
+            if not sentences:
+                sentences = [text.strip()] if text.strip() else []
+        else:
+            sentences = chunk_text(text, target_words=22, threshold_words=60)
         q = queue.Queue(maxsize=2)
         errors = []
         prebuffer_ready = threading.Event()
@@ -192,10 +223,9 @@ class TTSManager:
                     if not self._put(q, path, gen):
                         Path(path).unlink(missing_ok=True)
                         break
-                    # Buffer two chunks before playback where possible, giving
-                    # slower Android devices a head start on synthesis.
-                    if q.qsize() >= 2:
-                        prebuffer_ready.set()
+                    # Begin playback as soon as the first chunk is ready.
+                    # The producer continues synthesizing ahead during playback.
+                    prebuffer_ready.set()
             except Exception as exc:
                 errors.append(exc)
             finally:

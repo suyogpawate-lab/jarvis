@@ -49,7 +49,7 @@ class FastAgent:
         self.base_url = "https://api.groq.com/openai/v1"
         self.model = os.getenv(
             "JARVIS_FAST_MODEL",
-            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
         )
         self.shell = ShellExecutor(timeout=120)
         self.android = AndroidTools()
