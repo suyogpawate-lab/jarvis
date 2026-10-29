@@ -178,7 +178,34 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen):
-        sentences = chunk_text(text, target_words=22, threshold_words=60)  # shared policy; commas are not boundaries
+        if provider == "phonon":
+            # Phonon is slower per inference than the other local engines.
+            # Keep its first utterance small so long replies start sooner.
+            from voice.text_chunking import sentence_list
+            parts = sentence_list(text)
+            sentences = []
+            pending = []
+            word_count = 0
+            for part in parts:
+                part = part.strip()
+                if not part:
+                    continue
+                pending.append(part)
+                word_count += len(part.split())
+                if word_count >= 15:
+                    sentences.append(" ".join(pending))
+                    pending = []
+                    word_count = 0
+            if pending:
+                remainder = " ".join(pending)
+                if sentences:
+                    sentences[-1] += " " + remainder
+                else:
+                    sentences.append(remainder)
+            if not sentences and text.strip():
+                sentences = [text.strip()]
+        else:
+            sentences = chunk_text(text, target_words=22, threshold_words=60)  # shared policy; commas are not boundaries
         q = queue.Queue(maxsize=2)
         errors = []
         prebuffer_ready = threading.Event()
@@ -192,9 +219,12 @@ class TTSManager:
                     if not self._put(q, path, gen):
                         Path(path).unlink(missing_ok=True)
                         break
-                    # Buffer two chunks before playback where possible, giving
-                    # slower Android devices a head start on synthesis.
-                    if q.qsize() >= 2:
+                    # Phonon inference is the main startup delay: play its
+                    # first completed chunk immediately, while the producer
+                    # synthesizes the next chunk in parallel. Other engines
+                    # retain the two-chunk buffer to reduce playback gaps.
+                    required_buffer = 1 if provider == "phonon" else 2
+                    if q.qsize() >= required_buffer:
                         prebuffer_ready.set()
             except Exception as exc:
                 errors.append(exc)
