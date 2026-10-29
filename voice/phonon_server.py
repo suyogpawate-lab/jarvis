@@ -365,15 +365,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
             else:
                 self._reply_json(500, {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
-            try:
-                with _worker_lock:
-                    _stop_worker_locked()
-            except Exception:
-                pass
-        finally:
+            # Only retire the worker used by this request. After /interrupt,
+            # recovery may already have installed a replacement while this
+            # cancelled handler was unwinding; never stop that replacement.
             if streaming:
-                with _state_lock:
-                    _worker_busy = False
+                try:
+                    with _worker_lock:
+                        with _state_lock:
+                            request_worker_is_current = (
+                                "process" in locals() and process is not None and _worker is process
+                            )
+                        if request_worker_is_current:
+                            _stop_worker_locked()
+                except Exception:
+                    pass
+            finally:
+                if streaming:
+                    with _state_lock:
+                        _worker_busy = False
 
     def log_message(self, *_args):
         return
