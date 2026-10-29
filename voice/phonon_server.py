@@ -378,9 +378,12 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
         finally:
-            if streaming:
+            if streaming and process is not None and "request_generation" in locals():
                 with _state_lock:
-                    _worker_busy = False
+                    # Do not clear the busy flag belonging to a newer request
+                    # or a replacement worker installed during interruption.
+                    if request_generation == _generation and _worker is process:
+                        _worker_busy = False
 
     def log_message(self, *_args):
         return
