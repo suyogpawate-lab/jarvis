@@ -12,6 +12,7 @@ import select
 import subprocess
 import tempfile
 import threading
+import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -37,6 +38,7 @@ _worker = None
 _worker_warmed = False
 _worker_busy = False
 _generation = 0
+_worker_read_buffers = {}
 
 
 def _temp_wav() -> Path:
@@ -54,15 +56,27 @@ def _temp_wav() -> Path:
 
 
 def _readline(process, timeout: float) -> str:
+    """Read one protocol line without losing lines buffered during PCM streaming."""
     if process.stdout is None:
         raise RuntimeError("Phonon worker stdout is unavailable.")
-    ready, _, _ = select.select([process.stdout], [], [], timeout)
-    if not ready:
-        raise RuntimeError(f"Phonon worker timed out after {timeout:.0f} seconds.")
-    line = process.stdout.readline()
-    if not line:
-        raise RuntimeError("Phonon worker exited before replying.")
-    return line
+    buffer = _worker_read_buffers.setdefault(process.pid, bytearray())
+    deadline = time.monotonic() + timeout
+    while True:
+        newline = buffer.find(b"\n")
+        if newline >= 0:
+            line = bytes(buffer[:newline])
+            del buffer[:newline + 1]
+            return line.decode("utf-8")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Phonon worker timed out after {timeout:.0f} seconds.")
+        ready, _, _ = select.select([process.stdout], [], [], remaining)
+        if not ready:
+            raise RuntimeError(f"Phonon worker timed out after {timeout:.0f} seconds.")
+        chunk = os.read(process.stdout.fileno(), 4096)
+        if not chunk:
+            raise RuntimeError("Phonon worker exited before replying.")
+        buffer.extend(chunk)
 
 
 def _exchange(process, text: str, voice: str, output: Path, timeout: float = 180.0) -> None:
@@ -71,7 +85,7 @@ def _exchange(process, text: str, voice: str, output: Path, timeout: float = 180
     if process.stdin is None:
         raise RuntimeError("Phonon worker stdin is unavailable.")
     request = {"text": text, "voice": voice, "output": str(output)}
-    process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+    process.stdin.write((json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8"))
     process.stdin.flush()
     response = json.loads(_readline(process, timeout))
     if not response.get("ok"):
@@ -85,6 +99,8 @@ def _stop_worker_locked() -> None:
         _worker = None
         _worker_warmed = False
         _worker_busy = False
+        if process is not None:
+            _worker_read_buffers.pop(process.pid, None)
     if process is not None and process.poll() is None:
         try:
             process.terminate()
@@ -115,8 +131,8 @@ def _ensure_worker_locked() -> subprocess.Popen:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,
-            text=True,
-            bufsize=1,
+            text=False,
+            bufsize=0,
             cwd=str(ROOT),
         )
         try:
@@ -302,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
                 request = {"text": text, "voice": voice, "output": None, "stream": True}
                 if process.stdin is None:
                     raise RuntimeError("Phonon worker stdin is unavailable.")
-                process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+                process.stdin.write((json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8"))
                 process.stdin.flush()
                 first = json.loads(_readline(process, 180.0))
                 if not first.get("stream"):
