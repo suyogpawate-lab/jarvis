@@ -280,6 +280,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         streaming = self.path == "/stream"
         headers_sent = False
+        process = None
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length < 2 or length > 24000:
@@ -365,24 +366,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
             else:
                 self._reply_json(500, {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
-            # Only retire the worker used by this request. After /interrupt,
-            # recovery may already have installed a replacement while this
-            # cancelled handler was unwinding; never stop that replacement.
-            if streaming:
+            # Only retire this request's worker. Recovery may already have
+            # installed a replacement after /interrupt; do not stop that one.
+            if streaming and process is not None:
                 try:
                     with _worker_lock:
                         with _state_lock:
-                            request_worker_is_current = (
-                                "process" in locals() and process is not None and _worker is process
-                            )
+                            request_worker_is_current = _worker is process
                         if request_worker_is_current:
                             _stop_worker_locked()
                 except Exception:
                     pass
-            finally:
-                if streaming:
-                    with _state_lock:
-                        _worker_busy = False
+        finally:
+            if streaming:
+                with _state_lock:
+                    _worker_busy = False
 
     def log_message(self, *_args):
         return
