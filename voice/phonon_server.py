@@ -5,6 +5,7 @@ The service only reports healthy after a real synthesis warmup has produced a va
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import select
@@ -222,6 +223,8 @@ def _interrupt() -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def _reply_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -256,9 +259,11 @@ class Handler(BaseHTTPRequestHandler):
             _interrupt()
             self._reply_json(200, {"ok": True, "interrupted": True})
             return
-        if self.path != "/speak":
+        if self.path not in ("/speak", "/stream"):
             self._reply_json(404, {"ok": False, "error": "not found"})
             return
+        streaming = self.path == "/stream"
+        headers_sent = False
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length < 2 or length > 24000:
@@ -277,15 +282,82 @@ class Handler(BaseHTTPRequestHandler):
             if voice not in allowed:
                 self._reply_json(400, {"ok": False, "error": "unsupported Phonon voice"})
                 return
-            audio = _synthesize_bytes(text, voice)
-            self.send_response(200)
-            self.send_header("Content-Type", "audio/wav")
-            self.send_header("Content-Length", str(len(audio)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(audio)
+            if not streaming:
+                audio = _synthesize_bytes(text, voice)
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Length", str(len(audio)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(audio)
+                return
+
+            # Keep the warmed worker and forward each PCM chunk as HTTP arrives.
+            global _worker_busy
+            with _worker_lock:
+                process = _ensure_worker_locked()
+                with _state_lock:
+                    request_generation = _generation
+                    _worker_busy = True
+                request = {"text": text, "voice": voice, "output": None, "stream": True}
+                if process.stdin is None:
+                    raise RuntimeError("Phonon worker stdin is unavailable.")
+                process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+                process.stdin.flush()
+                first = json.loads(_readline(process, 180.0))
+                if not first.get("stream"):
+                    raise RuntimeError(str(first.get("error") or "Phonon worker did not start streaming."))
+                sample_rate = int(first.get("sample_rate", 24000))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("X-Audio-Format", "f32le")
+                self.send_header("X-Audio-Channels", "1")
+                self.send_header("X-Audio-Sample-Rate", str(sample_rate))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                headers_sent = True
+
+                completed = False
+                while True:
+                    with _state_lock:
+                        if request_generation != _generation:
+                            raise RuntimeError("Phonon stream was interrupted.")
+                    message = json.loads(_readline(process, 180.0))
+                    if "chunk" in message:
+                        pcm = base64.b64decode(message["chunk"], validate=True)
+                        if pcm:
+                            self.wfile.write(f"{len(pcm):X}\r\n".encode("ascii"))
+                            self.wfile.write(pcm)
+                            self.wfile.write(b"\r\n")
+                            self.wfile.flush()
+                    elif message.get("done"):
+                        completed = True
+                        self.wfile.write(b"0\r\n\r\n")
+                        self.wfile.flush()
+                        break
+                    elif message.get("ok") is False:
+                        raise RuntimeError(str(message.get("error") or "Phonon stream synthesis failed."))
+                    else:
+                        raise RuntimeError("Unexpected message from Phonon streaming worker.")
+                if not completed:
+                    raise RuntimeError("Phonon stream ended unexpectedly.")
         except Exception as exc:
-            self._reply_json(500, {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
+            if headers_sent:
+                # HTTP headers are already committed; close the stream so the
+                # client detects truncation instead of receiving fake audio.
+                self.close_connection = True
+            else:
+                self._reply_json(500, {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
+            try:
+                with _worker_lock:
+                    _stop_worker_locked()
+            except Exception:
+                pass
+        finally:
+            if streaming:
+                with _state_lock:
+                    _worker_busy = False
 
     def log_message(self, *_args):
         return
