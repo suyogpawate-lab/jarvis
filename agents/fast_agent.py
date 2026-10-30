@@ -53,273 +53,39 @@ class FastAgent:
         except Exception as exc:
             print(f"[JARVIS TOOLS] extension load failed: {exc}")
 
-    @staticmethod
-    def _load_provider_keys(list_env, single_env):
-        """
-        Load every configured API key for one provider.
+    def _omni_model(self, role="general"):
+        return self.omni_models.get(role, self.omni_models["general"])
 
-        Preferred:
-            PROVIDER_API_KEYS=key1,key2,key3,key4,key5
-
-        Also accepts:
-            PROVIDER_API_KEY=key1
-        """
-        raw = os.getenv(list_env, "")
-
-        keys = [
-            item.strip()
-            for item in raw.replace("\n", ",").split(",")
-            if item.strip()
-        ]
-
-        if not keys:
-            single = os.getenv(single_env, "").strip()
-            if single:
-                keys = [single]
-
-        return keys
-
-    def _provider_keys(self, provider):
-        if provider == "gemini":
-            return self.gemini_api_keys
-
-        if provider == "claude":
-            return self.claude_api_keys
-
-        raise ValueError(f"Unknown provider: {provider}")
-
-    def _provider_index(self, provider):
-        if provider == "gemini":
-            return self.gemini_key_index
-
-        if provider == "claude":
-            return self.claude_key_index
-
-        raise ValueError(f"Unknown provider: {provider}")
-
-    def _set_provider_index(self, provider, index):
-        if provider == "gemini":
-            self.gemini_key_index = index
-            return
-
-        if provider == "claude":
-            self.claude_key_index = index
-            return
-
-        raise ValueError(f"Unknown provider: {provider}")
-
-    def _gemini_request(
-        self,
-        messages,
-        system_prompt=None,
-        max_tokens=512,
-        temperature=0.1,
-        timeout=30,
-    ):
-        """
-        Gemini provider with the same provider-key fallback architecture
-        used by the existing Groq implementation.
-        """
-
-        keys = self.gemini_api_keys
-
-        if not keys:
-            raise RuntimeError(
-                "No Gemini API keys are configured."
-            )
-
-        total_keys = len(keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            index = self.gemini_key_index
-            active_key = keys[index]
-
-            try:
-                payload_messages = []
-
-                if system_prompt:
-                    payload_messages.append({
-                        "role": "system",
-                        "content": system_prompt,
-                    })
-
-                payload_messages.extend(messages)
-
-                response = requests.post(
-                    f"{gemini_base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {active_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.gemini_model,
-                        "messages": payload_messages,
-                        "temperature": temperature,
-                        "max_tokens": max_tokens,
-                        "stream": False,
-                    },
-                    timeout=timeout,
-                )
-
-                if response.status_code != 200:
-                    code = response.status_code
-                    # A 5xx (especially 503) usually indicates provider-side
-                    # capacity/service trouble, not a bad individual API key.
-                    # Cycling every key just repeats the same failing request.
-                    detail = ""
-                    try:
-                        body = response.json()
-                        err = body.get("error", body)
-                        if isinstance(err, dict):
-                            detail = str(err.get("message", ""))
-                        else:
-                            detail = str(err)
-                    except (ValueError, AttributeError):
-                        detail = str(getattr(response, "text", ""))
-                    detail = " ".join(detail.split())[:240]
-                    print(
-                        f"Gemini request failed (HTTP {code})"
-                        + (f": {detail}" if detail else "")
-                    )
-                    if code == 503 or code >= 500:
-                        raise RuntimeError(
-                            f"Gemini service unavailable (HTTP {code})"
-                            + (f": {detail}" if detail else "")
-                        )
-
-                    self.gemini_key_index = (index + 1) % total_keys
-                    attempts += 1
-                    continue
-
-                data = response.json()
-
-                content = (
-                    data["choices"][0]["message"]
-                    .get("content", "")
-                    .strip()
-                )
-
-                if content:
-                    return content
-
-                self.gemini_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-            except requests.exceptions.RequestException as exc:
-                print(
-                    f"Gemini Account {index + 1} connection error: "
-                    f"{exc}"
-                )
-
-                self.gemini_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured GEMINI API keys are exhausted or failing."
+    def _omni_post(self, payload, role="general", timeout=30):
+        if not self.omni_api_key:
+            raise RuntimeError("OMNIROUTE_API_KEY is not configured. Run python setup.py keys.")
+        body = dict(payload)
+        body["model"] = self._omni_model(role)
+        body.setdefault("stream", False)
+        return requests.post(
+            f"{self.omni_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {self.omni_api_key}", "Content-Type": "application/json"},
+            json=body, timeout=timeout,
         )
 
-    def _claude_request(
-        self,
-        messages,
-        system_prompt=None,
-        max_tokens=512,
-        temperature=0.1,
-        timeout=30,
-    ):
-        """
-        Claude provider with the same five-key fallback architecture
-        used by the existing Groq implementation.
-        """
-
-        keys = self.claude_api_keys
-
-        if not keys:
-            raise RuntimeError(
-                "No Claude API keys are configured."
-            )
-
-        total_keys = len(keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            index = self.claude_key_index
-            active_key = keys[index]
-
-            try:
-                payload = {
-                    "model": self.claude_model,
-                    "max_tokens": max_tokens,
-                    "messages": messages,
-                }
-
-                if system_prompt:
-                    payload["system"] = system_prompt
-
-                payload["temperature"] = temperature
-
-                response = requests.post(
-                    f"{self.claude_base_url}/v1/messages",
-                    headers={
-                        "x-api-key": active_key,
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                    timeout=timeout,
-                )
-
-                if response.status_code != 200:
-                    print(
-                        f"Claude Account {index + 1} failed. "
-                        f"Code: {response.status_code}"
-                    )
-
-                    self.claude_key_index = (
-                        (index + 1) % total_keys
-                    )
-
-                    attempts += 1
-                    continue
-
-                data = response.json()
-
-                content = "".join(
-                    block.get("text", "")
-                    for block in data.get("content", [])
-                    if block.get("type") == "text"
-                ).strip()
-
-                if content:
-                    return content
-
-                self.claude_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-            except requests.exceptions.RequestException as exc:
-                print(
-                    f"Claude Account {index + 1} connection error: "
-                    f"{exc}"
-                )
-
-                self.claude_key_index = (
-                    (index + 1) % total_keys
-                )
-
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured CLAUDE API keys are exhausted or failing."
-        )
+    def _omni_request(self, messages, role="general", system_prompt=None,
+                     max_tokens=512, temperature=0.1, timeout=30):
+        content_messages = []
+        if system_prompt:
+            content_messages.append({"role": "system", "content": system_prompt})
+        content_messages.extend(messages)
+        response = self._omni_post({
+            "messages": content_messages, "temperature": temperature,
+            "max_tokens": max_tokens, "stream": False,
+        }, role=role, timeout=timeout)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"].get("content", "")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+        answer = str(content or "").strip()
+        if not answer:
+            raise RuntimeError("OmniRoute returned an empty response.")
+        return answer
 
     def _jarvis_system_prompt(self):
         return self._jarvis_base_system_prompt() + jarvis_skills.index_text()
