@@ -74,7 +74,7 @@ class SimpleQuestionRoutingTests(unittest.TestCase):
 
 
 class GroqRetryTests(unittest.TestCase):
-    def test_rate_limited_keys_are_checked_once_without_sleeping(self):
+    def test_model_scoped_tpm_limit_stops_key_rotation_without_sleeping(self):
         agent = object.__new__(FastAgent)
         agent.api_keys = ["key-a", "key-b", "key-c"]
         agent.current_key_index = 0
@@ -91,7 +91,7 @@ class GroqRetryTests(unittest.TestCase):
              patch("time.sleep") as sleep:
             result = agent._groq_post({"model": "test-model", "messages": []})
         self.assertEqual(result.status_code, 429)
-        self.assertEqual(post.call_count, 3)
+        self.assertEqual(post.call_count, 1)
         sleep.assert_not_called()
 
 
