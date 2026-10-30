@@ -267,7 +267,6 @@ REQUIRED_KEYS = [
 OMNIROUTE_MODEL_DEFAULTS = {
     "OMNIROUTE_GENERAL_MODEL": "cfp/deepseek-ai/deepseek-v4-pro-0813",
     "OMNIROUTE_CODING_MODEL": "dva/claude-sonnet-4-6-thinking-high",
-    "OMNIROUTE_FAST_CODING_MODEL": "dva/claude-sonnet-4-6-thinking-low",
     "OMNIROUTE_VISION_MODEL": "gemini/gemini-3.7-flash",
     "OMNIROUTE_FALLBACK_MODEL": "cfp/openai/gpt-oss-120b",
 }
@@ -316,7 +315,11 @@ def step_keys(env):
 
     info("OmniRoute supplies specialist reasoning, vision, and Groq quota fallback.")
     # Remove obsolete direct-provider credentials from the project .env only.
-    for legacy_var in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "ANTHROPIC_API_KEYS", "ANTHROPIC_API_KEY"):
+    for legacy_var in (
+        "GEMINI_API_KEYS", "GEMINI_API_KEY", "GEMINI_MODEL",
+        "ANTHROPIC_API_KEYS", "ANTHROPIC_API_KEY", "CLAUDE_MODEL",
+        "JARVIS_VISION_MODEL",
+    ):
         env.unset(legacy_var)
 
     if not env.get("OMNIROUTE_BASE_URL"):
@@ -346,7 +349,7 @@ def step_keys(env):
         env.set(var, value or current_value)
 
     env.save()
-    ok("Groq and OmniRoute configuration saved. Direct Gemini/Anthropic credentials are no longer used.")
+    ok("Groq and OmniRoute configuration saved. Legacy direct-provider credentials are no longer used.")
 
     if yes_no("Configure optional search keys (Brave, Bing, Veriphone)?", default=False):
         for var, label in OPTIONAL_KEYS:
