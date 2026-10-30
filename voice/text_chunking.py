@@ -83,7 +83,7 @@ def phonon_chunk_text(
     chunks target 15 words. Boundaries always advance to the end of a sentence,
     never stop at commas, and a final short remainder is retained.
     """
-    normalized = re.sub(r"\\s+", " ", str(text or "")).strip()
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
     if not normalized:
         return []
     first_chunk_words = max(1, int(first_chunk_words))
