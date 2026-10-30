@@ -1431,7 +1431,7 @@ def main():
                     break
 
                 _cli_print("\nNOTIFICATION >", summary, 250)
-        print()
+                print()
                 _web_notify(summary)
 
             prompt, prompt_source = read_prompt()
