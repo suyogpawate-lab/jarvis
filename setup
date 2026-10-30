@@ -8,7 +8,7 @@ JARVIS first-run setup.
     python setup.py --status        # show what is configured (secrets are masked)
 
 What it configures
-    keys      AI provider keys (Groq, Gemini, Anthropic and OmniRoute required; search keys optional)
+    keys      AI provider keys (Groq primary, OmniRoute secondary; search keys optional)
     gmail     Gmail account(s) + App Password, tested against Gmail before saving
     whatsapp  links your WhatsApp account to the local bridge (pairing code or QR)
     contacts  syncs your phone contacts and an optional "priority people" list
@@ -260,11 +260,16 @@ def test_groq_key(key):
 
 
 REQUIRED_KEYS = [
-    ("GEMINI_API_KEYS", "Gemini API key(s), comma-separated"),
-    ("ANTHROPIC_API_KEYS", "Anthropic (Claude) API key(s), comma-separated"),
     ("OMNIROUTE_BASE_URL", "OmniRoute base URL (default http://127.0.0.1:20128/v1)"),
     ("OMNIROUTE_API_KEY", "OmniRoute API key"),
 ]
+
+OMNIROUTE_MODEL_DEFAULTS = {
+    "OMNIROUTE_GENERAL_MODEL": "cfp/deepseek-ai/deepseek-v4-pro-0813",
+    "OMNIROUTE_CODING_MODEL": "dva/claude-sonnet-4-6-thinking-high",
+    "OMNIROUTE_VISION_MODEL": "gemini/gemini-3.7-flash",
+    "OMNIROUTE_FALLBACK_MODEL": "cfp/openai/gpt-oss-120b",
+}
 
 OPTIONAL_KEYS = [
     ("BRAVE_SEARCH_API_KEY", "Brave Search API key"),
@@ -303,7 +308,14 @@ def step_keys(env):
     elif not current:
         warn("No Groq key set - JARVIS will not be available.")
 
-    info("Gemini, Anthropic and OmniRoute are also required for full JARVIS.")
+    info("OmniRoute supplies specialist reasoning, vision, and Groq quota fallback.")
+    # Remove obsolete direct-provider credentials from the project .env only.
+    for legacy_var in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "ANTHROPIC_API_KEYS", "ANTHROPIC_API_KEY"):
+        env.unset(legacy_var)
+
+    if not env.get("OMNIROUTE_BASE_URL"):
+        env.set("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")
+
     for var, label in REQUIRED_KEYS:
         secret = var.endswith("KEY") or var.endswith("KEYS")
         have = env.get(var)
@@ -314,7 +326,16 @@ def step_keys(env):
             env.save()
         elif not have and var != "OMNIROUTE_BASE_URL":
             warn(f"{var} not set - JARVIS will not work fully without it.")
-    ok("Provider keys saved.")
+    for var, default_model in OMNIROUTE_MODEL_DEFAULTS.items():
+        current_model = env.get(var) or default_model
+        value = ask(
+            f"{var} (currently {current_model}) - Enter to keep",
+            secret=False,
+        )
+        env.set(var, value or current_model)
+
+    env.save()
+    ok("Groq and OmniRoute configuration saved. Direct Gemini/Anthropic credentials are no longer used.")
 
     if yes_no("Configure optional search keys (Brave, Bing, Veriphone)?", default=False):
         for var, label in OPTIONAL_KEYS:
@@ -919,11 +940,13 @@ def show_status():
 
     groq = split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY"))
     (ok if groq else warn)(f"Groq keys: {len(groq)}")
-    for var in ("GEMINI_API_KEYS", "ANTHROPIC_API_KEYS", "OMNIROUTE_API_KEY"):
-        if env.get(var):
-            ok(f"{var}: {mask(env.get(var))}")
-        else:
-            warn(f"{var}: NOT SET (required)")
+    if env.get("OMNIROUTE_API_KEY"):
+        ok(f"OMNIROUTE_API_KEY: {mask(env.get('OMNIROUTE_API_KEY'))}")
+    else:
+        warn("OMNIROUTE_API_KEY: NOT SET (required for specialist and quota fallback)")
+    ok(f"OmniRoute base URL: {env.get('OMNIROUTE_BASE_URL', 'http://127.0.0.1:20128/v1')}")
+    for var, default_model in OMNIROUTE_MODEL_DEFAULTS.items():
+        ok(f"{var}: {env.get(var, default_model)}")
 
     accounts = gmail_accounts(env)
     if accounts:
