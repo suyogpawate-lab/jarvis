@@ -10,10 +10,10 @@ from automation.task_executor import TaskExecutor
 from monitoring.health_manager import HealthManager
 
 
-class FakeGemini:
-    gemini_api_keys = ["configured"]
+class FakeOmniRoute:
+    omniroute_base_url = "http://127.0.0.1:20128/v1"
 
-    def _gemini_request(self, messages, **kwargs):
+    def _omniroute_request(self, messages, **kwargs):
         return json.dumps({
             "goal": "test workflow",
             "steps": [
@@ -28,7 +28,7 @@ class AgentEngineTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
-            engine = AgentEngine(FakeGemini(), executor)
+            engine = AgentEngine(FakeOmniRoute(), executor)
             result = engine.handle("/agent plan test workflow")
             self.assertIn("[AGENT PLAN]", result)
             self.assertEqual(calls, [])
@@ -38,7 +38,7 @@ class AgentEngineTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
-            engine = AgentEngine(FakeGemini(), executor)
+            engine = AgentEngine(FakeOmniRoute(), executor)
             planned = engine.handle("/agent plan test workflow")
             import re
             task_id = re.search(r"task-[0-9a-f]{8}", planned).group(0)
@@ -50,19 +50,19 @@ class AgentEngineTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
-            engine = AgentEngine(FakeGemini(), executor)
+            engine = AgentEngine(FakeOmniRoute(), executor)
             result = engine.execute_goal("inspect project and run tests", source="text")
             self.assertIn("[AGENT TASK]", result)
             self.assertIn("COMPLETED", result)
             self.assertEqual(len(calls), 2)
 
-    def test_missing_gemini_is_reported_without_execution(self):
-        class NoGemini:
-            gemini_api_keys = []
+    def test_missing_omniroute_is_reported_without_execution(self):
+        class NoOmniRoute:
+            omniroute_base_url = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: self.fail("must not dispatch"), task_dir=directory)
-            engine = AgentEngine(NoGemini(), executor)
-            self.assertIn("Gemini is not configured", engine.handle("/agent plan build something"))
+            engine = AgentEngine(NoOmniRoute(), executor)
+            self.assertIn("OmniRoute is not configured", engine.handle("/agent plan build something"))
 
     def test_interrupted_running_task_is_paused_for_review(self):
         with tempfile.TemporaryDirectory() as directory:
