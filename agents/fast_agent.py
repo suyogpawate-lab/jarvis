@@ -313,7 +313,7 @@ class FastAgent:
             except requests.exceptions.RequestException as exc:
                 print(f" OmniRoute fallback unavailable ({type(exc).__name__}).", flush=True)
 
-        return last        return last
+        return last
 
     def _groq_limit_message(self, response):
         """Plain-English text for a failed Groq response."""
