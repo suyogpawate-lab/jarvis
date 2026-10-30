@@ -2170,6 +2170,7 @@ class FastAgent:
             max_tokens=512, temperature=0.1, timeout=30,
         )
 
+    @staticmethod
     def _is_complex_shell_project(prompt):
         """Detect substantial engineering work from the current user message only."""
         raw = str(prompt or "")
@@ -2207,6 +2208,7 @@ class FastAgent:
             max_tokens=700, temperature=0.1, timeout=30,
         )
 
+    @staticmethod
     def _simple_direct_request(prompt):
         """Identify short factual questions that do not need tools or project context."""
         text = str(prompt or "").strip()
