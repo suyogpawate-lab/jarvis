@@ -380,7 +380,6 @@ class TTSManager:
         if errors:
             raise errors[0]
         return True
-return True
 
     def speak(self, text, speed=1.0):
         if text is None:
