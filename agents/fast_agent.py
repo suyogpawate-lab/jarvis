@@ -478,7 +478,7 @@ class FastAgent:
                         "properties": {
                             "provider": {
                                 "type": "string",
-                                "enum": ["coding", "general", "vision"]
+                                "enum": ["coding", "general"]
                             },
                             "task": {
                                 "type": "string",
@@ -1433,7 +1433,7 @@ class FastAgent:
             provider = arguments.get("provider")
             task = arguments.get("task")
 
-            if provider not in ("coding", "general", "vision"):
+            if provider not in ("coding", "general"):
                 return {"ok": False, "error": "Invalid specialist provider."}
             if not isinstance(task, str) or not task.strip():
                 return {"ok": False, "error": "Specialist task is empty."}
@@ -1665,7 +1665,7 @@ class FastAgent:
     def _select_complex_provider(self, prompt):
         """Select an OmniRoute model role for complex reasoning."""
         forced = os.getenv("JARVIS_COMPLEX_PROVIDER", "").strip().lower()
-        if forced in ("coding", "general", "vision"):
+        if forced in ("coding", "general"):
             return forced
         text = str(prompt).lower()
         code_terms = ("python", "javascript", "typescript", "node", "npm", "pip", "code", "coding", "program", "function", "class ", "refactor", "bug", "traceback", "repository", "repo", "git", "compile", "implementation")
