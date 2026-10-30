@@ -36,7 +36,7 @@ class AgentEngineTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
-            engine = AgentEngine(FakeGemini(), executor)
+            engine = AgentEngine(FakeOmniRoute(), executor)
             planned = engine.handle("/agent plan test workflow")
             import re
             task_id = re.search(r"task-[0-9a-f]{8}", planned).group(0)
@@ -48,7 +48,7 @@ class AgentEngineTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
-            engine = AgentEngine(FakeGemini(), executor)
+            engine = AgentEngine(FakeOmniRoute(), executor)
             result = engine.execute_goal("inspect project and run tests", source="text")
             self.assertIn("[AGENT TASK]", result)
             self.assertIn("COMPLETED", result)
