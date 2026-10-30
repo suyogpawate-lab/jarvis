@@ -207,12 +207,12 @@ else
     ) || warn "WhatsApp packages failed to install. Retry: cd whatsapp && npm install"
 fi
 
-# ───────────────────────── OmniRoute (optional model router) ─────────────────────────
+# ───────────────────────── OmniRoute (secondary model router) ─────────────────────────
 info "Setting up OmniRoute..."
 if command -v omniroute >/dev/null 2>&1; then
     ok "OmniRoute already installed."
 else
-    npm install -g omniroute || warn "OmniRoute install failed; JARVIS still works with Groq keys."
+    npm install -g omniroute || warn "OmniRoute install failed; Groq primary remains available, but specialist models and quota fallback will be unavailable."
 fi
 if command -v omniroute >/dev/null 2>&1; then
     bash omniroute_daemon.sh || warn "Could not start OmniRoute."
@@ -305,7 +305,7 @@ fi
 if curl -fsS http://127.0.0.1:20128/v1/models >/dev/null 2>&1; then
     ok "OmniRoute is responding on port 20128."
 else
-    warn "OmniRoute is not responding on port 20128 (optional)."
+    warn "OmniRoute is not responding on port 20128; Groq primary may work, but specialist models and quota fallback need OmniRoute."
 fi
 warn "For notifications, contacts and battery info install the 'Termux:API' app (F-Droid) and grant it permissions."
 
