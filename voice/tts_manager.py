@@ -373,7 +373,7 @@ class TTSManager:
             "playback_seconds": round(time.monotonic() - playback_started, 3)
                 if playback_started is not None else 0.0,
         }
-        if provider == "phonon":
+        if provider == "phonon" and os.getenv("JARVIS_TTS_DEBUG", "").strip() == "1":
             print(f"[TTS PIPELINE] {self.last_pipeline_metrics}", flush=True)
         if interrupted or self._gen != gen:
             return True
