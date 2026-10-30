@@ -285,7 +285,7 @@ class FastAgent:
                 # TPM is commonly model/org scoped. Rotating through every key
                 # immediately repeats the same failed request and burns tool rounds.
                 if kind == "tokens per minute":
-                    return response
+                    break  # Skip duplicate keys, then try OmniRoute below.
                 continue
             if code in (401, 403):
                 print(f" Groq account {index + 1}: key rejected (HTTP {code})")
