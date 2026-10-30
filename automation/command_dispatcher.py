@@ -2184,7 +2184,7 @@ Rules:
 
         # Natural-language action requests use the Agent Engine immediately.
         # Keep this after deterministic device routes so simple local queries
-        # remain fast and do not incur Gemini planning overhead.
+        # remain fast and do not incur specialist-planning overhead.
         if source != "agent_step" and self._looks_like_agent_task(text):
             return self.agent_engine.execute_goal(text, source=source)
 
