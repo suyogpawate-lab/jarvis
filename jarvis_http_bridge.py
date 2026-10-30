@@ -26,19 +26,12 @@ PORT = 21339
 
 
 
-def ask_screen_with_groq(prompt, image_bytes=None):
-    """Analyze an ephemeral screen prompt, optionally with a live JPEG frame."""
+def ask_screen_with_models(prompt, image_bytes=None):
+    """Analyze an ephemeral screen prompt through Groq with OmniRoute circuit fallback."""
     import base64
 
-    def keys_from(list_name, single_name):
-        raw = os.getenv(list_name) or os.getenv(single_name, "")
-        return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
-
     prompt = str(prompt or "")[:22000]
-    groq_keys = keys_from("GROQ_API_KEYS", "GROQ_API_KEY")
-    gemini_keys = keys_from("GEMINI_API_KEYS", "GEMINI_API_KEY")
-    text_model = os.getenv("JARVIS_FAST_MODEL", "openai/gpt-oss-20b")
-    vision_model = os.getenv("JARVIS_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    fast_agent = dispatcher.fast_agent
     system_text = (
         "Analyze the current Android screen using the supplied image and Accessibility data. "
         "The image is authoritative for visible layout and split-screen panes; use hierarchy "
@@ -52,62 +45,45 @@ def ask_screen_with_groq(prompt, image_bytes=None):
             {"type": "text", "text": prompt},
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image_data}},
         ]
-        model = vision_model
+        groq_model = os.getenv(
+            "JARVIS_GROQ_VISION_MODEL",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+        )
+        fallback_role = "vision"
+        timeout = (2.0, 12.0)
     else:
         user_content = prompt
-        model = text_model
-    messages = [
-        {"role": "system", "content": system_text},
-        {"role": "user", "content": user_content},
-    ]
-    last_status = None
+        groq_model = fast_agent.model
+        fallback_role = "general"
+        timeout = (2.0, 4.0)
 
-    # Try the configured Groq keys with a vision-capable model for image requests.
-    for key in groq_keys[:2]:
-        try:
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 350},
-                timeout=(2.0, 12.0 if image_bytes else 3.0),
-            )
-            if response.status_code == 200:
-                answer = response.json()["choices"][0]["message"]["content"]
-                if isinstance(answer, str) and answer.strip():
-                    return answer.strip()
-            last_status = response.status_code
-            if response.status_code not in (401, 403, 404, 429) and response.status_code < 500:
-                break
-        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
-            continue
+    payload = {
+        "model": groq_model,
+        "messages": [
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 350,
+        "stream": False,
+    }
+    response = fast_agent._groq_post(
+        payload,
+        timeout=timeout,
+        fallback_role=fallback_role,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(fast_agent._groq_limit_message(response))
 
-    # Gemini's OpenAI-compatible endpoint supports image_url data URIs as well.
-    gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    for key in gemini_keys[:1]:
-        try:
-            response = requests.post(
-                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": gemini_model, "messages": messages, "temperature": 0.1, "max_tokens": 350},
-                timeout=(2.0, 15.0 if image_bytes else 4.0),
-            )
-            if response.status_code == 200:
-                answer = response.json()["choices"][0]["message"]["content"]
-                if isinstance(answer, str) and answer.strip():
-                    return answer.strip()
-            last_status = response.status_code
-            if response.status_code not in (401, 403, 404, 429) and response.status_code < 500:
-                break
-        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
-            continue
-
-    if not groq_keys and not gemini_keys:
-        raise RuntimeError("screen analysis requires GROQ_API_KEY/GROQ_API_KEYS or GEMINI_API_KEY/GEMINI_API_KEYS")
-    if last_status == 429:
-        raise RuntimeError("screen-analysis providers are rate-limited; wait for quota reset or configure another provider key")
-    if image_bytes:
-        raise RuntimeError("visual screen analysis failed; check JARVIS_VISION_MODEL and configure a working Groq or Gemini API key")
-    raise RuntimeError("fast screen analysis failed or timed out; no slow OmniRoute fallback was used")
+    answer = response.json()["choices"][0]["message"].get("content", "")
+    if isinstance(answer, list):
+        answer = " ".join(
+            str(part.get("text", "")) for part in answer if isinstance(part, dict)
+        )
+    answer = str(answer or "").strip()
+    if not answer:
+        raise RuntimeError("Screen-analysis model returned an empty response.")
+    return answer
 
 
 print("[JARVIS HTTP] Initializing JARVIS...", flush=True)
@@ -289,7 +265,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
             if self.path == "/screen/analyze":
                 answer = analyze_latest_screen(
                     str(body.get("prompt", "Describe the current screen.")),
-                    ask=ask_screen_with_groq,
+                    ask=ask_screen_with_models,
                 )
                 self._send_json(200, {"ok": True, "response": answer, "perception": "accessibility_json", "stream": screen_receiver.status()})
                 return
