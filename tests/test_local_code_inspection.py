@@ -1,5 +1,6 @@
 """Regression tests for local code inspection and bounded Groq retries."""
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from automation.command_dispatcher import CommandDispatcher
