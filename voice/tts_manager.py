@@ -179,7 +179,9 @@ class TTSManager:
                 return True
             except queue.Full:
                 pass
-        re    def _play_pipeline(self, provider, text, speed, gen):
+        return False
+
+    def _play_pipeline(self, provider, text, speed, gen):
         if provider == "phonon":
             # Target 15 words, then round up to sentence-ending punctuation.
             # Commas never trigger a chunk boundary.
