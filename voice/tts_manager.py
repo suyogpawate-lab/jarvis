@@ -100,7 +100,9 @@ class TTSManager:
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         elif provider == "phonon":
-            result = self._play_phonon_stream(text, gen)
+            # Phonon uses sentence-sized WAV chunks: synthesize the next chunk
+            # in the producer thread while the current chunk plays.
+            result = self._play_pipeline(provider, text, speed, gen)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
         if not result:
@@ -145,50 +147,6 @@ class TTSManager:
                     self.queue.task_done()
         finally:
             self.worker_alive = False
-
-    def _play_phonon_stream(self, text, gen):
-        """Pre-synthesize the full reply, then play one complete WAV without gaps."""
-        from voice.phonon_tts import synth
-
-        wav_path = None
-        proc = None
-        try:
-            # Phonon currently generates slower than real time. Playing its PCM
-            # chunks as they arrive causes the audio device to underrun. Wait
-            # for the complete WAV before starting mpv so playback is continuous.
-            wav_path = synth(text)
-            if self._gen != gen:
-                return True
-
-            proc = subprocess.Popen(
-                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(wav_path)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            self._proc = proc
-            return proc.wait() == 0 or self._gen != gen
-        except Exception:
-            if self._gen != gen:
-                return True
-            raise
-        finally:
-            if proc is not None and proc.poll() is None:
-                try:
-                    proc.terminate()
-                    proc.wait(timeout=2)
-                except Exception:
-                    try:
-                        proc.kill()
-                    except OSError:
-                        pass
-            if self._proc is proc:
-                self._proc = None
-            if wav_path is not None:
-                try:
-                    Path(wav_path).unlink(missing_ok=True)
-                except OSError:
-                    pass
 
     # ---- local pipeline: synth sentence N+1 while sentence N plays ----
     def _synth(self, provider, sentence, speed):
