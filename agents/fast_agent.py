@@ -232,6 +232,9 @@ class FastAgent:
                 continue
             return response
 
+        if self._groq_circuit_open_until > time.time():
+            self._groq_next_probe_at = time.time() + self.groq_probe_interval
+
         if last is not None and tried and len(waits) == tried and quota_only:
             reset_after = max(waits, default=0.0)
             if self._groq_circuit_open_until > time.time():
