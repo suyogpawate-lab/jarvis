@@ -375,11 +375,13 @@ class FastAgent:
             "OUTPUT FORMAT: Write only plain prose paragraphs. Never use bullet points, "
             "numbered lists, outlines, headings, or point-by-point formatting in normal "
             "answers. Do not use asterisks.\n\n"
-            "LENGTH: Keep the answer under 120 words whenever that can preserve a complete, "
-            "accurate answer. Prefer concise paragraphs and remove filler or repetition. "
-            "Never sacrifice factual accuracy, important caveats, necessary steps, or clarity "
-            "just to meet the word target; exceed 120 words when essential to avoid a "
-            "misleading or incomplete answer. Do not guess to stay brief.\n\n"
+            "LENGTH: Every user-facing response MUST contain 99 words or fewer. This is "
+            "a hard limit, not a preference. Use one concise prose paragraph; never use "
+            "bullets, numbered points, lists, headings, or outline formatting. Preserve the "
+            "facts, critical caveats, uncertainty, and essential actions. Remove filler and "
+            "compress wording, not meaning. If the complete answer cannot be accurate within "
+            "99 words, state that briefly and ask which part the user wants expanded; never "
+            "invent, omit a critical qualification, or exceed the limit.\n\n"
             "ACCURACY FIRST: If uncertain, state the uncertainty plainly. Preserve important "
             "distinctions and qualifications. For tool-based tasks, report only verified "
             "results and do not omit a failure or limitation to make the answer shorter."
@@ -2997,6 +2999,57 @@ class FastAgent:
         return self._groq_limit_message(response)
 
     def ask(self, prompt):
+        """Return a concise, plain-prose answer capped at 99 words."""
+        answer = self._ask_unbounded(prompt)
+        answer = str(answer or "").strip()
+        if not answer:
+            return answer
+        is_list = bool(re.search(r"(?m)^\\s*(?:[-*•]|\\d+[.)])\\s+", answer))
+        is_heading = bool(re.search(r"(?m)^\\s*#{1,6}\\s+", answer))
+        if len(answer.split()) <= 99 and not is_list and not is_heading:
+            return answer
+
+        # Compact only the already-produced answer. Never rerun tools or repeat
+        # actions after the original request has executed.
+        try:
+            response = self._groq_post({
+                "stream": False,
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Rewrite the supplied answer as one plain-prose paragraph of "
+                            "at most 99 words. Preserve every fact needed for correctness, "
+                            "all critical caveats, and uncertainty. Do not add facts. Do not "
+                            "use lists, bullets, numbering, or headings. If it cannot be "
+                            "accurately compressed, reply exactly: "
+                            "'I cannot fit the complete accurate answer into 99 words. "
+                            "Which part should I focus on?'"
+                        ),
+                    },
+                    {"role": "user", "content": answer},
+                ],
+                "temperature": 0,
+                "max_tokens": 190,
+            }, timeout=25)
+            if response.status_code == 200:
+                compact = str(
+                    response.json()["choices"][0]["message"].get("content") or ""
+                ).strip()
+                compact_list = bool(re.search(r"(?m)^\\s*(?:[-*•]|\\d+[.)])\\s+", compact))
+                compact_heading = bool(re.search(r"(?m)^\\s*#{1,6}\\s+", compact))
+                if compact and len(compact.split()) <= 99 and not compact_list and not compact_heading:
+                    return compact
+        except Exception as exc:
+            print(f"[JARVIS OUTPUT] Concision pass unavailable: {type(exc).__name__}", flush=True)
+
+        return (
+            "I cannot fit the complete accurate answer into 99 words. "
+            "Which part should I focus on?"
+        )
+
+    def _ask_unbounded(self, prompt):
         """Answer queries through the appropriate provider route."""
 
         self._ask_counter = getattr(self, "_ask_counter", 0) + 1
