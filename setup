@@ -8,7 +8,7 @@ JARVIS first-run setup.
     python setup.py --status        # show what is configured (secrets are masked)
 
 What it configures
-    keys      AI provider keys (Groq, Gemini, Anthropic and OmniRoute required; search keys optional)
+    keys      AI provider keys (Groq primary, OmniRoute models and fallback)
     gmail     Gmail account(s) + App Password, tested against Gmail before saving
     whatsapp  links your WhatsApp account to the local bridge (pairing code or QR)
     contacts  syncs your phone contacts and an optional "priority people" list
@@ -259,11 +259,13 @@ def test_groq_key(key):
         return None, f"could not reach Groq ({exc})"
 
 
-REQUIRED_KEYS = [
-    ("GEMINI_API_KEYS", "Gemini API key(s), comma-separated"),
-    ("ANTHROPIC_API_KEYS", "Anthropic (Claude) API key(s), comma-separated"),
-    ("OMNIROUTE_BASE_URL", "OmniRoute base URL (default http://127.0.0.1:20128/v1)"),
-    ("OMNIROUTE_API_KEY", "OmniRoute API key"),
+OMNIROUTE_SETTINGS = [
+    ("OMNIROUTE_BASE_URL", "OmniRoute base URL", "http://127.0.0.1:20128/v1", False),
+    ("OMNIROUTE_API_KEY", "OmniRoute API key", "", True),
+    ("OMNIROUTE_CODING_MODEL", "OmniRoute coding model", "agy/claude-sonnet-4-6-high", False),
+    ("OMNIROUTE_GENERAL_MODEL", "OmniRoute general reasoning model", "agy/gemini-3.7-flash-medium", False),
+    ("OMNIROUTE_VISION_MODEL", "OmniRoute vision model", "agy/gemini-3.7-flash-medium", False),
+    ("OMNIROUTE_FALLBACK_MODEL", "OmniRoute Groq-quota fallback model", "agy/gemini-3.7-flash-low", False),
 ]
 
 OPTIONAL_KEYS = [
@@ -303,18 +305,22 @@ def step_keys(env):
     elif not current:
         warn("No Groq key set - JARVIS will not be available.")
 
-    info("Gemini, Anthropic and OmniRoute are also required for full JARVIS.")
-    for var, label in REQUIRED_KEYS:
-        secret = var.endswith("KEY") or var.endswith("KEYS")
-        have = env.get(var)
+    info("OmniRoute supplies the specialist, vision and Groq-quota fallback models.")
+    # Remove obsolete direct-provider credentials from the active .env file.
+    for obsolete in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "ANTHROPIC_API_KEYS", "ANTHROPIC_API_KEY"):
+        env.unset(obsolete)
+    for var, label, default, secret in OMNIROUTE_SETTINGS:
+        have = env.get(var, default)
         shown = f" (currently {mask(have) if secret else have})" if have else ""
         value = ask(f"{label}{shown} - Enter to keep current", secret=secret)
         if value:
             env.set(var, value)
-            env.save()
-        elif not have and var != "OMNIROUTE_BASE_URL":
-            warn(f"{var} not set - JARVIS will not work fully without it.")
-    ok("Provider keys saved.")
+        elif not env.get(var) and default:
+            env.set(var, default)
+        if var == "OMNIROUTE_API_KEY" and not (value or have):
+            warn("OMNIROUTE_API_KEY is not set; OmniRoute-backed roles will be unavailable.")
+    env.save()
+    ok("OmniRoute settings saved.")
 
     if yes_no("Configure optional search keys (Brave, Bing, Veriphone)?", default=False):
         for var, label in OPTIONAL_KEYS:
@@ -919,11 +925,16 @@ def show_status():
 
     groq = split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY"))
     (ok if groq else warn)(f"Groq keys: {len(groq)}")
-    for var in ("GEMINI_API_KEYS", "ANTHROPIC_API_KEYS", "OMNIROUTE_API_KEY"):
-        if env.get(var):
-            ok(f"{var}: {mask(env.get(var))}")
+    for var in ("OMNIROUTE_BASE_URL", "OMNIROUTE_API_KEY",
+                "OMNIROUTE_CODING_MODEL", "OMNIROUTE_GENERAL_MODEL",
+                "OMNIROUTE_VISION_MODEL", "OMNIROUTE_FALLBACK_MODEL"):
+        value = env.get(var)
+        if value:
+            ok(f"{var}: {mask(value) if var.endswith('_KEY') else value}")
+        elif var == "OMNIROUTE_API_KEY":
+            warn(f"{var}: NOT SET (required for OmniRoute roles)")
         else:
-            warn(f"{var}: NOT SET (required)")
+            warn(f"{var}: not set (built-in default will be used)")
 
     accounts = gmail_accounts(env)
     if accounts:
