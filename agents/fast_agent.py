@@ -234,6 +234,8 @@ class FastAgent:
 
         if last is not None and tried and len(waits) == tried and quota_only:
             reset_after = max(waits, default=0.0)
+            if self._groq_circuit_open_until > time.time():
+                self._groq_next_probe_at = time.time() + self.groq_probe_interval
             if reset_after >= self.groq_quota_fallback_after:
                 self._groq_circuit_open_until = time.time() + reset_after
                 self._groq_next_probe_at = time.time() + self.groq_probe_interval
@@ -1769,7 +1771,7 @@ class FastAgent:
             )
 
     # ------------------------------------------------------------------
-    # Google Form filling (Gemini drafts, user confirms, JARVIS submits)
+    # Google Form filling (model drafts, user confirms, JARVIS submits)
     # ------------------------------------------------------------------
     _FORM_KINDS = {
         0: "short_text", 1: "paragraph", 2: "choice", 3: "dropdown",
@@ -1873,14 +1875,10 @@ class FastAgent:
         )
 
         # Form preparation is a single structured-generation task. Prefer the
-        # existing Groq route; do not fan out to every Gemini key when Gemini
-        # is overloaded. The surrounding tool flow already asks Groq to invoke
-        # this tool, so this is one bounded draft request, not one request per
-        # question. Gemini remains available for other routes when appropriate.
+        # Use the shared Groq/OmniRoute route once for the complete form draft.
         if not self.api_keys:
             raise RuntimeError(
-                "Google Form drafting needs a configured Groq API key; "
-                "Gemini was not retried to avoid an overload cascade."
+                "Google Form drafting needs Groq keys or configured OmniRoute credentials."
             )
 
         response = self._groq_post(
@@ -2173,7 +2171,7 @@ class FastAgent:
         """Detect substantial engineering work from the current user message only."""
         raw = str(prompt or "")
         # The conversation wrapper may contain older project requests. Never let
-        # those historical words turn a simple current message into a Gemini plan.
+        # those historical words turn a simple current message into an OmniRoute plan.
         marker = "CURRENT USER MESSAGE:"
         if marker in raw:
             current = raw.split(marker, 1)[1]
@@ -2338,9 +2336,9 @@ class FastAgent:
         attempts = 0
 
         while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index]
+            active_key = self.api_keys[self.current_key_index] if self.api_keys else None
 
-            if not active_key:
+            if self.api_keys and not active_key:
                 self.current_key_index = (self.current_key_index + 1) % total_keys
                 attempts += 1
                 continue
