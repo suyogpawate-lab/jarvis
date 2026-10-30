@@ -435,7 +435,7 @@ class FastAgent:
                     "name": "escalate_to_expert",
                     "description": (
                         "Escalate genuinely complex debugging, engineering, "
-                        "or specialist analysis to OmniRoute or OmniRoute. Groq "
+                        "or specialist analysis to a configured OmniRoute specialist role. Groq "
                         "remains the primary agent and reviews the result."
                     ),
                     "parameters": {
@@ -1670,31 +1670,10 @@ class FastAgent:
             "useful action. Keep the answer concise."
         )
 
-        if provider == "omniroute":
-            return self._omni_request(
-                [
-                    {
-                        "role": "user",
-                        "content": synthesis_prompt,
-                    }
-                ],
-                system_prompt=self._jarvis_system_prompt(),
-                max_tokens=512,
-                temperature=0.1,
-                timeout=30,
-            )
-
         return self._omni_request(
-            [
-                {
-                    "role": "user",
-                    "content": synthesis_prompt,
-                }
-            ],
+            [{"role": "user", "content": synthesis_prompt}],
             system_prompt=self._jarvis_system_prompt(),
-            max_tokens=512,
-            temperature=0.1,
-            timeout=30,
+            max_tokens=512, temperature=0.1, timeout=30, role=provider,
         )
 
     def _route_shell_request(self, prompt):
@@ -1702,7 +1681,7 @@ class FastAgent:
         Main shell reasoning router.
 
         SIMPLE  -> existing Groq ask() path
-        COMPLEX -> exactly one of OmniRoute/OmniRoute
+        COMPLEX -> one configured OmniRoute specialist role
         """
 
         if not self._is_shell_reasoning_request(prompt):
@@ -2285,7 +2264,7 @@ class FastAgent:
 
         # RAG questions go straight to OmniRoute; fall back to Groq if it fails.
         if self._is_rag_request(prompt):
-            print("[JARVIS ROUTER] RAG -> GEMINI")
+            print("[JARVIS ROUTER] RAG -> OmniRoute")
             try:
                 return self._omni_rag_fallback(prompt)
             except Exception as exc:
