@@ -373,8 +373,8 @@ class TTSManager:
             "playback_seconds": round(time.monotonic() - playback_started, 3)
                 if playback_started is not None else 0.0,
         }
-        if provider == "phonon":
-            print(f"[TTS PIPELINE] {self.last_pipeline_metrics}", flush=True)
+        # Keep metrics available through status/diagnostics without writing
+        # a per-response pipeline dump into the interactive CLI.
         if interrupted or self._gen != gen:
             return True
         if errors:

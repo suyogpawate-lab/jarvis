@@ -1,5 +1,6 @@
 """Regression tests for local code inspection and bounded Groq retries."""
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from automation.command_dispatcher import CommandDispatcher
@@ -93,6 +94,45 @@ class GroqRetryTests(unittest.TestCase):
         self.assertEqual(result.status_code, 429)
         self.assertEqual(post.call_count, 1)
         sleep.assert_not_called()
+
+
+
+
+class OmniRouteSpecialistTests(unittest.TestCase):
+    def test_specialist_provider_is_always_omniroute(self):
+        agent = object.__new__(FastAgent)
+        self.assertEqual(agent._select_complex_provider("debug this project"), "omniroute")
+
+    def test_omniroute_post_uses_shared_gateway_and_expert_model(self):
+        agent = object.__new__(FastAgent)
+        agent.omniroute_base_url = "http://127.0.0.1:20128/v1"
+        agent.omniroute_api_key = "test-token"
+        agent.omniroute_model = "auto/best-reasoning"
+        response = Mock()
+        payload = {"model": "old-provider-model", "messages": [{"role": "user", "content": "test"}]}
+
+        with patch("agents.fast_agent.requests.post", return_value=response) as post:
+            result = agent._omniroute_post(payload, timeout=17)
+
+        self.assertIs(result, response)
+        args, kwargs = post.call_args
+        self.assertEqual(args[0], "http://127.0.0.1:20128/v1/chat/completions")
+        self.assertEqual(kwargs["json"]["model"], "auto/best-reasoning")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
+        self.assertEqual(kwargs["timeout"], 17)
+        self.assertEqual(payload["model"], "old-provider-model")
+
+    def test_direct_gemini_and_anthropic_endpoints_are_removed(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "agents" / "fast_agent.py"
+        ).read_text(encoding="utf-8")
+        for legacy in (
+            "generativelanguage.googleapis.com",
+            "api.anthropic.com",
+            "GEMINI_API_KEY",
+            "ANTHROPIC_API_KEY",
+        ):
+            self.assertNotIn(legacy, source)
 
 
 if __name__ == "__main__":

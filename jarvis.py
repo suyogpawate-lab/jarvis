@@ -7,7 +7,10 @@ from pathlib import Path
 
 import readline
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style
 """
 JARVIS CLI
 
@@ -1274,8 +1277,62 @@ def is_float_mode():
     return os.environ.get("JARVIS_FLOAT_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-_cli_prompt_session = PromptSession()
+# Tab completion is intentionally limited to real JARVIS commands.
+# History stays in memory so credentials or private commands are not written
+# to a persistent history file on shared/mobile storage.
+_CLI_COMMANDS = [
+    "/memory", "/discuss", "/task", "/agent", "/health", "/doctor",
+    "/skills", "/skill", "wa-reply", "exit", "quit",
+]
+_CLI_COMPLETER = WordCompleter(_CLI_COMMANDS, ignore_case=True, sentence=True)
+
+
+def _cli_toolbar():
+    """Compact neutral toolbar shared by Termux and Termux:Float."""
+    if is_float_mode():
+        return " TAB commands  ·  ↑↓ history  ·  Ctrl+C exit "
+    return " TAB complete  ·  ↑↓ history  ·  Ctrl+C exit "
+
+
+_CLI_STYLE = Style.from_dict({
+    "prompt": "#d4d4d4 bold",
+    "prompt.float": "#a3a3a3 bold",
+    "bottom-toolbar": "#a3a3a3 bg:#262626",
+    "completion-menu": "bg:#262626 #d4d4d4",
+    "completion-menu.completion": "bg:#262626 #d4d4d4",
+    "completion-menu.completion.current": "bg:#525252 #ffffff bold",
+    "scrollbar.background": "bg:#262626",
+    "scrollbar.button": "bg:#737373",
+})
+_cli_prompt_session = PromptSession(
+    style=_CLI_STYLE,
+    history=InMemoryHistory(),
+    completer=_CLI_COMPLETER,
+    complete_while_typing=True,
+    bottom_toolbar=_cli_toolbar,
+)
 _cli_pending_text = ""
+
+
+def _mono(text, shade=250, bold=False):
+    """Render neutral grayscale ANSI text when attached to a color-capable TTY."""
+    text = str(text)
+    try:
+        enabled = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+    except Exception:
+        enabled = False
+    if not enabled:
+        return text
+    weight = "1;" if bold else ""
+    return f"\033[{weight}38;5;{int(shade)}m{text}\033[0m"
+
+
+def _cli_print(label, message="", shade=255):
+    """Consistent monochrome message treatment for Termux and Termux:Float."""
+    print(
+        f"{_mono(label, 244, True)} {_mono(message, shade)}",
+        flush=True,
+    )
 
 
 def _service_cli_background_events():
@@ -1286,7 +1343,8 @@ def _service_cli_background_events():
         summary = pop_notification()
         if summary is None:
             break
-        print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+        _cli_print("\nNOTIFICATION >", summary, 250)
+        print()
         _web_notify(summary)
 
 
@@ -1295,7 +1353,9 @@ async def _read_prompt_async():
     with patch_stdout():
         prompt_task = asyncio.create_task(
             _cli_prompt_session.prompt_async(
-                "J> " if is_float_mode() else "YOU  > ",
+                [("class:prompt.float", "J> ")]
+                if is_float_mode()
+                else [("class:prompt", "YOU  > ")],
                 default=_cli_pending_text,
             )
         )
@@ -1321,7 +1381,8 @@ async def _read_prompt_async():
                         await prompt_task
                     except asyncio.CancelledError:
                         pass
-                    print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
+                    _cli_print("\nYOU (VOICE) >", command.strip(), 250)
+                    print()
                     return command.strip(), "voice"
 
                 await asyncio.sleep(0.08)
@@ -1374,20 +1435,19 @@ def main():
     if is_float_mode():
         # Termux:Float is a small terminal surface; keep the CLI compact and
         # avoid starting the separate Rich full-screen UI/web companion.
-        print("JARVIS FLOAT ONLINE")
-        print("Commands: /memory | exit")
+        _cli_print("JARVIS / FLOAT", "ONLINE", 255)
+        _cli_print("COMMANDS", "/memory  ·  exit", 244)
     else:
         try:
             import jarvis_ui, jarvis_web
             url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
             if url:
-                print(f"Web UI: {url}")
+                _cli_print("WEB UI", url, 244)
         except Exception as exc:
             print(f"[WEB UI DISABLED] {exc}")
 
-        print("JARVIS ONLINE")
-        print("Type '/memory' to inspect memory.")
-        print("Type 'exit' to quit.")
+        _cli_print("JARVIS", "ONLINE", 255)
+        _cli_print("COMMANDS", "/memory  ·  exit", 244)
     print()
 
     while True:
@@ -1401,7 +1461,8 @@ def main():
                 if summary is None:
                     break
 
-                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                _cli_print("\nNOTIFICATION >", summary, 250)
+                print()
                 _web_notify(summary)
 
             prompt, prompt_source = read_prompt()
@@ -1411,7 +1472,7 @@ def main():
 
             if prompt.lower() in {"exit", "quit"}:
                 shutdown()
-                print("JARVIS OFFLINE")
+                _cli_print("JARVIS", "OFFLINE", 244)
                 break
 
             # Explicit YES/NO controls apply only while a group message is pending.
@@ -1420,14 +1481,16 @@ def main():
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"yes", "y", "confirm"}
             ):
-                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
+                _cli_print("JARVIS >", whatsapp_autoreply.confirm_latest_group_reply(True), 255)
+                print()
                 continue
             if (
                 whatsapp_autoreply is not None
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"no", "n", "cancel"}
             ):
-                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
+                _cli_print("JARVIS >", whatsapp_autoreply.confirm_latest_group_reply(False), 255)
+                print()
                 continue
 
             review_match = re.fullmatch(
@@ -1443,9 +1506,11 @@ def main():
                         result = whatsapp_autoreply.resolve_reply_review(
                             review_match.group(1), review_match.group(2)
                         )
-                        print(f"JARVIS > {result}\n")
+                        _cli_print("JARVIS >", result, 255)
+                        print()
                     except Exception as exc:
-                        print(f"JARVIS > Could not process reply decision: {exc}\n")
+                        _cli_print("JARVIS >", f"Could not process reply decision: {exc}", 250)
+                        print()
                 continue
 
             if prompt.lower() in MEMORY_VIEW_COMMANDS:
@@ -1460,11 +1525,10 @@ def main():
             print()
 
             if parse_discuss_command(prompt):
-                print("--- SYNTHESIS ---")
-                print()
-                print(f"JARVIS >> {answer}")
+                _cli_print("SYNTHESIS", "", 244)
+                _cli_print("JARVIS >>", answer, 255)
             else:
-                print(f"JARVIS > {answer}")
+                _cli_print("JARVIS >", answer, 255)
 
             print()
 
@@ -1473,12 +1537,12 @@ def main():
 
         except KeyboardInterrupt:
             shutdown()
-            print("\nJARVIS OFFLINE")
+            _cli_print("\nJARVIS", "OFFLINE", 244)
             break
 
         except EOFError:
             shutdown()
-            print("\nJARVIS OFFLINE")
+            _cli_print("\nJARVIS", "OFFLINE", 244)
             break
 
         except Exception as exc:
