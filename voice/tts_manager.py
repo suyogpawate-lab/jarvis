@@ -100,6 +100,8 @@ class TTSManager:
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         elif provider == "phonon":
+            # Phonon uses sentence-sized WAV chunks: synthesize the next chunk
+            # in the producer thread while the current chunk plays.
             result = self._play_pipeline(provider, text, speed, gen)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
