@@ -180,10 +180,12 @@ class FastAgent:
         if wait is None:
             wait = self._parse_duration(response.headers.get("x-ratelimit-reset-tokens"))
         if wait is None:
+            wait = self._parse_duration(response.headers.get("x-ratelimit-reset-requests"))
+        if wait is None:
             match = re.search(r"try again in ([0-9hms.\s]+)", message)
             wait = self._parse_duration(match.group(1)) if match else None
         if wait is None:
-            wait = 10.0
+            wait = 86400.0 if kind == "daily limit" else 10.0
         return wait, kind
 
     def _groq_post(self, payload, timeout=30):
