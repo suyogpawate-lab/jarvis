@@ -3037,8 +3037,8 @@ class FastAgent:
                 compact = str(
                     response.json()["choices"][0]["message"].get("content") or ""
                 ).strip()
-                compact_list = bool(re.search(r"(?m)^\\s*(?:[-*•]|\\d+[.)])\\s+", compact))
-                compact_heading = bool(re.search(r"(?m)^\\s*#{1,6}\\s+", compact))
+                compact_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", compact))
+                compact_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", compact))
                 if compact and len(compact.split()) <= 99 and not compact_list and not compact_heading:
                     return compact
         except Exception as exc:
