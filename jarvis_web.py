@@ -14,11 +14,65 @@ HOME = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(HOME, "web", "index.html")
 _srv = {"url": None, "ui": None, "token": secrets.token_urlsafe(24), "headless": False}
 
+# ── chat history (shown in the web UI's chat panel; persisted so a page reload keeps it) ──
+HIST_FILE = os.path.join(HOME, "data", "web_chat.json")
+HIST_MAX = 300
+_hist = {"msgs": [], "n": 0, "lock": threading.Lock(), "watch": False}
+
+
+def _hist_load():
+    try:
+        with open(HIST_FILE, encoding="utf-8") as f:
+            m = json.load(f)
+        if isinstance(m, list):
+            _hist["msgs"] = [x for x in m if isinstance(x, dict) and x.get("role") in ("user", "assistant")][-HIST_MAX:]
+            _hist["n"] = max([x.get("id", 0) for x in _hist["msgs"]] + [0])
+    except Exception:
+        pass
+
+
+def _hist_add(role, text):
+    text = str(text or "").strip()
+    if not text:
+        return
+    with _hist["lock"]:
+        _hist["n"] += 1
+        _hist["msgs"].append({"id": _hist["n"], "role": role, "text": text, "t": time.time()})
+        del _hist["msgs"][:-HIST_MAX]
+        try:
+            os.makedirs(os.path.dirname(HIST_FILE), exist_ok=True)
+            with open(HIST_FILE, "w", encoding="utf-8") as f:
+                json.dump(_hist["msgs"], f, ensure_ascii=False)
+        except OSError:
+            pass
+
+
+def _hist_clear():
+    with _hist["lock"]:
+        _hist["msgs"].clear()
+        _hist["n"] += 1
+        try:
+            os.remove(HIST_FILE)
+        except OSError:
+            pass
+
+
+def _watch_replies(ui):
+    """Record every new JARVIS reply (typed, voice or notification) into the chat history."""
+    last = ui.S.get("reply_t")
+    while True:
+        time.sleep(0.15)
+        rt = ui.S.get("reply_t")
+        if rt != last:
+            last = rt
+            if ui.S.get("reply"):
+                _hist_add("assistant", ui.S["reply"])
+
 
 def _snap(ui):
     S = ui.S
     return {"state": S["state"], "busy": bool(S["busy"] and S.get("thinking")), "reply": S["reply"],
-            "reply_t": S["reply_t"], "theme": ui.TH_NAME, "pending": ui.pending_items()}
+            "reply_t": S["reply_t"], "theme": ui.TH_NAME, "pending": ui.pending_items(), "hn": _hist["n"]}
 
 
 class H(BaseHTTPRequestHandler):
@@ -59,6 +113,9 @@ class H(BaseHTTPRequestHandler):
                         .replace("__THEMES__", json.dumps(ui.THEMES))
                         .replace("__ORDER__", json.dumps(ui.THEME_ORDER)))
             return self._send(200, html, "text/html")
+        if self.path == "/api/history":
+            with _hist["lock"]:
+                return self._send(200, json.dumps({"msgs": list(_hist["msgs"]), "n": _hist["n"]}))
         if self.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -92,7 +149,14 @@ class H(BaseHTTPRequestHandler):
         except Exception:
             return self._send(400, '{"error":"bad json"}')
         if self.path == "/api/chat":
-            return self._send(200, json.dumps({"result": ui.web_submit(str(data.get("text", "")))}))
+            text = str(data.get("text", ""))
+            res = ui.web_submit(text)
+            if res == "ok" and not text.strip().startswith("/"):
+                _hist_add("user", text)
+            return self._send(200, json.dumps({"result": res}))
+        if self.path == "/api/clear":
+            _hist_clear()
+            return self._send(200, '{"ok":true}')
         if self.path == "/api/theme":
             return self._send(200, json.dumps({"ok": bool(ui.set_theme(str(data.get("name", ""))))}))
         if self.path == "/api/decide":
@@ -116,6 +180,10 @@ def start(ui, brain=None):
     if brain is not None and getattr(ui, "BRAIN", None) is None:
         ui.BRAIN, _srv["headless"] = brain, True
     _srv["ui"] = ui
+    if not _hist["watch"]:
+        _hist["watch"] = True
+        _hist_load()
+        threading.Thread(target=_watch_replies, args=(ui,), daemon=True).start()
     base = int(os.environ.get("JARVIS_WEB_PORT", "8765"))
     for port in range(base, base + 10):
         try:
