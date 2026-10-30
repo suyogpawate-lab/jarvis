@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compatibility entry point for the JARVIS first-run setup script.
 
-The canonical guided setup is kept in the extensionless setup file so it can
+The canonical Groq + OmniRoute guided setup is kept in the extensionless setup file so it can
 also be launched directly. This wrapper preserves the documented command:
     python setup.py [keys|gmail|whatsapp|contacts|apps|voice|wake|message_style]
 """
