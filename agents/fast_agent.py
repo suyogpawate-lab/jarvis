@@ -188,7 +188,7 @@ class FastAgent:
             wait = 86400.0 if kind == "daily limit" else 10.0
         return wait, kind
 
-    def _groq_post(self, payload, timeout=30):
+    def _groq_post(self, payload, timeout=30, fallback_role="fallback"):
         """Groq primary; OmniRoute takes over only after sustained quota exhaustion."""
         now = time.time()
         circuit_until = getattr(self, "_groq_circuit_open_until", 0.0)
@@ -197,7 +197,7 @@ class FastAgent:
         fallback_after = getattr(self, "groq_quota_fallback_after", 300.0)
         if circuit_until > now and now < next_probe:
             print("[JARVIS ROUTER] Groq quota circuit open -> OmniRoute", flush=True)
-            return self._omni_post(payload, role="fallback", timeout=timeout)
+            return self._omni_post(payload, role=fallback_role, timeout=timeout)
         if not self.api_keys:
             return self._omni_post(payload, role="fallback", timeout=timeout)
 
