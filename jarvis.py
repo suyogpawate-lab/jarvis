@@ -7,6 +7,8 @@ from pathlib import Path
 
 import readline
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 """
@@ -1275,11 +1277,40 @@ def is_float_mode():
     return os.environ.get("JARVIS_FLOAT_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+# Tab completion is intentionally limited to real JARVIS commands.
+# History stays in memory so credentials or private commands are not written
+# to a persistent history file on shared/mobile storage.
+_CLI_COMMANDS = [
+    "/memory", "/discuss", "/task", "/agent", "/health", "/doctor",
+    "/skills", "/skill", "wa-reply", "exit", "quit",
+]
+_CLI_COMPLETER = WordCompleter(_CLI_COMMANDS, ignore_case=True, sentence=True)
+
+
+def _cli_toolbar():
+    """Compact neutral toolbar shared by Termux and Termux:Float."""
+    if is_float_mode():
+        return " TAB commands  ·  ↑↓ history  ·  Ctrl+C exit "
+    return " TAB complete  ·  ↑↓ history  ·  Ctrl+C exit "
+
+
 _CLI_STYLE = Style.from_dict({
     "prompt": "#d4d4d4 bold",
     "prompt.float": "#a3a3a3 bold",
+    "bottom-toolbar": "#a3a3a3 bg:#262626",
+    "completion-menu": "bg:#262626 #d4d4d4",
+    "completion-menu.completion": "bg:#262626 #d4d4d4",
+    "completion-menu.completion.current": "bg:#525252 #ffffff bold",
+    "scrollbar.background": "bg:#262626",
+    "scrollbar.button": "bg:#737373",
 })
-_cli_prompt_session = PromptSession(style=_CLI_STYLE)
+_cli_prompt_session = PromptSession(
+    style=_CLI_STYLE,
+    history=InMemoryHistory(),
+    completer=_CLI_COMPLETER,
+    complete_while_typing=True,
+    bottom_toolbar=_cli_toolbar,
+)
 _cli_pending_text = ""
 
 
