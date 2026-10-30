@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import wave
 from pathlib import Path
 
 from voice.tts import speak as edge_speak, interrupt as edge_interrupt
@@ -43,6 +44,7 @@ class TTSManager:
         self.last_spoken_text = ""
         self.last_started = 0.0
         self.last_finished = 0.0
+        self.last_pipeline_metrics = {}
         self._active_lock = threading.Lock()
         self._active_playback = False
         self._thread = threading.Thread(target=self._queue_worker, daemon=True, name="JarvisTTS")
@@ -177,9 +179,7 @@ class TTSManager:
                 return True
             except queue.Full:
                 pass
-        return False
-
-    def _play_pipeline(self, provider, text, speed, gen):
+        re    def _play_pipeline(self, provider, text, speed, gen):
         if provider == "phonon":
             # Target 15 words, then round up to sentence-ending punctuation.
             # Commas never trigger a chunk boundary.
@@ -195,7 +195,6 @@ class TTSManager:
                     continue
                 pending.append(part)
                 word_count += len(part.split())
-
                 if word_count >= 15:
                     sentences.append(" ".join(pending))
                     pending = []
@@ -207,55 +206,181 @@ class TTSManager:
                     sentences[-1] += " " + remainder
                 else:
                     sentences.append(remainder)
-
             if not sentences:
                 sentences = [text.strip()] if text.strip() else []
         else:
             sentences = chunk_text(text, target_words=22, threshold_words=60)
+
         q = queue.Queue(maxsize=2)
         errors = []
-        prebuffer_ready = threading.Event()
+        first_ready = threading.Event()
+        pipeline_started = time.monotonic()
 
         def producer():
             try:
-                for s in sentences:
+                for sentence in sentences:
                     if self._gen != gen:
                         break
-                    path = self._synth(provider, s, speed)
+                    path = self._synth(provider, sentence, speed)
                     if not self._put(q, path, gen):
                         Path(path).unlink(missing_ok=True)
                         break
-                    # Begin playback as soon as the first chunk is ready.
-                    # The producer continues synthesizing ahead during playback.
-                    prebuffer_ready.set()
+                    first_ready.set()
             except Exception as exc:
                 errors.append(exc)
             finally:
-                prebuffer_ready.set()
+                first_ready.set()
                 self._put(q, None, gen)
 
         threading.Thread(target=producer, daemon=True, name="TTSSynth").start()
-        prebuffer_ready.wait()
-        while True:
-            try:
-                path = q.get(timeout=0.2)
-            except queue.Empty:
-                if self._gen != gen:
-                    return True
-                continue
-            if path is None:
-                break
-            try:
-                if self._gen == gen:
-                    proc = subprocess.Popen(["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(path)],
-                                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    self._proc = proc
+        first_ready.wait()
+
+        proc = None
+        audio_format = None
+        chunk_count = 0
+        starvation_seconds = 0.0
+        starvation_events = 0
+        first_chunk_seconds = 0.0
+        playback_started = None
+        interrupted = False
+
+        try:
+            while True:
+                wait_started = time.monotonic()
+                try:
+                    path = q.get(timeout=0.2)
+                except queue.Empty:
+                    waited = time.monotonic() - wait_started
+                    if proc is not None and self._gen == gen:
+                        starvation_seconds += waited
+                        starvation_events += 1
+                    if self._gen != gen:
+                        interrupted = True
+                        break
+                    continue
+
+                if path is None:
+                    break
+
+                try:
+                    if self._gen != gen:
+                        interrupted = True
+                        break
+
+                    import wave
+                    with wave.open(str(path), "rb") as wav:
+                        if wav.getcomptype() != "NONE":
+                            raise RuntimeError(
+                                f"{provider} returned unsupported WAV compression: {wav.getcomptype()}"
+                            )
+                        params = (
+                            wav.getnchannels(),
+                            wav.getsampwidth(),
+                            wav.getframerate(),
+                        )
+                        if audio_format is None:
+                            channels, sample_width, sample_rate = params
+                            formats = {
+                                1: "u8",
+                                2: "s16le",
+                                3: "s24le",
+                                4: "s32le",
+                            }
+                            if sample_width not in formats:
+                                raise RuntimeError(
+                                    f"Unsupported PCM sample width: {sample_width} bytes"
+                                )
+                            audio_format = params
+                            proc = subprocess.Popen(
+                                [
+                                    "mpv", "--no-video", "--no-terminal", "--really-quiet",
+                                    "--demuxer=rawaudio",
+                                    f"--demuxer-rawaudio-format={formats[sample_width]}",
+                                    f"--demuxer-rawaudio-rate={sample_rate}",
+                                    f"--demuxer-rawaudio-channels={channels}",
+                                    "-",
+                                ],
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                bufsize=0,
+                            )
+                            self._proc = proc
+                            first_chunk_seconds = time.monotonic() - pipeline_started
+                            playback_started = time.monotonic()
+                        elif params != audio_format:
+                            raise RuntimeError(
+                                f"{provider} WAV format changed between chunks: "
+                                f"{audio_format} -> {params}"
+                            )
+
+                        while self._gen == gen:
+                            frames = wav.readframes(8192)
+                            if not frames:
+                                break
+                            try:
+                                proc.stdin.write(frames)
+                            except (BrokenPipeError, OSError):
+                                if self._gen == gen:
+                                    raise RuntimeError("mpv closed its audio input unexpectedly")
+                                interrupted = True
+                                break
+
+                    chunk_count += 1
+                finally:
+                    Path(path).unlink(missing_ok=True)
+                    q.task_done()
+
+                if interrupted:
+                    break
+
+            if proc is not None and proc.stdin and not proc.stdin.closed:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+            if proc is not None and not interrupted and self._gen == gen:
+                return_code = proc.wait()
+                if return_code:
+                    raise RuntimeError(f"mpv exited with status {return_code}")
+            elif proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
                     proc.wait()
-            finally:
-                Path(path).unlink(missing_ok=True)
+        finally:
+            if proc is not None:
+                if proc.stdin and not proc.stdin.closed:
+                    try:
+                        proc.stdin.close()
+                    except OSError:
+                        pass
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                if self._proc is proc:
+                    self._proc = None
+
+        self.last_pipeline_metrics = {
+            "chunks": chunk_count,
+            "first_chunk_seconds": round(first_chunk_seconds, 3),
+            "queue_starvation_seconds": round(starvation_seconds, 3),
+            "queue_starvation_events": starvation_events,
+            "playback_seconds": round(time.monotonic() - playback_started, 3)
+                if playback_started is not None else 0.0,
+        }
+        if interrupted or self._gen != gen:
+            return True
         if errors:
             raise errors[0]
         return True
+return True
 
     def speak(self, text, speed=1.0):
         if text is None:
@@ -362,6 +487,7 @@ class TTSManager:
             "last_started": self.last_started,
             "last_finished": self.last_finished,
             "queue_pending": self.queue.qsize(),
+            "pipeline_metrics": dict(self.last_pipeline_metrics),
             "fish_available": False,
             "sherpa_available": provider in ("sherpa", "say"),
             "android_tts_available": False,
