@@ -14,6 +14,9 @@ class OmniRouteAgent(OpenAICompatibleAgent):
             ),
             model=os.getenv(
                 "OMNIROUTE_MODEL",
-                "auto",
+                os.getenv(
+                    "OMNIROUTE_GENERAL_MODEL",
+                    "cfp/deepseek-ai/deepseek-v4-pro-0813",
+                ),
             ),
         )
