@@ -1,9 +1,9 @@
-"""Turn any reply into speakable prose: no lists/markdown, max 120 words."""
+"""Turn any reply into speakable prose: no lists/markdown, max 99 words."""
 import re
 from voice.tts import strip_markdown
 from voice.text_chunking import sentence_list
 
-MAX_WORDS = 120
+MAX_WORDS = 99
 
 
 def to_speakable(text, max_words=MAX_WORDS):
