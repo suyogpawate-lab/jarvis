@@ -207,10 +207,10 @@ else
     ) || warn "WhatsApp packages failed to install. Retry: cd whatsapp && npm install"
 fi
 
-# ───────────────────────── OmniRoute (optional model router) ─────────────────────────
+# ───────────────────────── OmniRoute (specialist, vision and quota fallback router) ─────────────────────────
 info "Setting up OmniRoute..."
 if command -v omniroute >/dev/null 2>&1; then
-    ok "OmniRoute already installed."
+    ok "OmniRoute already installed for specialist and quota-fallback routing."
 else
     npm install -g omniroute || warn "OmniRoute install failed; JARVIS still works with Groq keys."
 fi
