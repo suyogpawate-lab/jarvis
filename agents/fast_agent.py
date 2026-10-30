@@ -17,34 +17,20 @@ class FastAgent:
         self.api_keys = [k.strip() for k in raw_groq_keys.replace("\n", ",").split(",") if k.strip()]
         self.current_key_index = 0
 
-        # Provider-local API-key fallback chains.
-        # Keys are supplied through environment variables.
-        self.gemini_api_keys = self._load_provider_keys(
-            "GEMINI_API_KEYS",
-            "GEMINI_API_KEY",
-        )
-        self.claude_api_keys = self._load_provider_keys(
-            "ANTHROPIC_API_KEYS",
-            "ANTHROPIC_API_KEY",
-        )
+        # Groq is primary; OmniRoute provides specialist models and quota fallback.
+        self.omni_base_url = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1").rstrip("/")
+        self.omni_api_key = os.getenv("OMNIROUTE_API_KEY", "").strip()
+        self.omni_models = {
+            "general": os.getenv("OMNIROUTE_GENERAL_MODEL", "cfp/deepseek-ai/deepseek-v4-pro-0813"),
+            "coding": os.getenv("OMNIROUTE_CODING_MODEL", "dva/claude-sonnet-4-6-thinking-high"),
+            "vision": os.getenv("OMNIROUTE_VISION_MODEL", "gemini/gemini-3.7-flash"),
+            "fallback": os.getenv("OMNIROUTE_FALLBACK_MODEL", "cfp/openai/gpt-oss-120b"),
+        }
+        self.groq_quota_fallback_after = max(60.0, float(os.getenv("JARVIS_GROQ_OMNIROUTE_FALLBACK_AFTER", "300")))
+        self.groq_probe_interval = max(60.0, float(os.getenv("JARVIS_GROQ_PROBE_INTERVAL", "900")))
+        self._groq_circuit_open_until = 0.0
+        self._groq_next_probe_at = 0.0
 
-        self.gemini_key_index = 0
-        self.claude_key_index = 0
-
-        self.gemini_base_url = (
-            "https://generativelanguage.googleapis.com/v1beta/openai"
-        )
-        self.claude_base_url = "https://api.anthropic.com"
-
-        self.gemini_model = os.getenv(
-            "GEMINI_MODEL",
-            "gemini-3.6-flash",
-        )
-
-        self.claude_model = os.getenv(
-            "CLAUDE_MODEL",
-            "claude-opus-5-5",
-        )
         # FIX: Swapped to the correct official API subdomain
         self.base_url = "https://api.groq.com/openai/v1"
         self.model = os.getenv(
