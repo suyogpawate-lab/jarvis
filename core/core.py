@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 
 from monitoring import alerts
@@ -57,8 +58,8 @@ class Jarvis:
         answer = str(answer or "").strip()
         if not answer:
             return answer
-        is_list = bool(re.search(r"(?m)^\\s*(?:[-*•]|\\d+[.)])\\s+", answer))
-        is_heading = bool(re.search(r"(?m)^\\s*#{1,6}\\s+", answer))
+        is_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer))
+        is_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", answer))
         if len(answer.split()) <= 99 and not is_list and not is_heading:
             return answer
 
@@ -97,8 +98,8 @@ class Jarvis:
             response.raise_for_status()
             data = response.json()
             compact = str(data["choices"][0]["message"].get("content") or "").strip()
-            compact_list = bool(re.search(r"(?m)^\\s*(?:[-*•]|\\d+[.)])\\s+", compact))
-            compact_heading = bool(re.search(r"(?m)^\\s*#{1,6}\\s+", compact))
+            compact_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", compact))
+            compact_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", compact))
             if compact and len(compact.split()) <= 99 and not compact_list and not compact_heading:
                 return compact
         except Exception as exc:
