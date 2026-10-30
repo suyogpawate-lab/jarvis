@@ -186,17 +186,30 @@ class TTSManager:
         # synthesizes ahead into a two-item queue while mpv plays one stream.
         sentences = phonon_chunk_text(text)
 
-        q = queue.Queue(maxsize=2)  # current chunk + one ready-ahead chunk
+        q = queue.Queue(maxsize=2)  # two ready-ahead chunks while one chunk plays
         errors = []
         first_ready = threading.Event()
         pipeline_started = time.monotonic()
+        synth_metrics = {"seconds": 0.0, "audio_seconds": 0.0, "chunks": 0}
+        synth_metrics_lock = threading.Lock()
 
         def producer():
             try:
                 for sentence in sentences:
                     if self._gen != gen:
                         break
+                    synth_started = time.monotonic()
                     path = self._synth(provider, sentence, speed)
+                    synth_elapsed = time.monotonic() - synth_started
+                    with wave.open(str(path), "rb") as generated_wav:
+                        audio_seconds = (
+                            generated_wav.getnframes() / generated_wav.getframerate()
+                            if generated_wav.getframerate() else 0.0
+                        )
+                    with synth_metrics_lock:
+                        synth_metrics["seconds"] += synth_elapsed
+                        synth_metrics["audio_seconds"] += audio_seconds
+                        synth_metrics["chunks"] += 1
                     if not self._put(q, path, gen):
                         Path(path).unlink(missing_ok=True)
                         break
@@ -348,6 +361,12 @@ class TTSManager:
 
         self.last_pipeline_metrics = {
             "chunks": chunk_count,
+            "synthesized_chunks": synth_metrics["chunks"],
+            "synthesis_seconds": round(synth_metrics["seconds"], 3),
+            "generated_audio_seconds": round(synth_metrics["audio_seconds"], 3),
+            "synthesis_rtf": round(
+                synth_metrics["audio_seconds"] / synth_metrics["seconds"], 3
+            ) if synth_metrics["seconds"] > 0 else 0.0,
             "first_chunk_seconds": round(first_chunk_seconds, 3),
             "queue_starvation_seconds": round(starvation_seconds, 3),
             "queue_starvation_events": starvation_events,
