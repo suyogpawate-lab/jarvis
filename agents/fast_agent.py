@@ -301,7 +301,7 @@ class FastAgent:
 
         # Preserve the in-flight request and route it through OmniRoute if Groq
         # is rate-limited. This does not restart a tool workflow.
-        if last.status_code == 429:
+        if last.status_code == 429 and getattr(self, "omniroute_base_url", ""):
             try:
                 fallback_response = self._omniroute_post(
                     payload,
