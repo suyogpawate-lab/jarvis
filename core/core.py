@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 
 from monitoring import alerts
@@ -40,7 +41,7 @@ class Jarvis:
     def ask(self, prompt):
         """Ask the model; raise the right alert if the backend is unreachable."""
         try:
-            return self._ask(prompt)
+            return self.compact_response(self._ask(prompt))
         except requests.exceptions.ConnectionError:
             alerts.post("Cannot reach the reasoning backend (OmniRoute).", "urgent", "core", speak=True, dedup=120)
             raise
@@ -51,6 +52,60 @@ class Jarvis:
             code = getattr(getattr(exc, "response", None), "status_code", "?")
             alerts.post(f"The reasoning backend returned HTTP {code}.", "warn", "core", dedup=120)
             raise
+
+    def compact_response(self, answer):
+        """Enforce JARVIS's 99-word, plain-prose response contract."""
+        answer = str(answer or "").strip()
+        if not answer:
+            return answer
+        is_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer))
+        is_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", answer))
+        if len(answer.split()) <= 99 and not is_list and not is_heading:
+            return answer
+
+        # This is a formatting-only request. It receives the completed answer,
+        # never the original task, so no device action can be repeated.
+        try:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Rewrite the supplied answer as one plain-prose paragraph "
+                                "of at most 99 words. Preserve every fact needed for "
+                                "correctness, critical caveats, and uncertainty. Do not add "
+                                "facts. Do not use lists, bullets, numbering, or headings. "
+                                "If accurate compression is impossible, reply exactly: "
+                                "'I cannot fit the complete accurate answer into 99 words. "
+                                "Which part should I focus on?'"
+                            ),
+                        },
+                        {"role": "user", "content": answer},
+                    ],
+                    "stream": False,
+                    "temperature": 0,
+                    "max_tokens": 190,
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+            compact = str(data["choices"][0]["message"].get("content") or "").strip()
+            compact_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", compact))
+            compact_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", compact))
+            if compact and len(compact.split()) <= 99 and not compact_list and not compact_heading:
+                return compact
+        except Exception as exc:
+            print(f"[JARVIS OUTPUT] 99-word compaction failed: {type(exc).__name__}", flush=True)
+
+        return "I cannot fit the complete accurate answer into 99 words. Which part should I focus on?"
 
     def _ask(self, prompt):
         # Ability questions are handled by CommandDispatcher.
@@ -78,7 +133,7 @@ PERSONALITY:
 RESPONSE STYLE:
 - Be concise and precise.
 - Give the answer directly.
-- Maximum 120 words. Never use bullet points, numbered lists, headings or markdown.
+- Maximum 99 words, strictly. Never use bullet points, numbered lists, headings or markdown.
 - Always reply in flowing, speakable sentences, as if talking aloud.
 - Use natural language suitable for text-to-speech.
 - Prefer short, naturally spoken sentences.

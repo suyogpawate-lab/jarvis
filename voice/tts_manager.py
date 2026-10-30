@@ -9,7 +9,7 @@ import wave
 from pathlib import Path
 
 from voice.tts import speak as edge_speak, interrupt as edge_interrupt
-from voice.text_chunking import chunk_text
+from voice.text_chunking import chunk_text, phonon_chunk_text
 from voice.spoken import to_speakable
 
 _ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
@@ -32,7 +32,7 @@ def _provider():
 
 
 class TTSManager:
-    """Edge speaks the whole reply; local engines pipeline sentence by sentence."""
+    """Edge speaks the whole reply; local engines synthesize ahead of playback."""
     def __init__(self):
         self.queue = queue.Queue(maxsize=64)
         self.running = True
@@ -91,7 +91,7 @@ class TTSManager:
         if provider == "say":
             from voice.jarvis_voice_runtime import speak as say_speak
             result = True
-            for s in chunk_text(text, target_words=22, threshold_words=60):  # <=60 words intact; longer replies near 22 words
+            for s in phonon_chunk_text(text):  # first ~50 words, then ~15-word sentence-aligned chunks
                 if self._gen != gen:
                     break
                 say_speak(s)
@@ -102,8 +102,7 @@ class TTSManager:
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         elif provider == "phonon":
-            # Phonon uses sentence-sized WAV chunks: synthesize the next chunk
-            # in the producer thread while the current chunk plays.
+            # The producer synthesizes ahead while one continuous mpv stream plays.
             result = self._play_pipeline(provider, text, speed, gen)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
@@ -182,48 +181,35 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen):
-        if provider == "phonon":
-            # Target 15 words, then round up to sentence-ending punctuation.
-            # Commas never trigger a chunk boundary.
-            from voice.text_chunking import sentence_list
-            parts = sentence_list(text)
-            sentences = []
-            pending = []
-            word_count = 0
+        # Local engines share the same buffered policy: no split up to 50
+        # words, a ~50-word first chunk, then ~15-word chunks. The producer
+        # synthesizes ahead into a two-item queue while mpv plays one stream.
+        sentences = phonon_chunk_text(text)
 
-            for part in parts:
-                part = part.strip()
-                if not part:
-                    continue
-                pending.append(part)
-                word_count += len(part.split())
-                if word_count >= 15:
-                    sentences.append(" ".join(pending))
-                    pending = []
-                    word_count = 0
-
-            if pending:
-                remainder = " ".join(pending)
-                if sentences:
-                    sentences[-1] += " " + remainder
-                else:
-                    sentences.append(remainder)
-            if not sentences:
-                sentences = [text.strip()] if text.strip() else []
-        else:
-            sentences = chunk_text(text, target_words=22, threshold_words=60)
-
-        q = queue.Queue(maxsize=2)
+        q = queue.Queue(maxsize=2)  # two ready-ahead chunks while one chunk plays
         errors = []
         first_ready = threading.Event()
         pipeline_started = time.monotonic()
+        synth_metrics = {"seconds": 0.0, "audio_seconds": 0.0, "chunks": 0}
+        synth_metrics_lock = threading.Lock()
 
         def producer():
             try:
                 for sentence in sentences:
                     if self._gen != gen:
                         break
+                    synth_started = time.monotonic()
                     path = self._synth(provider, sentence, speed)
+                    synth_elapsed = time.monotonic() - synth_started
+                    with wave.open(str(path), "rb") as generated_wav:
+                        audio_seconds = (
+                            generated_wav.getnframes() / generated_wav.getframerate()
+                            if generated_wav.getframerate() else 0.0
+                        )
+                    with synth_metrics_lock:
+                        synth_metrics["seconds"] += synth_elapsed
+                        synth_metrics["audio_seconds"] += audio_seconds
+                        synth_metrics["chunks"] += 1
                     if not self._put(q, path, gen):
                         Path(path).unlink(missing_ok=True)
                         break
@@ -375,6 +361,12 @@ class TTSManager:
 
         self.last_pipeline_metrics = {
             "chunks": chunk_count,
+            "synthesized_chunks": synth_metrics["chunks"],
+            "synthesis_seconds": round(synth_metrics["seconds"], 3),
+            "generated_audio_seconds": round(synth_metrics["audio_seconds"], 3),
+            "synthesis_rtf": round(
+                synth_metrics["audio_seconds"] / synth_metrics["seconds"], 3
+            ) if synth_metrics["seconds"] > 0 else 0.0,
             "first_chunk_seconds": round(first_chunk_seconds, 3),
             "queue_starvation_seconds": round(starvation_seconds, 3),
             "queue_starvation_events": starvation_events,

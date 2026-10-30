@@ -1,8 +1,8 @@
 """Shared chunking policy for JARVIS speech synthesis.
 
-Replies of 60 words or fewer remain a single utterance. Longer replies are
-split into chunks near 22 words, preferring sentence boundaries (.?!).
-Commas are never treated as chunk boundaries.
+Phonon keeps replies of 50 words or fewer intact. Longer replies begin with
+a roughly 50-word lead chunk, then use roughly 15-word chunks. Each chunk
+rounds forward to sentence-ending punctuation (.?!); commas are not boundaries.
 """
 from __future__ import annotations
 
@@ -68,6 +68,48 @@ def _split_long_sentence(sentence: str, target_words: int) -> list[str]:
         words = words[boundary:]
     if words:
         chunks.append(" ".join(words).strip())
+    return chunks
+
+
+
+def phonon_chunk_text(
+    text: str,
+    first_chunk_words: int = 50,
+    subsequent_chunk_words: int = 15,
+) -> list[str]:
+    """Keep <=50 words intact; then chunk at sentence punctuation.
+
+    The first chunk is a larger synthesis lead-in (about 50 words). Later
+    chunks target 15 words. Boundaries always advance to the end of a sentence,
+    never stop at commas, and a final short remainder is retained.
+    """
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return []
+    first_chunk_words = max(1, int(first_chunk_words))
+    subsequent_chunk_words = max(1, int(subsequent_chunk_words))
+    if len(normalized.split()) <= first_chunk_words:
+        return [normalized]
+
+    chunks: list[str] = []
+    pending: list[str] = []
+    pending_words = 0
+    target = first_chunk_words
+
+    for sentence in sentence_list(normalized):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        pending.append(sentence)
+        pending_words += len(sentence.split())
+        if pending_words >= target:
+            chunks.append(" ".join(pending).strip())
+            pending = []
+            pending_words = 0
+            target = subsequent_chunk_words
+
+    if pending:
+        chunks.append(" ".join(pending).strip())
     return chunks
 
 

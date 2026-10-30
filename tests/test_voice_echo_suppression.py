@@ -1,7 +1,12 @@
 import time
 import unittest
 
-from voice.listener import WhistleWakeListener
+try:
+    from voice.listener import WhistleWakeListener
+except ModuleNotFoundError as exc:
+    if exc.name != "numpy":
+        raise
+    WhistleWakeListener = None
 
 
 class FakeTTSManager:
@@ -17,6 +22,7 @@ class FakeTTSManager:
         return self._status
 
 
+@unittest.skipIf(WhistleWakeListener is None, "numpy is an optional native/device dependency")
 class VoiceEchoSuppressionTests(unittest.TestCase):
     def listener(self, spoken):
         listener = WhistleWakeListener.__new__(WhistleWakeListener)
