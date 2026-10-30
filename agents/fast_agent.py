@@ -191,7 +191,11 @@ class FastAgent:
     def _groq_post(self, payload, timeout=30):
         """Groq primary; OmniRoute takes over only after sustained quota exhaustion."""
         now = time.time()
-        if self._groq_circuit_open_until > now and now < self._groq_next_probe_at:
+        circuit_until = getattr(self, "_groq_circuit_open_until", 0.0)
+        next_probe = getattr(self, "_groq_next_probe_at", 0.0)
+        probe_interval = getattr(self, "groq_probe_interval", 900.0)
+        fallback_after = getattr(self, "groq_quota_fallback_after", 300.0)
+        if circuit_until > now and now < next_probe:
             print("[JARVIS ROUTER] Groq quota circuit open -> OmniRoute", flush=True)
             return self._omni_post(payload, role="fallback", timeout=timeout)
         if not self.api_keys:
@@ -234,16 +238,16 @@ class FastAgent:
                 continue
             return response
 
-        if self._groq_circuit_open_until > time.time():
-            self._groq_next_probe_at = time.time() + self.groq_probe_interval
+        if getattr(self, '_groq_circuit_open_until', 0.0) > time.time():
+            self._groq_next_probe_at = time.time() + probe_interval
 
         if last is not None and tried and len(waits) == tried and quota_only:
             reset_after = max(waits, default=0.0)
             if self._groq_circuit_open_until > time.time():
                 self._groq_next_probe_at = time.time() + self.groq_probe_interval
-            if reset_after >= self.groq_quota_fallback_after:
+            if reset_after >= fallback_after:
                 self._groq_circuit_open_until = time.time() + reset_after
-                self._groq_next_probe_at = time.time() + self.groq_probe_interval
+                self._groq_next_probe_at = time.time() + probe_interval
                 print("[JARVIS ROUTER] All Groq keys quota-limited for an extended period -> OmniRoute", flush=True)
                 return self._omni_post(payload, role="fallback", timeout=timeout)
 
