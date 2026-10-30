@@ -1411,7 +1411,7 @@ def main():
             import jarvis_ui, jarvis_web
             url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
             if url:
-                print(f"Web UI: {url}")
+                _cli_print("WEB UI", url, 244)
         except Exception as exc:
             print(f"[WEB UI DISABLED] {exc}")
 
@@ -1506,12 +1506,12 @@ def main():
 
         except KeyboardInterrupt:
             shutdown()
-            print("\nJARVIS OFFLINE")
+            _cli_print("\nJARVIS", "OFFLINE", 244)
             break
 
         except EOFError:
             shutdown()
-            print("\nJARVIS OFFLINE")
+            _cli_print("\nJARVIS", "OFFLINE", 244)
             break
 
         except Exception as exc:
