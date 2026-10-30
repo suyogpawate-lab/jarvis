@@ -3004,8 +3004,8 @@ class FastAgent:
         answer = str(answer or "").strip()
         if not answer:
             return answer
-        is_list = bool(re.search(r"(?m)^\\s*(?:[-*•]|\\d+[.)])\\s+", answer))
-        is_heading = bool(re.search(r"(?m)^\\s*#{1,6}\\s+", answer))
+        is_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer))
+        is_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", answer))
         if len(answer.split()) <= 99 and not is_list and not is_heading:
             return answer
 
