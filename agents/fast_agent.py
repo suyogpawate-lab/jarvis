@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import json
+import time
 from android.shell_executor import ShellExecutor
 from android.android_tools import AndroidTools
 from tools.registry import registry as tool_registry
@@ -186,128 +187,61 @@ class FastAgent:
         return wait, kind
 
     def _groq_post(self, payload, timeout=30):
-        """POST one chat completion to Groq.
+        """Groq primary; OmniRoute takes over only after sustained quota exhaustion."""
+        now = time.time()
+        if self._groq_circuit_open_until > now and now < self._groq_next_probe_at:
+            print("[JARVIS ROUTER] Groq quota circuit open -> OmniRoute", flush=True)
+            return self._omni_post(payload, role="fallback", timeout=timeout)
+        if not self.api_keys:
+            return self._omni_post(payload, role="fallback", timeout=timeout)
 
-        Rotates keys once on 429/401/403/5xx/network errors.
-        A 429 sweep is bounded: all configured keys are tried once, without sleeping.
-        Retries happen per request, so a failure never restarts the whole
-        conversation (which used to re-run tools). Returns the last Response;
-        the caller checks status_code.
-        """
-        total = len(self.api_keys)
-        if total == 0:
-            raise RuntimeError("No Groq API keys configured.")
-
-        last = None
-        # One bounded sweep per model request. If all keys are rate-limited,
-        # return the last 429 immediately instead of sleeping and retrying the
-        # same prompt (which can stall simple commands for 30-60 seconds).
-        for offset in range(total):
-            index = (self.current_key_index + offset) % total
+        last, waits, quota_only, tried = None, [], True, 0
+        for offset in range(len(self.api_keys)):
+            index = (self.current_key_index + offset) % len(self.api_keys)
             key = self.api_keys[index]
             if not key:
+                quota_only = False
                 continue
+            tried += 1
             try:
                 response = requests.post(
                     f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                    timeout=timeout,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json=payload, timeout=timeout,
                 )
             except requests.exceptions.RequestException as exc:
                 print(f" Groq account {index + 1}: network problem ({type(exc).__name__})")
+                quota_only = False
                 continue
-
-            if response.status_code == 200:
-                self.current_key_index = index
-                if os.getenv("JARVIS_DEBUG_TOKENS") == "1":
-                    try:
-                        usage = response.json().get("usage") or {}
-                        messages = payload.get("messages") or []
-                        system_chars = sum(
-                            len(str(m.get("content", "")))
-                            for m in messages if m.get("role") == "system"
-                        )
-                        user_chars = sum(
-                            len(str(m.get("content", "")))
-                            for m in messages if m.get("role") == "user"
-                        )
-                        tool_chars = sum(
-                            len(str(m.get("content", "")))
-                            for m in messages if m.get("role") == "tool"
-                        )
-                        tool_rounds = sum(
-                            1 for m in messages if m.get("role") == "tool"
-                        )
-                        phase = "tool-follow-up" if tool_rounds else "initial/final"
-                        print(
-                            "[TOKEN AUDIT] "
-                            f"phase={phase} model={payload.get('model', self.model)} "
-                            f"prompt={usage.get('prompt_tokens', '?')} "
-                            f"completion={usage.get('completion_tokens', '?')} "
-                            f"total={usage.get('total_tokens', '?')} "
-                            f"messages={len(messages)} tools={len(payload.get('tools') or [])} "
-                            f"system_chars={system_chars} user_chars={user_chars} "
-                            f"tool_result_chars={tool_chars}",
-                            flush=True,
-                        )
-                    except Exception as audit_exc:
-                        print(f"[TOKEN AUDIT] usage unavailable: {type(audit_exc).__name__}", flush=True)
-                return response
 
             last = response
-            code = response.status_code
-
-            if code == 429:
+            if response.status_code == 200:
+                self.current_key_index = index
+                self._groq_circuit_open_until = 0.0
+                self._groq_next_probe_at = 0.0
+                return response
+            if response.status_code == 429:
                 wait, kind = self._groq_rate_info(response)
+                waits.append(wait)
                 print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
-                # TPM is commonly model/org scoped. Rotating through every key
-                # immediately repeats the same failed request and burns tool rounds.
-                if kind == "tokens per minute":
-                    return response
                 continue
-            if code in (401, 403):
-                print(f" Groq account {index + 1}: key rejected (HTTP {code})")
+
+            quota_only = False
+            if response.status_code in (401, 403) or response.status_code >= 500:
+                print(f" Groq account {index + 1}: HTTP {response.status_code}")
                 continue
-            if code >= 500:
-                print(f" Groq account {index + 1}: server error (HTTP {code})")
-                continue
-            # 400/413/other: the request itself is the problem; more keys won't help.
             return response
+
+        if last is not None and tried and len(waits) == tried and quota_only:
+            reset_after = max(waits, default=0.0)
+            if reset_after >= self.groq_quota_fallback_after:
+                self._groq_circuit_open_until = time.time() + reset_after
+                self._groq_next_probe_at = time.time() + self.groq_probe_interval
+                print("[JARVIS ROUTER] All Groq keys quota-limited for an extended period -> OmniRoute", flush=True)
+                return self._omni_post(payload, role="fallback", timeout=timeout)
 
         if last is None:
             raise RuntimeError("Could not reach Groq with any configured key.")
-
-        # If every Groq key is TPM/RPM-limited, let the already-configured
-        # Gemini provider continue the current tool round. This avoids restarting
-        # a multi-step screen workflow or waiting on a slow OmniRoute fallback.
-        gemini_keys = getattr(self, "gemini_api_keys", [])
-        if last.status_code == 429 and gemini_keys:
-            fallback_payload = dict(payload)
-            fallback_payload["model"] = getattr(self, "gemini_model", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-            gemini_base_url = getattr(self, "gemini_base_url", "https://generativelanguage.googleapis.com/v1beta/openai")
-            for index, key in enumerate(gemini_keys[:2], 1):
-                try:
-                    response = requests.post(
-                        f"{self.gemini_base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {key}",
-                            "Content-Type": "application/json",
-                        },
-                        json=fallback_payload,
-                        timeout=min(timeout, 12),
-                    )
-                    if response.status_code == 200:
-                        print(f" Gemini account {index}: continuing after Groq rate limit.", flush=True)
-                        return response
-                    if response.status_code >= 500:
-                        continue
-                except requests.exceptions.RequestException:
-                    continue
-
         return last
 
     def _groq_limit_message(self, response):
