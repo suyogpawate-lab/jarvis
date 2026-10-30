@@ -10,10 +10,8 @@ from automation.task_executor import TaskExecutor
 from monitoring.health_manager import HealthManager
 
 
-class FakeGemini:
-    gemini_api_keys = ["configured"]
-
-    def _gemini_request(self, messages, **kwargs):
+class FakeOmniRoute:
+    def _omni_request(self, messages, role="general", **kwargs):
         return json.dumps({
             "goal": "test workflow",
             "steps": [
@@ -28,7 +26,7 @@ class AgentEngineTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: calls.append(step) or "[OK] complete", task_dir=directory)
-            engine = AgentEngine(FakeGemini(), executor)
+            engine = AgentEngine(FakeOmniRoute(), executor)
             result = engine.handle("/agent plan test workflow")
             self.assertIn("[AGENT PLAN]", result)
             self.assertEqual(calls, [])
@@ -56,13 +54,14 @@ class AgentEngineTests(unittest.TestCase):
             self.assertIn("COMPLETED", result)
             self.assertEqual(len(calls), 2)
 
-    def test_missing_gemini_is_reported_without_execution(self):
-        class NoGemini:
-            gemini_api_keys = []
+    def test_missing_omniroute_is_reported_without_execution(self):
+        class NoOmniRoute:
+            def _omni_request(self, messages, role="general", **kwargs):
+                raise RuntimeError("OMNIROUTE_API_KEY is not configured")
         with tempfile.TemporaryDirectory() as directory:
             executor = TaskExecutor(lambda step: self.fail("must not dispatch"), task_dir=directory)
-            engine = AgentEngine(NoGemini(), executor)
-            self.assertIn("Gemini is not configured", engine.handle("/agent plan build something"))
+            engine = AgentEngine(NoOmniRoute(), executor)
+            self.assertIn("OMNIROUTE_API_KEY is not configured", engine.handle("/agent plan build something"))
 
     def test_interrupted_running_task_is_paused_for_review(self):
         with tempfile.TemporaryDirectory() as directory:
