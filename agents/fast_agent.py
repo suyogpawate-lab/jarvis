@@ -41,10 +41,10 @@ class FastAgent:
             print(f"[JARVIS TOOLS] extension load failed: {exc}")
 
     def _omni_model(self, role="general"):
-        defaults = {"coding":"agy/omniroute-sonnet-4-6-high",
-                    "general":"agy/omniroute-3.7-flash-medium",
-                    "vision":"agy/omniroute-3.7-flash-medium",
-                    "fallback":"agy/omniroute-3.7-flash-low"}
+        defaults = {"coding":"agy/claude-sonnet-4-6-high",
+                    "general":"agy/gemini-3.7-flash-medium",
+                    "vision":"agy/gemini-3.7-flash-medium",
+                    "fallback":"agy/gemini-3.7-flash-low"}
         envs = {"coding":"OMNIROUTE_CODING_MODEL",
                 "general":"OMNIROUTE_GENERAL_MODEL",
                 "vision":"OMNIROUTE_VISION_MODEL",
@@ -297,87 +297,23 @@ class FastAgent:
         return f"Using {name}"
 
     def classify(self, prompt):
-        """Classify a request for fast JARVIS routing."""
-        total_keys = len(self.api_keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index]
-
-            if not active_key:
-                self.current_key_index = (self.current_key_index + 1) % total_keys
-                attempts += 1
-                continue
-
-            try:
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {active_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are the JARVIS routing classifier. "
-                                    "Return exactly one label: SIMPLE, COMPLEX, or ACTION. "
-                                    "SIMPLE means a short factual or straightforward question. "
-                                    "COMPLEX means reasoning, analysis, research, planning, "
-                                    "or questions requiring substantial explanation. "
-                                    "ACTION means the user wants JARVIS to perform an operation "
-                                    "on the device, apps, files, network, email, WhatsApp, "
-                                    "or another external system."
-                                    "You have full previlages to execute bash/shell in the system"
-                                ),
-                            },
-                            {
-                                "role": "user",
-                                "content": str(prompt),
-                            },
-                        ],
-                        "temperature": 1e-8,  # Groq handles 0 via minimal float mapping
-                        "max_tokens": 300,
-                        "reasoning_effort": "low",
-                        "stream": False,
-                    },
-                    timeout=5,
-                )
-
-                # Fallback to next key if any error code occurs
-                if response.status_code in (413, 429):
-                    # These are request-size/rate-limit errors, not bad-key errors.
-                    try:
-                        detail = response.json().get("error", {}).get("message", "")
-                    except Exception:
-                        detail = response.text[:300]
-                    return f"[GROQ LIMIT] {detail or 'Request exceeded provider limits.'}"
-
-                if response.status_code != 200:
-                    print(f"Groq account {self.current_key_index + 1} failed: HTTP {response.status_code}")
-                    self.current_key_index = (self.current_key_index + 1) % total_keys
-                    attempts += 1
-                    continue
-
-                response.raise_for_status()
-
-                data = response.json()
-                # Correct dictionary parsing chain
-                result = data["choices"][0]["message"]["content"].strip().upper()
-
-                if result not in {"SIMPLE", "COMPLEX", "ACTION"}:
-                    return None
-
-                return result
-
-            except requests.exceptions.RequestException as e:
-                print(f"Connection issue with Groq Account {self.current_key_index + 1}: {e}")
-                self.current_key_index = (self.current_key_index + 1) % total_keys
-                attempts += 1
-
-        raise RuntimeError("All configured GROQ API keys are exhausted or failing.")
+        """Classify with Groq and the shared OmniRoute quota fallback."""
+        response = self._groq_post({
+            "model":self.model,"temperature":1e-8,"max_tokens":300,
+            "reasoning_effort":"low","stream":False,
+            "messages":[
+                {"role":"system","content":(
+                    "Return exactly one label: SIMPLE, COMPLEX, or ACTION. SIMPLE means "
+                    "straightforward questions; COMPLEX means reasoning, analysis, research "
+                    "or planning; ACTION means an operation on a device, app, file or service."
+                )},
+                {"role":"user","content":str(prompt)},
+            ],
+        },timeout=8)
+        if response.status_code != 200:
+            return self._groq_limit_message(response)
+        result=str(response.json()["choices"][0]["message"].get("content","")).strip().upper()
+        return result if result in {"SIMPLE","COMPLEX","ACTION"} else None
 
     def _tool_definitions(self):
         # Sorted so the request prefix is byte-identical every time (Groq caches exact prefixes only).
@@ -1242,7 +1178,7 @@ class FastAgent:
                     "ok": False,
                     "error": (
                         "Vision request failed. The configured Groq vision model "
-                        "may be unavailable or unsupported. Set JARVIS_VISION_MODEL "
+                        "may be unavailable or unsupported. Set OMNIROUTE_VISION_MODEL "
                         "to a vision-capable model available to your Groq account. "
                         + detail
                     ),
@@ -1498,290 +1434,51 @@ class FastAgent:
         }
 
     def generate_whatsapp_reply(self, sender, conversation, incoming_message):
-        """Generate an autonomous reply to an incoming WhatsApp message."""
-        sender = str(sender).strip()
-        conversation = str(conversation).strip()
-        incoming_message = str(incoming_message).strip()
-
-        if not incoming_message:
-            raise ValueError("Incoming WhatsApp message is required.")
-
-        if not self.api_keys:
-            raise RuntimeError("No Groq API keys are configured.")
-
-        system_prompt = (
-            "You are JARVIS replying to an incoming WhatsApp message "
-            "on the user's behalf. "
-            "Write ONLY the reply that should be sent on WhatsApp. "
-            "Do not claim to be the recipient. "
-            "Do not invent facts, plans, dates, or commitments. "
-            "Use the conversation context when relevant. "
-            "If the message is unclear, ask a concise clarification. "
-            "Keep the reply natural, polite, concise, and appropriate "
-            "for WhatsApp. "
-            "Do not use Markdown, labels, quotation marks, or commentary. "
-            "Do not mention being an AI or language model unless directly relevant."
-        )
-
-        user_prompt = (
-            f"Sender: {sender}\n"
-            f"Recent conversation:\n{conversation}\n\n"
-            f"New incoming message:\n{incoming_message}"
-        )
-
-        total_keys = len(self.api_keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index]
-
-            try:
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {active_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": system_prompt,
-                            },
-                            {
-                                "role": "user",
-                                "content": user_prompt,
-                            },
-                        ],
-                        "temperature": 0.2,
-                        "max_tokens": 120,
-                        "reasoning_effort": "low",
-                        "stream": False,
-                    },
-                    timeout=5,
-                )
-
-                if response.status_code != 200:
-                    self.current_key_index = (
-                        self.current_key_index + 1
-                    ) % total_keys
-                    attempts += 1
-                    continue
-
-                data = response.json()
-
-                reply = (
-                    data["choices"][0]["message"]
-                    .get("content", "")
-                    .strip()
-                )
-
-                if not reply:
-                    raise RuntimeError(
-                        "Groq returned an empty WhatsApp reply."
-                    )
-
-                return reply
-
-            except requests.exceptions.RequestException:
-                self.current_key_index = (
-                    self.current_key_index + 1
-                ) % total_keys
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured Groq API keys are exhausted or failing."
-        )
+        """Generate an incoming WhatsApp reply through the shared model route."""
+        sender,conversation,incoming_message=map(lambda v:str(v).strip(),(sender,conversation,incoming_message))
+        if not incoming_message: raise ValueError("Incoming WhatsApp message is required.")
+        response=self._groq_post({
+            "model":self.model,"temperature":0.2,"max_tokens":120,"reasoning_effort":"low","stream":False,
+            "messages":[
+                {"role":"system","content":"Write ONLY a concise, natural WhatsApp reply on the user's behalf. Do not invent facts, dates or commitments. Ask a brief clarification if unclear. No Markdown or commentary."},
+                {"role":"user","content":f"Sender: {sender}\nRecent conversation:\n{conversation}\n\nNew message:\n{incoming_message}"},
+            ],
+        },timeout=8)
+        if response.status_code!=200: raise RuntimeError(self._groq_limit_message(response))
+        reply=str(response.json()["choices"][0]["message"].get("content","")).strip()
+        if not reply: raise RuntimeError("The configured model returned an empty WhatsApp reply.")
+        return reply
 
     def generate_whatsapp_message(self, recipient, intent):
-        """Use Groq to compose a WhatsApp message from the user's intent."""
-        recipient = str(recipient).strip()
-        intent = str(intent).strip()
-
-        if not recipient:
-            raise ValueError("WhatsApp recipient is required.")
-
-        if not intent:
-            raise ValueError("WhatsApp message intent is required.")
-
-        total_keys = len(self.api_keys)
-        attempts = 0
-
-        system_prompt = (
-            "You are JARVIS's WhatsApp message composer. "
-            "You are composing an OUTGOING message FROM THE USER TO THE RECIPIENT. "
-            "Convert the user's message intent into the natural-language WhatsApp "
-            "message the user wants to send. "
-            "Never write as if you are the recipient. "
-            "Never answer the request yourself. "
-            "If the intent asks whether the recipient can do something, "
-            "write a natural question asking the recipient to do it. "
-            "For example, if the intent is "
-            "'ask him if he can send me the physics notes', "
-            "write something like 'Hey, could you send me the physics notes?' "
-            "Preserve all names, facts, dates, times, requests, and constraints. "
-            "Never invent information. "
-            "Return ONLY the message itself. "
-            "Do not add quotation marks, labels, explanations, or commentary. "
-            "Keep it natural and concise."
-        )
-
-        user_prompt = (
-            f"Recipient: {recipient}\n"
-            f"Message intent: {intent}"
-        )
-
-        while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index]
-
-            if not active_key:
-                self.current_key_index = (
-                    self.current_key_index + 1
-                ) % total_keys
-                attempts += 1
-                continue
-
-            try:
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {active_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": system_prompt,
-                            },
-                            {
-                                "role": "user",
-                                "content": user_prompt,
-                            },
-                        ],
-                        "temperature": 0.2,
-                        "max_tokens": 120,
-                        "reasoning_effort": "low",
-                        "stream": False,
-                    },
-                    timeout=5,
-                )
-
-                if response.status_code != 200:
-                    print(
-                        f"WhatsApp composer account "
-                        f"{self.current_key_index + 1} failed: "
-                        f"{response.status_code}"
-                    )
-                    self.current_key_index = (
-                        self.current_key_index + 1
-                    ) % total_keys
-                    attempts += 1
-                    continue
-
-                data = response.json()
-
-                message = (
-                    data["choices"][0]["message"]
-                    .get("content", "")
-                    .strip()
-                )
-
-                if not message:
-                    raise RuntimeError(
-                        "Groq returned an empty WhatsApp message."
-                    )
-
-                return message
-
-            except requests.exceptions.RequestException as exc:
-                print(
-                    f"WhatsApp composer connection error: {exc}"
-                )
-                self.current_key_index = (
-                    self.current_key_index + 1
-                ) % total_keys
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured GROQ API keys are exhausted or failing."
-        )
+        """Compose an outgoing WhatsApp message through the shared model route."""
+        recipient,intent=str(recipient).strip(),str(intent).strip()
+        if not recipient: raise ValueError("WhatsApp recipient is required.")
+        if not intent: raise ValueError("WhatsApp message intent is required.")
+        response=self._groq_post({
+            "model":self.model,"temperature":0.2,"max_tokens":120,"reasoning_effort":"low","stream":False,
+            "messages":[
+                {"role":"system","content":"Compose an OUTGOING message from the user to the recipient. Convert the intent into a natural concise WhatsApp message. Preserve names, facts, dates and constraints; never invent information. Return only the message."},
+                {"role":"user","content":f"Recipient: {recipient}\nMessage intent: {intent}"},
+            ],
+        },timeout=8)
+        if response.status_code!=200: raise RuntimeError(self._groq_limit_message(response))
+        message=str(response.json()["choices"][0]["message"].get("content","")).strip()
+        if not message: raise RuntimeError("The configured model returned an empty WhatsApp message.")
+        return message
 
     def ask_synthesis(self, prompt):
-        """Generate a final answer without JARVIS tool calling."""
-        total_keys = len(self.api_keys)
-        attempts = 0
-
-        while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index]
-
-            if not active_key:
-                self.current_key_index = (self.current_key_index + 1) % total_keys
-                attempts += 1
-                continue
-
-            try:
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {active_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are JARVIS performing research synthesis. "
-                                    "Use only the supplied evidence. "
-                                    "Do not invent facts or perform tool calls. "
-                                    "Return a concise, accurate answer in plain spoken language."
-                                ),
-                            },
-                            {
-                                "role": "user",
-                                "content": str(prompt),
-                            },
-                        ],
-                        "temperature": 1e-8,
-                        "max_tokens": 512,
-                        "reasoning_effort": "low",
-                        "stream": False,
-                    },
-                    timeout=8,
-                )
-
-                if response.status_code != 200:
-                    print(
-                        f"Account {self.current_key_index + 1} failed. "
-                        f"Code: {response.status_code}, Body: {response.text}"
-                    )
-                    self.current_key_index = (self.current_key_index + 1) % total_keys
-                    attempts += 1
-                    continue
-
-                response.raise_for_status()
-
-                data = response.json()
-                answer = data["choices"][0]["message"].get("content", "")
-
-                if answer and answer.strip():
-                    return answer.strip()
-
-            except requests.exceptions.RequestException as e:
-                print(
-                    f"Connection issue with Groq Account "
-                    f"{self.current_key_index + 1}: {e}"
-                )
-                self.current_key_index = (self.current_key_index + 1) % total_keys
-                attempts += 1
-
-        raise RuntimeError(
-            "All configured GROQ API keys are exhausted or failing."
-        )
+        """Generate a research synthesis through the shared model route."""
+        response=self._groq_post({
+            "model":self.model,"temperature":1e-8,"max_tokens":512,"reasoning_effort":"low","stream":False,
+            "messages":[
+                {"role":"system","content":"Synthesize using only supplied evidence. Do not invent facts or perform tool calls. Return a concise, accurate answer."},
+                {"role":"user","content":str(prompt)},
+            ],
+        },timeout=12)
+        if response.status_code!=200: raise RuntimeError(self._groq_limit_message(response))
+        answer=str(response.json()["choices"][0]["message"].get("content","")).strip()
+        if not answer: raise RuntimeError("The configured model returned an empty synthesis.")
+        return answer
 
     def _is_shell_reasoning_request(self, prompt):
         """Return True only when the user explicitly requests a device/shell operation."""
@@ -2439,6 +2136,7 @@ class FastAgent:
             max_tokens=512,
             temperature=0.1,
             timeout=30,
+            role="general",
         )
 
     @staticmethod
@@ -2485,6 +2183,7 @@ class FastAgent:
             max_tokens=700,
             temperature=0.1,
             timeout=30,
+            role="coding",
         )
 
     @staticmethod
@@ -2603,11 +2302,11 @@ class FastAgent:
         # OmniRoute plans complex local engineering; Groq remains the tool executor.
         if self._is_complex_shell_project(prompt):
             try:
-                print("[JARVIS ROUTER] Complex shell/project task -> GEMINI PLAN")
+                print("[JARVIS ROUTER] Complex shell/project task -> OmniRoute coding plan")
                 plan = self._omni_shell_plan(prompt)
                 prompt = (
                     str(prompt)
-                    + "\n\nGEMINI ENGINEERING PLAN (advisory; verify each step):\n"
+                    + "\n\nOMNIROUTE ENGINEERING PLAN (advisory; verify each step):\n"
                     + plan
                     + "\n\nUse local tools to carry out the original request, "
                       "validate results, and stop on failures. The shell guard still "
