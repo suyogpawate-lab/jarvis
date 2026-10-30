@@ -102,9 +102,10 @@ class TTSManager:
         elif provider == "edge":
             result = edge_speak(text, wait=True)
         elif provider == "phonon":
-            # Phonon uses sentence-sized WAV chunks: synthesize the next chunk
-            # in the producer thread while the current chunk plays.
-            result = self._play_pipeline(provider, text, speed, gen)
+            # Phonon can synthesize slower than real time. Buffer the complete
+            # reply before playback so the audio device never starves between
+            # sentence-sized inference requests.
+            result = self._play_phonon_buffered(text, gen)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
         if not result:
@@ -149,6 +150,70 @@ class TTSManager:
                     self.queue.task_done()
         finally:
             self.worker_alive = False
+
+    def _play_phonon_buffered(self, text, gen):
+        """Synthesize one complete reply, then play it as a continuous WAV."""
+        from voice.phonon_tts import synth
+
+        started = time.monotonic()
+        wav_path = None
+        proc = None
+        synthesis_seconds = 0.0
+        playback_started = None
+        interrupted = False
+        try:
+            synth_started = time.monotonic()
+            wav_path = synth(text)
+            synthesis_seconds = time.monotonic() - synth_started
+            if self._gen != gen:
+                interrupted = True
+                return True
+
+            proc = subprocess.Popen(
+                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(wav_path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self._proc = proc
+            playback_started = time.monotonic()
+            return_code = proc.wait()
+            if self._gen != gen:
+                interrupted = True
+                return True
+            if return_code:
+                raise RuntimeError(f"mpv exited with status {return_code}")
+            return True
+        except Exception:
+            if self._gen != gen:
+                interrupted = True
+                return True
+            raise
+        finally:
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+            if self._proc is proc:
+                self._proc = None
+            if wav_path is not None:
+                Path(wav_path).unlink(missing_ok=True)
+            self.last_pipeline_metrics = {
+                "mode": "full_reply_buffer",
+                "chunks": 1 if wav_path is not None else 0,
+                "synthesis_seconds": round(synthesis_seconds, 3),
+                "first_chunk_seconds": round(synthesis_seconds, 3),
+                "queue_starvation_seconds": 0.0,
+                "queue_starvation_events": 0,
+                "playback_seconds": round(time.monotonic() - playback_started, 3)
+                    if playback_started is not None else 0.0,
+                "total_seconds": round(time.monotonic() - started, 3),
+                "interrupted": interrupted,
+            }
+            print(f"[TTS PIPELINE] {self.last_pipeline_metrics}", flush=True)
 
     # ---- local pipeline: synth sentence N+1 while sentence N plays ----
     def _synth(self, provider, sentence, speed):
