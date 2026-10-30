@@ -267,7 +267,6 @@ class TTSManager:
                         interrupted = True
                         break
 
-                    import wave
                     with wave.open(str(path), "rb") as wav:
                         if wav.getcomptype() != "NONE":
                             raise RuntimeError(
@@ -319,7 +318,12 @@ class TTSManager:
                             if not frames:
                                 break
                             try:
-                                proc.stdin.write(frames)
+                                remaining = memoryview(frames)
+                                while remaining:
+                                    written = proc.stdin.write(remaining)
+                                    if not written:
+                                        raise BrokenPipeError("mpv audio pipe accepted zero bytes")
+                                    remaining = remaining[written:]
                             except (BrokenPipeError, OSError):
                                 if self._gen == gen:
                                     raise RuntimeError("mpv closed its audio input unexpectedly")
