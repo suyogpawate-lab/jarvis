@@ -280,7 +280,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     "what's open", "what is open",
                 )
                 if lower in screen_questions or lower.startswith(("what does this screen", "on my screen,", "from my screen")):
-                    answer = analyze_latest_screen(command_text, ask=ask_screen_with_groq)
+                    answer = analyze_latest_screen(command_text, ask=ask_screen_with_models)
                     self._send_json(200, {"ok": True, "response": answer, "perception": "accessibility_json"})
                     return
                 # Explicit screen commands use a narrow grammar rather than
