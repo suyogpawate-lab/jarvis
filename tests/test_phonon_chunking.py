@@ -25,7 +25,7 @@ class PhononChunkingTests(unittest.TestCase):
         self.assertEqual([len(chunk.split()) for chunk in chunks], [50, 15, 15])
 
     def test_commas_do_not_create_chunk_boundaries(self):
-        first = " ".join(f"word{i}," for i in range(49)) + "word49."
+        first = " ".join(f"word{i}," for i in range(49)) + " word49."
         second = " ".join(f"word{i}" for i in range(50, 65)) + "."
         chunks = phonon_chunk_text(first + " " + second)
         self.assertEqual(chunks[0], first)
