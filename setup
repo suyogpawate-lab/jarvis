@@ -270,6 +270,9 @@ OMNIROUTE_MODEL_DEFAULTS = {
     "OMNIROUTE_FAST_CODING_MODEL": "dva/claude-sonnet-4-6-thinking-low",
     "OMNIROUTE_VISION_MODEL": "gemini/gemini-3.7-flash",
     "OMNIROUTE_FALLBACK_MODEL": "cfp/openai/gpt-oss-120b",
+}
+
+ROUTING_DEFAULTS = {
     "JARVIS_GROQ_OMNIROUTE_FALLBACK_AFTER": "300",
     "JARVIS_GROQ_PROBE_INTERVAL": "900",
 }
@@ -336,6 +339,11 @@ def step_keys(env):
             secret=False,
         )
         env.set(var, value or current_model)
+
+    for var, default_value in ROUTING_DEFAULTS.items():
+        current_value = env.get(var) or default_value
+        value = ask(f"{var} (currently {current_value}) - Enter to keep", secret=False)
+        env.set(var, value or current_value)
 
     env.save()
     ok("Groq and OmniRoute configuration saved. Direct Gemini/Anthropic credentials are no longer used.")
@@ -950,6 +958,8 @@ def show_status():
     ok(f"OmniRoute base URL: {env.get('OMNIROUTE_BASE_URL', 'http://127.0.0.1:20128/v1')}")
     for var, default_model in OMNIROUTE_MODEL_DEFAULTS.items():
         ok(f"{var}: {env.get(var, default_model)}")
+    for var, default_value in ROUTING_DEFAULTS.items():
+        ok(f"{var}: {env.get(var, default_value)}")
 
     accounts = gmail_accounts(env)
     if accounts:
