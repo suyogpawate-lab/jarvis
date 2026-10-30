@@ -212,7 +212,7 @@ info "Setting up OmniRoute..."
 if command -v omniroute >/dev/null 2>&1; then
     ok "OmniRoute already installed for specialist and quota-fallback routing."
 else
-    npm install -g omniroute || warn "OmniRoute install failed; JARVIS still works with Groq keys."
+    npm install -g omniroute || warn "OmniRoute install failed; Groq-only operation remains available, but specialist and quota fallback routes will be unavailable."
 fi
 if command -v omniroute >/dev/null 2>&1; then
     bash omniroute_daemon.sh || warn "Could not start OmniRoute."
