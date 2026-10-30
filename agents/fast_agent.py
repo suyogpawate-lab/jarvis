@@ -199,7 +199,7 @@ class FastAgent:
             print("[JARVIS ROUTER] Groq quota circuit open -> OmniRoute", flush=True)
             return self._omni_post(payload, role=fallback_role, timeout=timeout)
         if not self.api_keys:
-            return self._omni_post(payload, role="fallback", timeout=timeout)
+            return self._omni_post(payload, role=fallback_role, timeout=timeout)
 
         last, waits, quota_only, tried = None, [], True, 0
         for offset in range(len(self.api_keys)):
@@ -243,8 +243,8 @@ class FastAgent:
 
         if last is not None and tried and len(waits) == tried and quota_only:
             reset_after = max(waits, default=0.0)
-            if self._groq_circuit_open_until > time.time():
-                self._groq_next_probe_at = time.time() + self.groq_probe_interval
+            if getattr(self, '_groq_circuit_open_until', 0.0) > time.time():
+                self._groq_next_probe_at = time.time() + probe_interval
             if reset_after >= fallback_after:
                 self._groq_circuit_open_until = time.time() + reset_after
                 self._groq_next_probe_at = time.time() + probe_interval
