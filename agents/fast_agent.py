@@ -376,7 +376,7 @@ class FastAgent:
         if name == "screen_control":
             return f"Controlling Android screen ({clip(args.get('action'), 30)})"
         if name == "escalate_to_expert":
-            return "Asking a stronger model for help"
+            return "Consulting OmniRoute for specialist reasoning"
         if name == "prepare_google_form":
             return "Preparing the Google form"
         if name == "confirm_google_form_submission":
@@ -2092,7 +2092,7 @@ class FastAgent:
         Main shell reasoning router.
 
         SIMPLE  -> existing Groq ask() path
-        COMPLEX -> exactly one of OmniRoute/OmniRoute
+        COMPLEX -> OmniRoute specialist reasoning
         """
 
         if not self._is_shell_reasoning_request(prompt):
@@ -2115,8 +2115,7 @@ class FastAgent:
             )
 
         except Exception as exc:
-            # DO NOT fall through to another provider.
-            # Provider fallback must remain provider-local.
+            # Do not replay the command through a second planner after failure.
             return (
                 f"[ERROR] {provider.title()} complex shell route: "
                 f"{exc}"
