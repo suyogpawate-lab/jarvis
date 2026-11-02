@@ -69,6 +69,7 @@ class WhatsAppAutoReplyWorker:
 
         self.context_file = self.data_dir / "conversation_context.json"
         self.handled_file = self.data_dir / "handled_message_ids.json"
+        self.pending_ack_file = self.data_dir / "pending_ack_message_ids.json"
         self.pending_file = self.data_dir / "pending_group_replies.json"
         self.review_file = self.data_dir / "pending_reply_reviews.json"
 
@@ -86,6 +87,9 @@ class WhatsAppAutoReplyWorker:
                 self.handled_file,
                 [],
             )
+        )
+        self.pending_ack_ids = set(
+            self._load_json(self.pending_ack_file, [])
         )
 
         self.pending_group_replies = self._load_json(
@@ -155,6 +159,10 @@ class WhatsAppAutoReplyWorker:
             self.handled_file,
             sorted(self.handled_ids),
         )
+        self._save_json(
+            self.pending_ack_file,
+            sorted(self.pending_ack_ids),
+        )
 
         self._save_json(
             self.pending_file,
@@ -194,65 +202,39 @@ class WhatsAppAutoReplyWorker:
             or ""
         ).strip()
 
-    def _remember(self, chat_jid, role, sender, text):
+    def _remember(self, chat_jid, role, sender, text, message_id=None):
         if not chat_jid or not text:
             return
-
-        history = self.context.setdefault(
-            chat_jid,
-            [],
-        )
-
-        history.append(
-            {
-                "role": role,
-                "sender": sender,
-                "text": text,
-                "timestamp": int(
-                    time.time()
-                ),
-            }
-        )
-
+        history = self.context.setdefault(chat_jid, [])
+        if message_id and any(
+            str(item.get("message_id") or "") == str(message_id)
+            for item in history
+        ):
+            return
+        entry = {
+            "role": role,
+            "sender": sender,
+            "text": text,
+            "timestamp": int(time.time()),
+        }
+        if message_id:
+            entry["message_id"] = str(message_id)
+        history.append(entry)
         del history[:-self.context_limit]
 
-    def _format_context(self, chat_jid):
-        history = self.context.get(
-            chat_jid,
-            [],
-        )
-
-        if not history:
-            return "(No previous conversation context.)"
-
+    def _format_context(self, chat_jid, exclude_ids=None):
+        """Format local fallback context, excluding the current message batch."""
+        excluded = {str(item) for item in (exclude_ids or [])}
         lines = []
-
-        for item in history:
-            sender = item.get(
-                "sender",
-                "Unknown",
-            )
-
-            text = item.get(
-                "text",
-                "",
-            )
-
-            role = item.get(
-                "role",
-                "incoming",
-            )
-
-            if role == "outgoing":
-                label = "JARVIS"
-            else:
-                label = sender
-
-            lines.append(
-                f"{label}: {text}"
-            )
-
-        return "\n".join(lines)
+        for item in self.context.get(chat_jid, []):
+            if str(item.get("message_id") or "") in excluded:
+                continue
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            label = "JARVIS" if item.get("role") == "outgoing" else item.get("sender", "Unknown")
+            lines.append(f"{label}: {text}")
+        return "\n".join(lines) if lines else "(No previous conversation context.)"
 
     def drain_events(self, event_type=None):
         """Return queued UI events, optionally preserving events of other types."""
@@ -418,17 +400,28 @@ class WhatsAppAutoReplyWorker:
         jid = str(jid or "")
         return jid.endswith("@s.whatsapp.net") or jid.endswith("@lid")
 
-    def _finish(self, message_ids):
-        """Mark messages handled locally and acknowledge them on the bridge."""
-        ids = [i for i in message_ids if i]
-        for message_id in ids:
-            self.handled_ids.add(message_id)
-        self._save_state()
-
+    def _retry_pending_acknowledgements(self):
+        """Retry bridge acknowledgements without reprocessing already handled IDs."""
+        if not self.pending_ack_ids:
+            return
+        ids = sorted(self.pending_ack_ids)
         try:
             self.whatsapp.acknowledge_messages(ids)
         except Exception as exc:
-            print(f"[WHATSAPP AUTO] Ack failed: {exc}", flush=True)
+            print(f"[WHATSAPP AUTO] Ack retry failed: {exc}", flush=True)
+            return
+        self.pending_ack_ids.difference_update(ids)
+        self._save_state()
+
+    def _finish(self, message_ids):
+        """Persist local completion and retryable bridge acknowledgement state."""
+        ids = [str(item) for item in message_ids if item]
+        if not ids:
+            return
+        self.handled_ids.update(ids)
+        self.pending_ack_ids.update(ids)
+        self._save_state()
+        self._retry_pending_acknowledgements()
 
     def _rate_limited(self, chat_jid):
         now = time.time()
@@ -449,26 +442,41 @@ class WhatsAppAutoReplyWorker:
 
         return False
 
-    def _history_text(self, chat_jid):
-        """Recent messages in both directions, from the bridge's store."""
+    def _history_text(self, chat_jid, exclude_ids=None):
+        """Retrieve bridge history, excluding the current batch; disclose fallback."""
+        excluded = {str(item) for item in (exclude_ids or [])}
         try:
             rows = self.whatsapp.get_history(
-                chat_jid, limit=self.context_limit
+                chat_jid, limit=min(50, self.context_limit + len(excluded))
             )
-        except Exception:
-            rows = []
-
-        if not rows:
-            return self._format_context(chat_jid)
+        except Exception as exc:
+            print(
+                f"[WHATSAPP AUTO] History retrieval failed for {chat_jid}: {exc}; "
+                "using local fallback context.",
+                flush=True,
+            )
+            return (
+                "[History source: LOCAL FALLBACK; bridge retrieval failed: "
+                f"{type(exc).__name__}.]\n"
+                + self._format_context(chat_jid, excluded)
+            )
 
         lines = []
-        for row in rows:
-            label = "Me" if row.get("fromMe") else (
-                row.get("pushName") or "Contact"
-            )
-            lines.append(f"{label}: {row.get('text', '')}")
-
-        return "\n".join(lines)
+        seen = set()
+        for row in rows or []:
+            message_id = str(row.get("id") or "")
+            if message_id and (message_id in excluded or message_id in seen):
+                continue
+            if message_id:
+                seen.add(message_id)
+            text = str(row.get("text") or "").strip()
+            if not text:
+                continue
+            label = "Me" if row.get("fromMe") else (row.get("pushName") or "Contact")
+            lines.append(f"{label}: {text}")
+        if lines:
+            return "\n".join(lines)
+        return self._format_context(chat_jid, excluded)
 
     # ------------------------------------------------------------------
     # Knowledge Hub (RAG) access
@@ -874,6 +882,7 @@ class WhatsAppAutoReplyWorker:
                 "incoming",
                 sender,
                 self._message_text(message),
+                message_id=self._message_id(message),
             )
 
         print(
@@ -884,7 +893,7 @@ class WhatsAppAutoReplyWorker:
         try:
             decision, attachments = self._generate_reply(
                 sender,
-                self._history_text(chat_jid),
+                self._history_text(chat_jid, exclude_ids=ids),
                 incoming,
                 files_enabled=self._files_allowed(chat_jid, alt_jid),
             )
@@ -904,9 +913,25 @@ class WhatsAppAutoReplyWorker:
                     "evidence": decision.get("evidence", ""),
                     "created_at": int(time.time()),
                 }
+                pending.setdefault(
+                    "acknowledgement",
+                    "Let me check with him and get back to you.",
+                )
+                pending.setdefault("acknowledgement_sent", False)
                 self.pending_reply_reviews[review_id] = pending
                 self._save_state()
                 self._events.put({"type": "REPLY_REVIEW", **pending})
+                # Acknowledge uncertainty without inventing an answer. Persist
+                # the review first so the owner can resolve it after a restart.
+                if not pending["acknowledgement_sent"]:
+                    self.whatsapp.send(chat_jid, pending["acknowledgement"])
+                    pending["acknowledgement_sent"] = True
+                    self._remember(
+                        chat_jid, "outgoing", "JARVIS",
+                        pending["acknowledgement"],
+                        message_id=f"review-ack-{review_id}",
+                    )
+                    self._save_state()
                 print(
                     f"[WHATSAPP AUTO] Needs owner decision for {sender} "
                     f"(review {review_id}): {pending['reason']}",
@@ -959,6 +984,7 @@ class WhatsAppAutoReplyWorker:
             return False
 
     def run_once(self):
+        self._retry_pending_acknowledgements()
         messages = self.whatsapp.get_incoming_messages(
             limit=self.queue_limit
         )
