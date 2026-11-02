@@ -38,12 +38,12 @@ class FastAgent:
 
         self.gemini_model = os.getenv(
             "GEMINI_MODEL",
-            "gemini-3.6-flash",
+            "antigravity/sonnet-4-6-thinking",
         )
 
         self.claude_model = os.getenv(
             "CLAUDE_MODEL",
-            "claude-opus-5-5",
+            "antigravity/opus-4-6-thinking",
         )
         # FIX: Swapped to the correct official API subdomain
         self.base_url = "https://api.groq.com/openai/v1"
@@ -161,7 +161,7 @@ class FastAgent:
                 payload_messages.extend(messages)
 
                 response = requests.post(
-                    f"{gemini_base_url}/chat/completions",
+                    f"{self.gemini_base_url}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {active_key}",
                         "Content-Type": "application/json",
@@ -267,6 +267,42 @@ class FastAgent:
             active_key = keys[index]
 
             try:
+                if "antigravity/" in self.claude_model:
+                    omni_base = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")
+                    omni_key = os.getenv("OMNIROUTE_API_KEY", active_key or "any-string")
+                    payload_messages = []
+                    if system_prompt:
+                        payload_messages.append({"role": "system", "content": system_prompt})
+                    payload_messages.extend(messages)
+                    response = requests.post(
+                        f"{omni_base}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {omni_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.claude_model,
+                            "messages": payload_messages,
+                            "temperature": temperature,
+                            "max_tokens": max_tokens,
+                            "stream": False,
+                        },
+                        timeout=timeout,
+                    )
+                    if response.status_code != 200:
+                        code = response.status_code
+                        print(f"Antigravity Claude request failed (HTTP {code})")
+                        self.claude_key_index = (index + 1) % total_keys
+                        attempts += 1
+                        continue
+                    data = response.json()
+                    content = data["choices"][0]["message"].get("content", "").strip()
+                    if content:
+                        return content
+                    self.claude_key_index = (index + 1) % total_keys
+                    attempts += 1
+                    continue
+
                 payload = {
                     "model": self.claude_model,
                     "max_tokens": max_tokens,

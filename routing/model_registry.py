@@ -44,7 +44,7 @@ DISCUSSION_MODELS = {
         {
             "name": "Claude Sonnet",
             "provider": "omniroute",
-            "model": "agy/claude-sonnet-4-6",
+            "model": "antigravity/sonnet-4-6-thinking",
         },
 
         {
@@ -89,7 +89,7 @@ DISCUSSION_MODELS = {
         {
             "name": "Claude Opus",
             "provider": "omniroute",
-            "model": "agy/claude-opus-4-6-thinking",
+            "model": "antigravity/opus-4-6-thinking",
         },
 
         {
@@ -107,7 +107,7 @@ DISCUSSION_MODELS = {
         {
             "name": "Claude Sonnet",
             "provider": "omniroute",
-            "model": "agy/claude-sonnet-4-6",
+            "model": "antigravity/sonnet-4-6-thinking",
         },
 
         {
