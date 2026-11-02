@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -21,6 +22,25 @@ MAX_EVENT_TEXT = 4000
 MAX_ACTIONS_PER_EVENT = 8
 TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
 AUTO_RISK = {"safe", "read_only"}
+_READ_ONLY_ACTION = re.compile(
+    r"^\\s*(?:show|list|check|inspect|read|search|find|summari[sz]e|"
+    r"what|who|when|where|how many|get|report|status|display|explain|"
+    r"tell me)\\b",
+    re.IGNORECASE,
+)
+_READ_ONLY_SHELL = re.compile(
+    r"^\\s*(?:pwd|ls|stat|file|head|tail|cat|wc|grep|rg|find|du|df|"
+    r"free|ps|uptime|whoami|id|date|uname|git\\s+(?:status|log|diff|show))"
+    r"(?:\\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _policy_risk(action: str) -> str:
+    """Classify unattended actions deterministically; never trust model labels."""
+    if _READ_ONLY_ACTION.match(action) or _READ_ONLY_SHELL.match(action):
+        return "read_only"
+    return "approval_required"
 
 
 def _bounded_text(value: Any, limit: int = MAX_EVENT_TEXT) -> str:
@@ -179,7 +199,7 @@ class AutonomySupervisor:
                 action = _bounded_text(proposal.get("action", ""), 1000)
                 if not action:
                     continue
-                risk = _bounded_text(proposal.get("risk", "unknown"), 40).lower()
+                risk = _policy_risk(action)
                 mission = {
                     "id": "mission-" + uuid.uuid4().hex[:10],
                     "event_id": snapshot["id"],
