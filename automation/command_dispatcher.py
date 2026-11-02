@@ -37,7 +37,7 @@ from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.local_ai import LocalAI
-from agents.fast_agent import FastAgent
+from agents.fast_agent import FastAgent, JARVIS_ABILITIES
 from automation.scheduler import AutomationScheduler
 from voice.tts_manager import tts
 from search.search_hub import build_default_search_hub
@@ -62,23 +62,7 @@ class CommandDispatcher:
         self.memory = memory
 
         # Deterministic JARVIS abilities registry.
-        self.abilities_file = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "config",
-            "abilities.json",
-        )
-
-        with open(
-            self.abilities_file,
-            "r",
-            encoding="utf-8",
-        ) as f:
-            self.abilities = json.load(f)
-
-        if not isinstance(self.abilities, list):
-            raise RuntimeError(
-                "abilities.json must contain a JSON array."
-            )
+        self.abilities = JARVIS_ABILITIES
         self.shell = ShellExecutor()
         self.contacts = ContactsManager()
         self.system = SystemTools()

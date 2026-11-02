@@ -388,7 +388,7 @@ The repository is organized as a Python application with optional Android/Termux
 | `agents/` | Fast agent, autonomous execution loop, local Ollama adapter, and provider adapters for Groq, Gemini/Anthropic-compatible APIs, Ollama, and OmniRoute. |
 | `routing/` | Discussion topic classification, model registry/pool, and fast-tool routing helpers. |
 | `android/` | Android app aliases and device actions, shell execution, process/system inspection, and risky-command approval guard. |
-| `config/abilities.json` | Declarative abilities registry used by the dispatcher and reasoning layer. |
+| `agents/fast_agent.py` (`JARVIS_ABILITIES`) | Declarative in-memory abilities registry used by the dispatcher and reasoning layer. |
 | `memory/` | Personal/project memory, conversation history, episodes, and SQLite-backed storage under local runtime data. |
 | `automation/` | Command dispatch, persistent background jobs, and timezone-aware scheduled automations. |
 | `search/` | Normalized multi-provider search, web-engine/community providers, Tor transport, and adaptive deep-research crawling. |

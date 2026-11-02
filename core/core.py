@@ -4,6 +4,7 @@ import re
 import requests
 
 from monitoring import alerts
+from agents.fast_agent import JARVIS_ABILITIES
 
 
 class Jarvis:
@@ -24,19 +25,7 @@ class Jarvis:
             "auto/best-reasoning",
         )
 
-        self.abilities_file = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "config",
-            "abilities.json",
-        )
-
-        with open(self.abilities_file, "r", encoding="utf-8") as f:
-            self.abilities = json.load(f)
-
-        if not isinstance(self.abilities, list):
-            raise RuntimeError(
-                "abilities.json must contain a JSON array."
-            )
+        self.abilities = JARVIS_ABILITIES
 
     def ask(self, prompt):
         """Ask the model; raise the right alert if the backend is unreachable."""
