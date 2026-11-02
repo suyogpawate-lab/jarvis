@@ -23,15 +23,15 @@ MAX_ACTIONS_PER_EVENT = 8
 TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
 AUTO_RISK = {"safe", "read_only"}
 _READ_ONLY_ACTION = re.compile(
-    r"^\\s*(?:show|list|check|inspect|read|search|find|summari[sz]e|"
+    r"^\s*(?:show|list|check|inspect|read|search|find|summari[sz]e|"
     r"what|who|when|where|how many|get|report|status|display|explain|"
-    r"tell me)\\b",
+    r"tell me)\b",
     re.IGNORECASE,
 )
 _READ_ONLY_SHELL = re.compile(
-    r"^\\s*(?:pwd|ls|stat|file|head|tail|cat|wc|grep|rg|find|du|df|"
-    r"free|ps|uptime|whoami|id|date|uname|git\\s+(?:status|log|diff|show))"
-    r"(?:\\s|$)",
+    r"^\s*(?:pwd|ls|stat|file|head|tail|cat|wc|grep|rg|find|du|df|"
+    r"free|ps|uptime|whoami|id|date|uname|git\s+(?:status|log|diff|show))"
+    r"(?:\s|$)",
     re.IGNORECASE,
 )
 
