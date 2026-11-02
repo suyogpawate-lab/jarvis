@@ -69,6 +69,7 @@ class WhatsAppAutoReplyWorker:
 
         self.context_file = self.data_dir / "conversation_context.json"
         self.handled_file = self.data_dir / "handled_message_ids.json"
+        self.pending_ack_file = self.data_dir / "pending_ack_message_ids.json"
         self.pending_file = self.data_dir / "pending_group_replies.json"
         self.review_file = self.data_dir / "pending_reply_reviews.json"
 
@@ -86,6 +87,9 @@ class WhatsAppAutoReplyWorker:
                 self.handled_file,
                 [],
             )
+        )
+        self.pending_ack_ids = set(
+            self._load_json(self.pending_ack_file, [])
         )
 
         self.pending_group_replies = self._load_json(
@@ -154,6 +158,10 @@ class WhatsAppAutoReplyWorker:
         self._save_json(
             self.handled_file,
             sorted(self.handled_ids),
+        )
+        self._save_json(
+            self.pending_ack_file,
+            sorted(self.pending_ack_ids),
         )
 
         self._save_json(
@@ -392,17 +400,28 @@ class WhatsAppAutoReplyWorker:
         jid = str(jid or "")
         return jid.endswith("@s.whatsapp.net") or jid.endswith("@lid")
 
-    def _finish(self, message_ids):
-        """Mark messages handled locally and acknowledge them on the bridge."""
-        ids = [i for i in message_ids if i]
-        for message_id in ids:
-            self.handled_ids.add(message_id)
-        self._save_state()
-
+    def _retry_pending_acknowledgements(self):
+        """Retry bridge acknowledgements without reprocessing already handled IDs."""
+        if not self.pending_ack_ids:
+            return
+        ids = sorted(self.pending_ack_ids)
         try:
             self.whatsapp.acknowledge_messages(ids)
         except Exception as exc:
-            print(f"[WHATSAPP AUTO] Ack failed: {exc}", flush=True)
+            print(f"[WHATSAPP AUTO] Ack retry failed: {exc}", flush=True)
+            return
+        self.pending_ack_ids.difference_update(ids)
+        self._save_state()
+
+    def _finish(self, message_ids):
+        """Persist local completion and retryable bridge acknowledgement state."""
+        ids = [str(item) for item in message_ids if item]
+        if not ids:
+            return
+        self.handled_ids.update(ids)
+        self.pending_ack_ids.update(ids)
+        self._save_state()
+        self._retry_pending_acknowledgements()
 
     def _rate_limited(self, chat_jid):
         now = time.time()
@@ -949,6 +968,7 @@ class WhatsAppAutoReplyWorker:
             return False
 
     def run_once(self):
+        self._retry_pending_acknowledgements()
         messages = self.whatsapp.get_incoming_messages(
             limit=self.queue_limit
         )
