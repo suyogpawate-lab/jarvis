@@ -913,9 +913,25 @@ class WhatsAppAutoReplyWorker:
                     "evidence": decision.get("evidence", ""),
                     "created_at": int(time.time()),
                 }
+                pending.setdefault(
+                    "acknowledgement",
+                    "Let me check with him and get back to you.",
+                )
+                pending.setdefault("acknowledgement_sent", False)
                 self.pending_reply_reviews[review_id] = pending
                 self._save_state()
                 self._events.put({"type": "REPLY_REVIEW", **pending})
+                # Acknowledge uncertainty without inventing an answer. Persist
+                # the review first so the owner can resolve it after a restart.
+                if not pending["acknowledgement_sent"]:
+                    self.whatsapp.send(chat_jid, pending["acknowledgement"])
+                    pending["acknowledgement_sent"] = True
+                    self._remember(
+                        chat_jid, "outgoing", "JARVIS",
+                        pending["acknowledgement"],
+                        message_id=f"review-ack-{review_id}",
+                    )
+                    self._save_state()
                 print(
                     f"[WHATSAPP AUTO] Needs owner decision for {sender} "
                     f"(review {review_id}): {pending['reason']}",
