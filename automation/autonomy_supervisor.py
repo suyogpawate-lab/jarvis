@@ -33,6 +33,7 @@ READ_ONLY_OPERATIONS = frozenset({
     "whatsapp_message_observed",
     "planning_checkpoint",
     "android_foreground_snapshot",
+    "android_accessibility_snapshot",
 })
 
 
