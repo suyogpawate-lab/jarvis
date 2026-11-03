@@ -40,6 +40,31 @@ def make_worker():
 
 
 class WhatsAppContextReliabilityTests(unittest.TestCase):
+    def test_incoming_dm_emits_only_opaque_message_identifier(self):
+        worker = WhatsAppAutoReplyWorker.__new__(WhatsAppAutoReplyWorker)
+        events = []
+        worker.autonomy_event_callback = lambda source, event_id: events.append((source, event_id))
+        worker.handled_ids = set()
+        worker.max_age_seconds = 600
+        worker._rate_limited = lambda chat: False
+        worker._remember = lambda *args, **kwargs: None
+        worker._history_text = lambda *args, **kwargs: "prior context"
+        worker._generate_reply = lambda *args, **kwargs: (
+            {"decision": "skip", "reason": "No reply needed"}, []
+        )
+        worker._finish = lambda ids: None
+        message = {
+            "id": "opaque-message-id",
+            "timestamp": __import__("time").time(),
+            "text": "PRIVATE MESSAGE BODY",
+            "pushName": "PRIVATE SENDER",
+        }
+        worker._process_chat("contact@s.whatsapp.net", [message])
+        self.assertEqual(events, [("whatsapp", "opaque-message-id")])
+        self.assertNotIn("PRIVATE MESSAGE BODY", str(events))
+        self.assertNotIn("PRIVATE SENDER", str(events))
+
+
     def test_bridge_history_excludes_current_batch_and_deduplicates(self):
         worker = make_worker()
         worker.whatsapp.history = [
