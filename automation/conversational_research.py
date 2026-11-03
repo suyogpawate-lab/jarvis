@@ -393,10 +393,8 @@ class ConversationalResearch:
             if run_at <= now: run_at += timedelta(days=1)
         job = scheduler.schedule(
             command="research " + query, run_at=run_at.timestamp(),
-            repeat_mode="daily" if timing == "daily" else None,
+            repeat_mode=timing if timing in {"daily", "weekly"} else None,
             repeat_at="21:00" if timing == "daily" else None,
-            # Weekly cadence is calendar-based to avoid DST drift in follow-up.
-            repeat_seconds=7 * 86400 if timing == "weekly" else None,
             description="Research: " + query[:180],
         )
         self._record({"id": "research-" + uuid.uuid4().hex[:10], "query": query,
