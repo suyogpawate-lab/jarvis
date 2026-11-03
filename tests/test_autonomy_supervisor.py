@@ -140,6 +140,24 @@ class AutonomySupervisorTests(unittest.TestCase):
         supervisor.stop(timeout=2)
         self.assertFalse(thread.is_alive())
 
+    def test_model_risk_label_cannot_downgrade_mutating_action(self):
+        supervisor = self.supervisor(
+            lambda event: [{"action": "send a WhatsApp message", "risk": "read_only"}]
+        )
+        supervisor.ingest("event", "untrusted request", event_id="evt-risk-downgrade")
+        supervisor.process_once()
+        self.assertEqual(supervisor.status()["waiting_approval"], 1)
+        self.assertEqual(self.executed, [])
+
+    def test_exact_allowlisted_operation_ignores_model_risk_label(self):
+        supervisor = self.supervisor(
+            lambda event: [{"action": "health_snapshot", "risk": "approval_required"}]
+        )
+        supervisor.ingest("health", "warning", event_id="evt-safe-risk-label")
+        result = supervisor.tick()
+        self.assertEqual(result["execution"]["status"], "COMPLETED")
+        self.assertEqual(self.executed, ["health_snapshot"])
+
 
 if __name__ == "__main__":
     unittest.main()
