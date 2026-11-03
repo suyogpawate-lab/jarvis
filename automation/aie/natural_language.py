@@ -8,7 +8,7 @@ class NaturalLanguageAIE:
     """Conservative NL parser: recognizes goal intent; ambiguous requests pass through."""
 
     CREATE = re.compile(
-        r"^(?:jarvis[, ]+)?(?:i want you to\s+|from now on[, ]+|keep|continue|start|begin|work|help me|please)\s+"
+        r"^(?:jarvis[, ]+)?(?:i want you to|from now on|keep|continue|start|begin|work|help me|please)\s+"
         r"(?:working\s+on\s+|to\s+|with\s+)?(.+)$", re.I)
     STATUS = re.compile(r"^(?:what are you working on|aie status|autonomy status|show (?:my )?goals|list (?:my )?goals)$", re.I)
     PAUSE = re.compile(r"^(?:pause|stop working on)\s+(.+)$", re.I)

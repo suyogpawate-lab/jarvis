@@ -292,8 +292,10 @@ class AIEEngine:
                     cap = self._capabilities.get(task["capability"])
                     if not cap:
                         raise AIEError("Capability is not registered: " + task["capability"])
-                    if cap["requires_approval"]:
-                        raise AIEError("Capability requires an approval workflow.")
+                    if RISK_ORDER[cap["risk"]] > RISK_ORDER[mission["risk"]]:
+                        raise AIEError("Mission risk is below the capability's declared risk.")
+                    if cap["requires_approval"] and RISK_ORDER[mission["risk"]] < 2:
+                        raise AIEError("Capability requires an approved higher-risk mission.")
                     args = json.loads(task["arguments"])
                     if not isinstance(args, dict):
                         raise AIEError("Capability arguments must be an object.")
