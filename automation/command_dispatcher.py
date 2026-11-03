@@ -1671,8 +1671,12 @@ Rules:
         return result
 
     def set_whatsapp_confirmation_worker(self, worker):
-        """Attach the WhatsApp group-confirmation owner."""
+        """Attach WhatsApp confirmation and optional research-notification delivery."""
         self.whatsapp_confirmation_worker = worker
+        if worker is not None:
+            self.research.set_whatsapp_sender(
+                lambda recipient, message: worker.whatsapp.send(recipient, message)
+            )
 
     def _whatsapp_send(self, to, message):
         """
