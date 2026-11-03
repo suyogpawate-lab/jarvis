@@ -36,6 +36,7 @@ from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor
+from automation.overnight_planner import OvernightPlanner
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
@@ -122,6 +123,11 @@ class CommandDispatcher:
         self.autonomy.start()
         self.health_manager.start()
 
+        # Overnight planning is opt-in to avoid unexpected API usage on mobile.
+        self.overnight_planner = OvernightPlanner(self.fast_agent, self.autonomy)
+        if os.getenv("JARVIS_OVERNIGHT_PLANNING", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            self.overnight_planner.start()
+
     def _on_health_warning(self, warning: str) -> None:
         """Persist a bounded, non-sensitive health observation for assessment."""
         autonomy = getattr(self, "autonomy", None)
@@ -193,6 +199,7 @@ class CommandDispatcher:
             "notification": ("notification_observed", "Record a newly observed Android notification."),
             "whatsapp": ("whatsapp_message_observed", "Record a newly observed WhatsApp DM for owner review."),
             "scheduler": ("planning_checkpoint", "Record a bounded scheduled planning checkpoint."),
+            "overnight_planning": ("planning_checkpoint", "Record completion of an owner-review planning cycle."),
         }
         selected = source_operations.get(str(event.get("source") or ""))
         if not selected:
@@ -203,6 +210,7 @@ class CommandDispatcher:
     def stop_background_services(self) -> None:
         """Stop dispatcher-owned monitors without touching user data."""
         for name, service in (
+            ("overnight_planner", getattr(self, "overnight_planner", None)),
             ("autonomy", getattr(self, "autonomy", None)),
             ("health", getattr(self, "health_manager", None)),
         ):
@@ -511,6 +519,14 @@ class CommandDispatcher:
 
             if sub == "status":
                 return json.dumps(self.autonomy.status(), indent=2)
+            elif sub == "plan":
+                plan_path = Path("data/autonomy/overnight_plan.json")
+                if not plan_path.is_file():
+                    return "[INFO] No overnight plan is available yet. Set JARVIS_OVERNIGHT_PLANNING=1 to enable the opt-in planner."
+                try:
+                    return json.dumps(json.loads(plan_path.read_text(encoding="utf-8")), indent=2)
+                except (OSError, ValueError):
+                    return "[ERROR] The saved overnight plan could not be read."
             elif sub == "tick":
                 return json.dumps(self.autonomy.tick(), indent=2)
             elif sub in {"approve", "reject"}:
