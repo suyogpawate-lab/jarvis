@@ -253,7 +253,7 @@ class ConversationalResearch:
         if previous and not new_sources and not changed_sources:
             return ("Monitoring check complete: no new source URLs or changed source content were detected. "
                     f"Source fetch failures: {len(source_fetch_failures)}.")
-        source_lines = [f"- {s['provider']}: {s['title']} — {s['url']}" for s in (changed_sources + new_sources if previous else sources) if s.get("url")]
+        source_lines = [f"- {s.get('provider', 'content-change')}: {s.get('title', 'Source') } — {s['url']}" for s in (changed_sources + new_sources if previous else sources) if s.get("url")]
         local_block = ("\nLocal Knowledge Hub matches (not independently web-verified):\n" + "\n".join(local_lines[:6]) + "\n") if local_lines else ""
         failed_names = ", ".join(x["name"] for x in failures) or "none"
         return (f"Research complete.\n\n{summary}\n{local_block}\n"
