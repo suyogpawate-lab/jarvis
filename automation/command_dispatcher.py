@@ -893,7 +893,8 @@ class CommandDispatcher:
     def _fast_agent_request(self, text):
         """Use Groq FastAgent for lightweight decision tasks."""
         try:
-            return self.fast_agent.ask(text)
+            temporal = build_temporal_context(getattr(self, "automation", None))
+            return self.fast_agent.ask(temporal + "\n\n" + str(text))
         except Exception as exc:
             # Keep the existing fallback behavior, but make provider failures diagnosable.
             print(
