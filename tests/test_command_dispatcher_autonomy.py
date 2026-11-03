@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from automation.command_dispatcher import CommandDispatcher
 
@@ -105,6 +105,17 @@ class CommandDispatcherAutonomySecurityTests(unittest.TestCase):
         self.assertEqual(len(proposals), 1)
         self.assertEqual(proposals[0]["action"], "health_snapshot")
         self.assertNotIn("untrusted", proposals[0]["description"])
+
+    def test_scheduler_event_persists_outcome_not_command_text(self):
+        dispatcher = self.dispatcher()
+        dispatcher.dispatch = Mock(return_value="[OK] completed")
+        with patch("automation.command_dispatcher.tts.speak"):
+            result = dispatcher._scheduled_callback("send private message: secret text")
+        self.assertEqual(result, "[OK] completed")
+        dispatcher.autonomy.ingest.assert_called_once()
+        payload = dispatcher.autonomy.ingest.call_args.args[1]
+        self.assertEqual(payload, {"outcome": "returned"})
+        self.assertNotIn("secret", str(payload))
 
 
 if __name__ == "__main__":
