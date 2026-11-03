@@ -65,6 +65,7 @@ class ConversationalResearchTests(unittest.TestCase):
             deep = Mock()
             deep.search.return_value = "Evidence-based summary."
             manager = ConversationalResearch(hub, deep, Path(directory) / "missions.json")
+            manager._knowledge_hub_search = Mock(return_value=[])
             answer = manager.research_now("robotics")
             self.assertIn("provider_bad", answer)
             saved = json.loads((Path(directory) / "missions.json").read_text())
