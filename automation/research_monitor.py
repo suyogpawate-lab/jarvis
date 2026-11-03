@@ -150,6 +150,10 @@ class ResearchMonitor:
         self._write(self.outbox_path, rows)
         return self._deliver(item, rows)
 
+    def set_notifier(self, notifier):
+        """Attach an optional delivery adapter after its owning service starts."""
+        self.notifier = notifier
+
     def status(self):
         rows = self._read(self.outbox_path)
         return {"tracked_sources": len(self._read(self.snapshot_path)),
