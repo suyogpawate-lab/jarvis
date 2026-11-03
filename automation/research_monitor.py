@@ -48,7 +48,7 @@ class ResearchMonitor:
             if not url.startswith("https://"):
                 continue
             try:
-                body = re.sub(r"\\s+", " ", str(self.fetcher(url))).strip()[:192000]
+                body = re.sub(r"\s+", " ", str(self.fetcher(url))).strip()[:192000]
                 digest = hashlib.sha256(body.encode("utf-8", "replace")).hexdigest()
                 old = previous.get(url)
                 if old and old.get("sha256") != digest:
