@@ -45,6 +45,8 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         events = []
         worker.autonomy_event_callback = lambda source, event_id: events.append((source, event_id))
         worker.handled_ids = set()
+        worker.file_contacts = set()
+        worker._failures = {}
         worker.max_age_seconds = 600
         worker._rate_limited = lambda chat: False
         worker._remember = lambda *args, **kwargs: None
