@@ -164,7 +164,7 @@ class ConversationalResearch:
         elif timing == "weekly":
             run_at = now + timedelta(days=7)
         else:
-            match = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", query, re.I)
+            match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", schedule_at or "", re.I)
             hour = int(match.group(1)) if match else 9
             minute = int(match.group(2) or 0) if match else 0
             suffix = (match.group(3) or "").lower() if match else ""
