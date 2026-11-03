@@ -199,14 +199,41 @@ class ConversationalResearch:
         with self._lock:
             return self._load()[-20:]
 
-    def status(self):
+    def status(self, scheduler=None):
         missions = self.list_missions()
         counts = {}
         for item in missions:
             state = str(item.get("status", "UNKNOWN"))
+            if scheduler is not None and item.get("automation_id"):
+                job = scheduler.get(item["automation_id"]) or {}
+                state = str(job.get("status", state))
+                item["status"] = state
+                if job.get("last_result") is not None:
+                    item["last_result"] = str(job["last_result"])[:500]
+                if job.get("last_run") is not None:
+                    item["last_run"] = job["last_run"]
             counts[state] = counts.get(state, 0) + 1
         return {"mission_counts": counts, "recent_missions": missions[-10:],
                 "monitor": self.monitor.status()}
+
+    def resume_mission(self, mission_or_job_id, scheduler):
+        target = _clean(mission_or_job_id, 100)
+        if not target:
+            return "[ERROR] Supply a research mission or automation ID."
+        with self._lock:
+            records = self._load()
+            matches = [r for r in records if r.get("id") == target or r.get("automation_id") == target]
+            if not matches:
+                return f"[ERROR] Research mission not found: {target}"
+            record = matches[-1]
+            automation_id = record.get("automation_id") or target
+            result = scheduler.resume_recovered(automation_id)
+            if result.get("error"):
+                return "[ERROR] " + result["error"]
+            record["status"] = "SCHEDULED"
+            record["resumed_at"] = time.time()
+            self._save(records)
+        return f"Research mission {target} explicitly resumed as {automation_id}; it is queued to run once."
 
     def cancel_mission(self, mission_or_job_id, scheduler):
         target = _clean(mission_or_job_id, 100)
