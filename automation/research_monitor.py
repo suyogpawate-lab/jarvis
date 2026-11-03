@@ -67,7 +67,7 @@ class ResearchMonitor:
     @staticmethod
     def assess(summary, changed, new_sources):
         """Rank research deltas using auditable event classes, not opaque guesses."""
-        text = re.sub(r"\\s+", " ", str(summary or "").lower())
+        text = re.sub(r"\s+", " ", str(summary or "").lower())
         event_classes = {
             "technical_milestone": (r"breakthrough|first[- ]ever|first successful|major discovery|"
                                     r"record (?:efficiency|performance)|demonstrat(?:ed|es)"),
@@ -83,7 +83,7 @@ class ResearchMonitor:
         classes = [name for name, pattern in event_classes.items()
                    if re.search(pattern, text)]
         strong = {"technical_milestone", "commercial_deployment", "regulatory_or_policy"}
-        score = min(100, len(classes & strong) * 28 + len(classes - strong) * 14
+        score = min(100, len(set(classes) & strong) * 28 + len(set(classes) - strong) * 14
                     + min(len(changed), 3) * 12 + min(len(new_sources), 3) * 5)
         return {"score": score, "level": "important" if score >= 35 else "informational",
                 "signals": classes, "method": "explainable_event_classification_and_source_delta",
