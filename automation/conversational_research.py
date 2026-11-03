@@ -134,6 +134,15 @@ class ConversationalResearch:
         with self._lock:
             return self._load()[-20:]
 
+    def status(self):
+        missions = self.list_missions()
+        counts = {}
+        for item in missions:
+            state = str(item.get("status", "UNKNOWN"))
+            counts[state] = counts.get(state, 0) + 1
+        return {"mission_counts": counts, "recent_missions": missions[-10:],
+                "monitor": self.monitor.status()}
+
     def cancel_mission(self, mission_or_job_id, scheduler):
         target = _clean(mission_or_job_id, 100)
         if not target:
