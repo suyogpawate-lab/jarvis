@@ -480,6 +480,12 @@ class CommandDispatcher:
                 return json.dumps(self.autonomy.tick(), indent=2)
             elif sub in {"approve", "reject"}:
                 if source != "text":
+                    # Log the security event without recording command arguments
+                    # or any potentially private message content.
+                    print(
+                        "[AUTONOMY SECURITY] Blocked mission approval/rejection from a non-local source.",
+                        flush=True,
+                    )
                     return "[BLOCKED] Mission approval/rejection is restricted to the local interactive CLI."
                 if not arg:
                     return f"[ERROR] Mission ID missing. Usage: /autonomy {sub} mission-<id>"
