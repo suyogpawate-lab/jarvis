@@ -112,6 +112,18 @@ class CommandDispatcherAutonomySecurityTests(unittest.TestCase):
             self.assertEqual([item["action"] for item in proposals], [operation])
             self.assertNotIn("arbitrary", proposals[0]["description"])
 
+    def test_external_event_ingestion_is_metadata_only_and_source_allowlisted(self):
+        dispatcher = self.dispatcher()
+        dispatcher.ingest_autonomy_event("notification", "opaque-123")
+        dispatcher.autonomy.ingest.assert_called_once_with(
+            "notification",
+            {"kind": "external_event", "content_included": False},
+            event_id="notification-opaque-123",
+        )
+        dispatcher.autonomy.reset_mock()
+        dispatcher.ingest_autonomy_event("unknown", "opaque-456")
+        dispatcher.autonomy.ingest.assert_not_called()
+
     def test_health_event_maps_to_constant_operation_not_payload(self):
         dispatcher = self.dispatcher()
         proposals = dispatcher._autonomy_decide({
