@@ -21,7 +21,7 @@ MAX_EVENT_TEXT = 4000
 MAX_ACTIONS_PER_EVENT = 8
 TERMINAL = {"COMPLETED", "FAILED", "BLOCKED", "UNVERIFIED", "REJECTED", "CANCELLED"}
 AUTO_RISK = {"read_only"}
-READ_ONLY_OPERATIONS = frozenset({"health_snapshot"})
+READ_ONLY_OPERATIONS = frozenset({\n    "health_snapshot",\n    "notification_observed",\n    "whatsapp_message_observed",\n    "planning_checkpoint",\n    "android_accessibility_snapshot",\n})
 
 
 def _policy_risk(action: str) -> str:
