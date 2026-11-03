@@ -36,6 +36,7 @@ from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
+from automation.aie import AIEEngine, NaturalLanguageAIE
 from automation.overnight_planner import OvernightPlanner
 from automation.conversational_research import ConversationalResearch
 from core.temporal_context import build_temporal_context
@@ -116,6 +117,11 @@ class CommandDispatcher:
         self.health_manager = HealthManager(on_warning=self._on_health_warning)
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
 
+        # Persistent AIE goal/event control plane; typed capabilities only.
+        self.aie = AIEEngine(health_provider=self._aie_health_snapshot)
+        self.aie_nl = NaturalLanguageAIE(self.aie)
+        self.aie.start()
+
         # The autonomy executor is deliberately separate from dispatch(): it
         # accepts only exact operation IDs and never interprets model text.
         self.autonomy = AutonomySupervisor(
@@ -136,11 +142,21 @@ class CommandDispatcher:
         # Voice and text share dispatch(), so research uses one intake path.
         self.research = ConversationalResearch(self.search_hub, self.deep_search)
 
+    def _aie_health_snapshot(self):
+        result = self.health_manager.collect()
+        if not isinstance(result, dict) or not isinstance(result.get('services'), dict):
+            return {'ok': False, 'verified': False}
+        return {'ok': True, 'verified': True, 'timestamp': result.get('timestamp'),
+                'services': result.get('services'), 'warnings': result.get('warnings', [])}
+
     def _on_health_warning(self, warning: str) -> None:
         """Persist a bounded, non-sensitive health observation for assessment."""
         autonomy = getattr(self, "autonomy", None)
         if autonomy is not None:
             autonomy.ingest("health", warning, event_id=f"health-{uuid.uuid4().hex[:12]}")
+        aie = getattr(self, "aie", None)
+        if aie is not None:
+            aie.ingest_event("health", "health_warning", {"warning_type": str(warning)[:160]})
 
     def _execute_autonomy_action(self, operation: str) -> dict[str, Any]:
         """Execute fixed read-only operations; never dispatch model or event text."""
@@ -263,6 +279,7 @@ class CommandDispatcher:
             ("overnight_planner", getattr(self, "overnight_planner", None)),
             ("autonomy", getattr(self, "autonomy", None)),
             ("health", getattr(self, "health_manager", None)),
+            ("aie", getattr(self, "aie", None)),
         ):
             if service is None:
                 continue
@@ -1790,6 +1807,20 @@ Rules:
     def dispatch(self, text, conversation=None, source="external"):
         text = str(text).strip()
         original_text = text
+
+        # AIE has a natural-language goal interface shared by voice and text.
+        aie_nl = getattr(self, "aie_nl", None)
+        if re.match(r"^/aie(?:\s|$)", text, re.IGNORECASE):
+            if aie_nl is None:
+                return "[AIE] Engine is not initialized."
+            argument = re.sub(r"^/aie\s*", "", text, flags=re.IGNORECASE).strip()
+            if not argument or argument.lower() in {"status", "goals"}:
+                return aie_nl.status_text()
+            return "[AIE] Use natural language to create, pause or resume goals; /aie status shows objectives."
+        if aie_nl is not None:
+            aie_result = aie_nl.handle(text, source=source)
+            if aie_result is not None:
+                return aie_result
 
         # Explicit agent/task/health controls are deterministic and never sent to AI.
         if re.match(r"^/skill(?:\s|$)", text, re.IGNORECASE):
