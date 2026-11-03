@@ -77,30 +77,66 @@ class ResearchMonitor:
                 "signals": signals[:8],
                 "method": "transparent_keyword_and_source_change_heuristic"}
 
-    def notify_once(self, query, evidence, summary, assessment):
+    def _deliver(self, item, rows):
+        """Deliver one durable outbox item with bounded exponential retry."""
         if self.notifier is None:
             return {"sent": False, "error": "notification_adapter_not_configured"}
+        now = time.time()
+        attempts = int(item.get("attempts", 0))
+        if attempts >= 3 or float(item.get("retry_at", 0)) > now:
+            return {"sent": False, "deferred": True}
+        item["status"] = "PENDING"
+        item["attempts"] = attempts + 1
+        item["last_attempt_at"] = now
+        self._write(self.outbox_path, rows)
+        try:
+            result = self.notifier(
+                "JARVIS: " + str(item.get("level", "important")),
+                str(item.get("summary", ""))[:900],
+                item["id"],
+            )
+        except Exception as exc:
+            result = {"ok": False, "error": type(exc).__name__}
+        item["result"] = result
+        if isinstance(result, dict) and result.get("ok"):
+            item["status"] = "SENT"
+            item["completed_at"] = time.time()
+            item.pop("retry_at", None)
+        else:
+            item["status"] = "FAILED" if item["attempts"] >= 3 else "PENDING"
+            item["retry_at"] = time.time() + min(3600, 60 * (2 ** (item["attempts"] - 1)))
+        self._write(self.outbox_path, rows)
+        return {"sent": item["status"] == "SENT", "result": result,
+                "attempts": item["attempts"], "status": item["status"]}
+
+    def retry_pending(self):
+        """Retry due outbox entries; retries are bounded and use stable IDs."""
+        rows = self._read(self.outbox_path)
+        results = []
+        for item in rows:
+            if item.get("status") == "PENDING" and int(item.get("attempts", 0)) < 3:
+                if float(item.get("retry_at", 0)) <= time.time():
+                    results.append(self._deliver(item, rows))
+        return results
+
+    def notify_once(self, query, evidence, summary, assessment):
         fingerprint = hashlib.sha256((query.casefold() + "|" +
             "|".join(sorted(x.get("url", "") + ":" + x.get("sha256", x.get("content_hash", "")) for x in evidence))).encode()).hexdigest()
         rows = self._read(self.outbox_path)
-        if any(x.get("fingerprint") == fingerprint and x.get("status") == "SENT" for x in rows):
+        existing = next((x for x in reversed(rows)
+                         if x.get("fingerprint") == fingerprint), None)
+        if existing and existing.get("status") == "SENT":
             return {"sent": False, "duplicate": True}
+        if existing:
+            return self._deliver(existing, rows)
         item = {"id": "research-" + uuid.uuid4().hex[:10], "fingerprint": fingerprint,
-                "query": query, "status": "PENDING", "created_at": time.time()}
+                "query": query, "summary": str(summary)[:900],
+                "level": assessment.get("level", "important"),
+                "status": "PENDING", "attempts": 0, "retry_at": 0,
+                "created_at": time.time()}
         rows.append(item)
         self._write(self.outbox_path, rows)
-        try:
-            result = self.notifier("JARVIS: " + assessment["level"], str(summary)[:900], item["id"])
-        except Exception as exc:
-            result = {"ok": False, "error": type(exc).__name__}
-        rows = self._read(self.outbox_path)
-        current = next((x for x in rows if x["id"] == item["id"]), None)
-        if current:
-            current["status"] = "SENT" if isinstance(result, dict) and result.get("ok") else "FAILED"
-            current["result"] = result
-            current["completed_at"] = time.time()
-            self._write(self.outbox_path, rows)
-        return {"sent": bool(isinstance(result, dict) and result.get("ok")), "result": result}
+        return self._deliver(item, rows)
 
     def status(self):
         rows = self._read(self.outbox_path)
