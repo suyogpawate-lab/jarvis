@@ -123,9 +123,12 @@ class CommandDispatcher:
         self.autonomy.start()
         self.health_manager.start()
 
-        # Overnight planning is opt-in to avoid unexpected API usage on mobile.
-        self.overnight_planner = OvernightPlanner(self.fast_agent, self.autonomy)
-        if os.getenv("JARVIS_OVERNIGHT_PLANNING", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        # Daily planning is enabled by default; owners can disable it explicitly.
+        # Research runs only for topics explicitly configured in .env.
+        self.overnight_planner = OvernightPlanner(
+            self.fast_agent, self.autonomy, deep_search=self.deep_search
+        )
+        if os.getenv("JARVIS_OVERNIGHT_PLANNING", "1").strip().lower() not in {"0", "false", "no", "off"}:
             self.overnight_planner.start()
 
     def _on_health_warning(self, warning: str) -> None:
