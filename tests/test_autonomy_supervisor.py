@@ -16,7 +16,7 @@ class AutonomySupervisorTests(unittest.TestCase):
     def supervisor(self, decide):
         return AutonomySupervisor(
             decide=decide,
-            execute=lambda action: self.executed.append(action) or "[OK] verified",
+            execute=lambda action: self.executed.append(action) or {"ok": True, "verified": True, "operation": action},
             state_path=self.state,
             interval=0.5,
         )
@@ -34,7 +34,7 @@ class AutonomySupervisorTests(unittest.TestCase):
 
     def test_safe_mission_is_executed_and_verified(self):
         supervisor = self.supervisor(
-            lambda event: [{"action": "inspect service status", "risk": "read_only"}]
+            lambda event: [{"action": "health_snapshot", "risk": "read_only"}]
         )
         supervisor.ingest("health", "service check failed", event_id="evt-2")
 
@@ -42,7 +42,7 @@ class AutonomySupervisorTests(unittest.TestCase):
 
         self.assertEqual(result["assessment"]["missions_created"], 1)
         self.assertEqual(result["execution"]["status"], "COMPLETED")
-        self.assertEqual(self.executed, ["inspect service status"])
+        self.assertEqual(self.executed, ["health_snapshot"])
         self.assertEqual(supervisor.status()["completed_missions"], 1)
 
     def test_unknown_risk_waits_for_approval(self):
@@ -66,7 +66,11 @@ class AutonomySupervisorTests(unittest.TestCase):
         mission_id = supervisor.status()["recent_missions"][0]["id"]
 
         self.assertTrue(supervisor.approve(mission_id)["ok"])
-        self.assertEqual(supervisor.tick()["execution"]["status"], "COMPLETED")
+        execution = supervisor.execute_once()
+        self.assertFalse(execution["executed"])
+        self.assertEqual(execution["reason"], "operation_not_allowlisted")
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
+        self.assertEqual(self.executed, [])
         self.assertFalse(supervisor.approve(mission_id)["ok"])
 
     def test_interrupted_running_mission_is_not_replayed(self):
@@ -95,6 +99,46 @@ class AutonomySupervisorTests(unittest.TestCase):
         self.assertIn("planner offline", result["error"])
         saved = json.loads(self.state.read_text())
         self.assertEqual(saved["events"][0]["status"], "FAILED")
+
+    def test_shell_and_misleading_prefixes_are_not_allowlisted(self):
+        from automation.autonomy_supervisor import _policy_risk
+        dangerous = [
+            "ls; rm -rf /",
+            "show status && touch /tmp/pwned",
+            "inspect $(id)",
+            "check \`id\`",
+            "git status | sh",
+            "read /etc/passwd > /tmp/out",
+            "python -c 'print(1)'",
+            "health_snapshot; rm -rf /",
+            "show me how to send a message",
+        ]
+        for action in dangerous:
+            with self.subTest(action=action):
+                self.assertEqual(_policy_risk(action), "approval_required")
+        self.assertEqual(_policy_risk("health_snapshot"), "read_only")
+
+    def test_unverified_executor_result_is_not_completed(self):
+        supervisor = AutonomySupervisor(
+            decide=lambda event: [{"action": "health_snapshot"}],
+            execute=lambda action: "[OK] maybe",
+            state_path=self.state,
+            interval=0.5,
+        )
+        supervisor.ingest("health", "warning", event_id="evt-unverified")
+        result = supervisor.tick()
+        self.assertEqual(result["execution"]["status"], "UNVERIFIED")
+        self.assertEqual(supervisor.status()["unverified_missions"], 1)
+        self.assertEqual(supervisor.status()["completed_missions"], 0)
+
+    def test_start_is_idempotent_and_stop_joins_thread(self):
+        supervisor = self.supervisor(lambda event: [])
+        self.assertTrue(supervisor.start())
+        self.assertFalse(supervisor.start())
+        thread = supervisor._thread
+        supervisor.stop(timeout=2)
+        supervisor.stop(timeout=2)
+        self.assertFalse(thread.is_alive())
 
 
 if __name__ == "__main__":
