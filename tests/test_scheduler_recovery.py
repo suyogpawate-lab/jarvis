@@ -21,6 +21,40 @@ class SchedulerRecoveryTests(unittest.TestCase):
             finally:
                 scheduler.shutdown()
 
+    def test_recovered_job_requires_explicit_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auto-recovered.json"
+            path.write_text(json.dumps({"id":"auto-recovered","command":"research x",
+                "status":"RUNNING","next_run":time.time()-10}), encoding="utf-8")
+            called = []
+            scheduler = AutomationScheduler(lambda command: called.append(command) or "done", base_dir=directory)
+            try:
+                result = scheduler.resume_recovered("auto-recovered")
+                self.assertEqual(result["status"], "SCHEDULED")
+                deadline = time.time() + 3
+                while time.time() < deadline and not called:
+                    time.sleep(0.05)
+                self.assertEqual(called, ["research x"])
+                self.assertEqual(scheduler.get("auto-recovered")["status"], "DONE")
+            finally:
+                scheduler.shutdown()
+
+    def test_weekly_repeat_uses_local_calendar_days(self):
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = AutomationScheduler(lambda command: "done", base_dir=directory,
+                                            timezone="America/New_York")
+            try:
+                scheduled = datetime(2026, 3, 1, 9, 0, tzinfo=ZoneInfo("America/New_York"))
+                automation = {"repeat_mode": "weekly", "next_run": scheduled.timestamp()}
+                next_run = scheduler._next_repeat_time(automation, now=scheduled.timestamp())
+                local = datetime.fromtimestamp(next_run, ZoneInfo("America/New_York"))
+                self.assertEqual((local.hour, local.minute), (9, 0))
+                self.assertEqual((local - scheduled).days, 7)
+            finally:
+                scheduler.shutdown()
+
     def test_running_state_is_persisted_before_callback(self):
         with tempfile.TemporaryDirectory() as directory:
             observed = []
