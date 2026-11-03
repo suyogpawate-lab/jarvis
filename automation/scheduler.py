@@ -295,6 +295,13 @@ class AutomationScheduler:
                     return next_run
                 local_date += timedelta(days=1)
 
+        if automation.get("repeat_mode") == "weekly" and previous is not None:
+            scheduled = datetime.fromtimestamp(float(previous), self.timezone)
+            next_local = scheduled + timedelta(days=7)
+            while next_local.timestamp() <= now:
+                next_local += timedelta(days=7)
+            return next_local.timestamp()
+
         repeat_seconds = automation.get("repeat_seconds")
         if repeat_seconds:
             next_run = (
