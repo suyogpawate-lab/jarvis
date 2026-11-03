@@ -13,6 +13,7 @@ import os
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -44,8 +45,20 @@ class AIEEngine:
         conn.execute("PRAGMA busy_timeout=10000")
         return conn
 
+    @contextmanager
+    def _db(self):
+        conn = self._connect()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def _initialize(self):
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript("""
             CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -84,6 +97,14 @@ class AIEEngine:
             if version and int(version["value"]) > SCHEMA_VERSION:
                 raise AIEError("AIE database schema is newer than this JARVIS version.")
             db.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
+            # Events are side-effect-free assessments and may safely be retried.
+            # Running missions may have side effects; require explicit recovery.
+            db.execute("UPDATE events SET status='PENDING',updated_at=? WHERE status='PROCESSING'", (time.time(),))
+            db.execute("UPDATE missions SET status='PAUSED_RECOVERY',updated_at=? WHERE status='RUNNING'", (time.time(),))
+        try:
+            os.chmod(self.db_path, 0o600)
+        except OSError:
+            pass
 
     def register_capability(self, capability_id: str, handler: Callable, risk="read_only",
                             description="", input_validator: Callable | None = None,
