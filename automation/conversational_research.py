@@ -207,7 +207,7 @@ class ConversationalResearch:
         # A changed model summary alone is not called significant.
         if previous and not new_sources:
             return ("Monitoring check complete: no new source URLs were discovered since the previous run. "
-                    "No significant-change notification is being raised.")
+                    "This check does not detect changed content at existing URLs.")
         source_lines = [f"- {s['provider']}: {s['title']} — {s['url']}" for s in (new_sources if previous else sources) if s.get("url")]
         local_block = ("\nLocal Knowledge Hub matches (not independently web-verified):\n" + "\n".join(local_lines[:6]) + "\n") if local_lines else ""
         failed_names = ", ".join(x["name"] for x in failures) or "none"
