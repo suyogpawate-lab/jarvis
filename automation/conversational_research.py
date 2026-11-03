@@ -37,9 +37,11 @@ class ConversationalResearch:
     def parse_request(text: str) -> dict[str, Any] | None:
         raw = _clean(text)
         lower = raw.lower()
-        if not re.search(r"\b(research|investigate|look into|study|monitor|track developments)\b", lower):
+        if not re.search(r"\b(research|investigate|look into|study|monitor|track|keep track of)\b", lower):
             return None
         recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
+        if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
+            recurring = re.search(r"\b(daily)\b", "daily")
         timing = "now"
         if recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
@@ -49,9 +51,10 @@ class ConversationalResearch:
             timing = "tonight"
         elif re.search(r"\b(at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", lower):
             timing = "at"
-        query = re.sub(r"\b(research|investigate|look into|study|monitor|track developments)\b", "", raw, flags=re.I)
+        query = re.sub(r"\b(research|investigate|look into|study|monitor|track|keep track of)\b", "", raw, flags=re.I)
         query = re.sub(r"\b(tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
-        query = re.sub(r"\b(and )?(brief me|report back|notify me|tell me)\b", "", query, flags=re.I)
+        query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
+        query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
         query = _clean(query).strip(" ,.:;")
         if len(query) < 4:
             return None
