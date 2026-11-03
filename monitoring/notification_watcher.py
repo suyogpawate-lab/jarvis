@@ -96,7 +96,7 @@ class NotificationWatcher:
                 # Feed only a stable opaque identifier into autonomy. Notification
                 # title/body are untrusted and remain in the existing summarizer.
                 if self.autonomy_event_callback:
-                    opaque_id = hashlib.sha256(str(key).encode("utf-8", "replace")).hexdigest()[:24]
+                    opaque_id = hashlib.sha256(repr((key, signature)).encode("utf-8", "replace")).hexdigest()[:24]
                     try:
                         self.autonomy_event_callback("notification", opaque_id)
                     except Exception:
