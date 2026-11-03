@@ -86,6 +86,52 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertIn("Research robotics", value)
         self.assertIn("2026-11-03", value)
 
+    def test_knowledge_hub_matches_are_recorded_separately(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")
+            manager._knowledge_hub_search = Mock(return_value=[{
+                "provider": "knowledge_hub", "title": "Robotics notes",
+                "snippet": "Local notes about robotics.", "chunk_no": 2,
+            }])
+            manager.search_hub.providers = []
+            manager.deep_search.search.return_value = "Web synthesis."
+            answer = manager.research_now("robotics")
+            self.assertIn("Local Knowledge Hub matches", answer)
+            saved = json.loads((Path(directory) / "missions.json").read_text())
+            self.assertEqual(saved[0]["local_evidence"][0]["chunk_no"], 2)
+
+    def test_second_run_only_notifies_for_new_source_urls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            provider = Mock()
+            provider.name = "test"
+            provider.search.return_value = [
+                SimpleNamespace(title="Known", url="https://example.org/a"),
+            ]
+            hub = Mock()
+            hub.providers = [provider]
+            deep = Mock()
+            deep.search.return_value = "Supported summary."
+            manager = ConversationalResearch(hub, deep, Path(directory) / "missions.json")
+            manager._knowledge_hub_search = Mock(return_value=[])
+            first = manager.research_now("robotics")
+            second = manager.research_now("robotics")
+            self.assertIn("Research complete", first)
+            self.assertIn("no new source URLs", second)
+
+    def test_cancel_scheduled_research(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")
+            manager._record({
+                "id": "research-123", "automation_id": "auto-123",
+                "query": "robotics", "status": "SCHEDULED",
+            })
+            scheduler = Mock()
+            scheduler.cancel.return_value = {"id": "auto-123", "status": "CANCELLED"}
+            answer = manager.cancel_mission("auto-123", scheduler)
+            self.assertIn("cancelled", answer)
+            self.assertEqual(manager.list_missions()[0]["status"], "CANCELLED")
+            scheduler.cancel.assert_called_once_with("auto-123")
+
 
 if __name__ == "__main__":
     unittest.main()
