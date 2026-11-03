@@ -1637,7 +1637,7 @@ Rules:
     def _scheduled_callback(self, text):
         """Execute a user-scheduled command and record only its outcome metadata."""
         try:
-            result = self.dispatch(text)
+            result = self.dispatch(text, source="scheduler")
         except Exception:
             self.autonomy.ingest(
                 "scheduler",
@@ -1831,7 +1831,7 @@ Rules:
         research_request = self.research.parse_request(text)
         if research_request:
             if research_request["timing"] == "now":
-                return self.research.research_now(research_request["query"])
+                return self.research.research_now(research_request["query"], notify=(source == "scheduler"))
             return self.research.schedule(
                 research_request["query"], research_request["timing"],
                 self.automation, self.automation.timezone,
