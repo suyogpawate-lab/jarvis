@@ -259,6 +259,14 @@ summarize my notifications
 
 Grant notification access/permissions when Android requests them. Notification availability and content are controlled by Android and the source apps.
 
+### Event-driven autonomy and overnight planning
+
+The autonomy supervisor records metadata-only events from health warnings, newly observed Android notifications, incoming WhatsApp direct messages, and scheduled jobs. Notification titles/bodies and WhatsApp message text are **not** copied into autonomy state or treated as instructions. The existing WhatsApp worker remains the sole DM reply worker; this integration does not create a second sender or change its existing reply policy.
+
+Unattended autonomy is restricted to exact, fixed read-only operation IDs. It can record that an event was observed, collect a health snapshot, or inspect the foreground Android activity. It cannot execute arbitrary shell text, send messages, share files, change settings, or perform destructive Android actions. Sensitive and unknown proposals remain approval-gated; approval does not bypass the fixed execution adapter.
+
+Overnight planning is opt-in to avoid unexpected API usage on mobile. Set `JARVIS_OVERNIGHT_PLANNING=1` in the local `.env` to enable a daily bounded planning review (default 03:00 device-local time; configure with `JARVIS_OVERNIGHT_HOUR` and `JARVIS_OVERNIGHT_MINUTE`). It uses aggregate autonomy counters only, stores up to three suggestions in `data/autonomy/overnight_plan.json`, and does not execute them. View the latest result with `/autonomy plan`. A device that is asleep or has killed Termux may miss the scheduled run; this is not an Android alarm or guaranteed always-on service.
+
 ## Optional voice input and speech output
 
 The core installer does not force-install all voice dependencies. To attempt the optional voice setup:
