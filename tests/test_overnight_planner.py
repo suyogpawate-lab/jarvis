@@ -48,6 +48,60 @@ class OvernightPlannerTests(unittest.TestCase):
             self.assertEqual(record["suggestions"], [])
             self.assertFalse(record["execution_performed"])
 
+    def test_configured_research_is_bounded_and_saved_for_review(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agent = Mock()
+            agent.ask.return_value = json.dumps({"suggestions": []})
+            autonomy = Mock()
+            autonomy.status.return_value = {}
+            research = Mock()
+            research.search.side_effect = [
+                "Evidence summary for physics.",
+                "Evidence summary for robotics.",
+                "Evidence summary for chemistry.",
+            ]
+            planner = OvernightPlanner(
+                agent, autonomy, deep_search=research,
+                state_path=Path(directory) / "plan.json",
+                research_topics=[
+                    "physics topic", "robotics topic", "chemistry topic",
+                    "fourth topic must be ignored",
+                ],
+            )
+            record = planner.run_once()
+            self.assertEqual(len(record["research"]), 3)
+            self.assertEqual(research.search.call_count, 3)
+            self.assertEqual(record["research"][0]["topic"], "physics topic")
+            self.assertFalse(record["execution_performed"])
+            saved = json.loads((Path(directory) / "plan.json").read_text())
+            self.assertEqual(len(saved["research"]), 3)
+
+    def test_research_failure_is_recorded_without_stopping_other_topics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agent = Mock()
+            agent.ask.return_value = '{"suggestions":[]}'
+            autonomy = Mock()
+            autonomy.status.return_value = {}
+            research = Mock()
+            research.search.side_effect = [RuntimeError("network unavailable"), "usable evidence"]
+            planner = OvernightPlanner(
+                agent, autonomy, deep_search=research,
+                state_path=Path(directory) / "plan.json",
+                research_topics=["topic one", "topic two"],
+            )
+            record = planner.run_once()
+            self.assertEqual(record["research"][0]["status"], "FAILED")
+            self.assertEqual(record["research"][1]["status"], "COMPLETED")
+
+    def test_topics_are_deduplicated_and_capped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            planner = OvernightPlanner(
+                Mock(), Mock(), state_path=Path(directory) / "plan.json",
+                research_topics=["same", "same", "two", "three", "four"],
+            )
+            self.assertEqual(planner.research_topics, ["same", "two", "three"])
+
+
     def test_invalid_schedule_time_is_rejected(self):
         with self.assertRaises(ValueError):
             OvernightPlanner(Mock(), Mock(), run_hour=25, run_minute=0)
