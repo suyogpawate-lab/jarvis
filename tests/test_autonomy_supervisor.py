@@ -45,7 +45,7 @@ class AutonomySupervisorTests(unittest.TestCase):
         self.assertEqual(self.executed, ["health_snapshot"])
         self.assertEqual(supervisor.status()["completed_missions"], 1)
 
-    def test_unknown_risk_waits_for_approval(self):
+    def test_unknown_risk_is_blocked_without_approval_path(self):
         supervisor = self.supervisor(
             lambda event: [{"action": "send a message", "risk": "unknown"}]
         )
@@ -54,7 +54,7 @@ class AutonomySupervisorTests(unittest.TestCase):
         result = supervisor.tick()
 
         self.assertFalse(result["execution"]["executed"])
-        self.assertEqual(supervisor.status()["waiting_approval"], 1)
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
         self.assertEqual(self.executed, [])
 
     def test_approval_is_explicit_and_one_time(self):
@@ -151,8 +151,8 @@ class AutonomySupervisorTests(unittest.TestCase):
         mission_id = supervisor.status()["recent_missions"][0]["id"]
         result = supervisor.approve(mission_id)
         self.assertFalse(result["ok"])
-        self.assertEqual(result["error"], "operation_not_in_explicit_approval_allowlist")
-        self.assertEqual(supervisor.status()["waiting_approval"], 1)
+        self.assertEqual(result["error"], "mission_not_waiting_for_approval")
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
         self.assertEqual(self.executed, [])
 
     def test_model_risk_label_cannot_downgrade_mutating_action(self):
@@ -161,7 +161,7 @@ class AutonomySupervisorTests(unittest.TestCase):
         )
         supervisor.ingest("event", "untrusted request", event_id="evt-risk-downgrade")
         supervisor.process_once()
-        self.assertEqual(supervisor.status()["waiting_approval"], 1)
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
         self.assertEqual(self.executed, [])
 
     def test_exact_allowlisted_operation_ignores_model_risk_label(self):
