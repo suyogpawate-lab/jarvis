@@ -58,7 +58,9 @@ class ConversationalResearch:
         query = _clean(query).strip(" ,.:;")
         if len(query) < 4:
             return None
-        time_match = re.search(r"\\bat\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", lower, re.I)\n        schedule_at = time_match.group(0) if time_match else None\n        return {"query": query[:MAX_QUERY], "timing": timing, "schedule_at": schedule_at}
+        time_match = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lower, re.I)
+        schedule_at = time_match.group(0) if time_match else None
+        return {"query": query[:MAX_QUERY], "timing": timing, "schedule_at": schedule_at}
 
     def _load(self):
         try:
