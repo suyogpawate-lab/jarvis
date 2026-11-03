@@ -36,6 +36,25 @@ class NotificationWatcherCooldownTests(unittest.TestCase):
         analyze.assert_called_once_with(batch)
         self.assertEqual(watcher.pending, [])
 
+    def test_new_notification_emits_only_opaque_event_identifier(self):
+        events = []
+        watcher = NotificationWatcher(
+            output_queue=queue.Queue(),
+            autonomy_event_callback=lambda source, event_id: events.append((source, event_id)),
+        )
+        watcher.notifications.list = lambda: [{
+            "key": "private-notification-key",
+            "package": "com.example.chat",
+            "title": "Private title",
+            "content": "Private message body",
+            "when": "123",
+        }]
+        watcher._collect_new()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0][0], "notification")
+        self.assertNotIn("Private", events[0][1])
+        self.assertNotIn("private-notification-key", events[0][1])
+
     def test_cooldown_can_be_disabled(self):
         watcher = self.make_watcher(cooldown=0)
         with patch.object(watcher, "_analyze_batch") as analyze:
