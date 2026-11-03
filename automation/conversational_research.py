@@ -39,7 +39,7 @@ class ConversationalResearch:
     def parse_request(text: str) -> dict[str, Any] | None:
         raw = _clean(text)
         lower = raw.lower()
-        if not re.search(r"\b(research|investigate|look into|study|monitor|track|keep track of)\b", lower):
+        if not re.search(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", lower):
             return None
         recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
@@ -53,7 +53,7 @@ class ConversationalResearch:
             timing = "tonight"
         elif re.search(r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b", lower):
             timing = "at"
-        query = re.sub(r"\b(research|investigate|look into|study|monitor|track|keep track of)\b", "", raw, flags=re.I)
+        query = re.sub(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", "", raw, flags=re.I)
         query = re.sub(r"\b(tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
         query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
         query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
@@ -150,19 +150,23 @@ class ConversationalResearch:
                 try:
                     found = provider.search(query, limit=MAX_RESULTS)
                     providers.append({"name": name, "status": "queried", "results": len(found or [])})
+                    for item in (found or []):
+                        url = str(getattr(item, "url", ""))[:1000]
+                        if not url:
+                            continue
+                        sources.append({
+                            "provider": name,
+                            "title": _clean(getattr(item, "title", ""), 240),
+                            "url": url,
+                        })
                 except Exception as exc:
                     failures.append({"name": name, "error": type(exc).__name__})
         except Exception as exc:
             failures.append({"name": "search_hub", "error": type(exc).__name__})
 
-        try:
-            results = self.search_hub.search(query, limit=MAX_RESULTS)
-            sources = [{"provider": str(getattr(item, "source", "unknown"))[:80],
-                        "title": _clean(getattr(item, "title", ""), 240),
-                        "url": str(getattr(item, "url", ""))[:1000]}
-                       for item in (results or [])[:MAX_RESULTS]]
-        except Exception as exc:
-            failures.append({"name": "search_results", "error": type(exc).__name__})
+        # Use direct provider results rather than SearchHub.search(), whose
+        # cache can hide new sources during recurring monitoring.
+        sources = sources[:MAX_RESULTS]
 
         try:
             local_evidence = self._knowledge_hub_search(query)
