@@ -30,7 +30,8 @@ class ResearchMonitorTests(unittest.TestCase):
         assessment = ResearchMonitor.assess("A major discovery demonstrated a breakthrough", [{"url":"a"}], [])
         self.assertEqual(assessment["level"], "important")
         self.assertGreaterEqual(assessment["score"], 35)
-        self.assertEqual(assessment["method"], "explainable_event_classification_and_source_delta")\n        self.assertIn("technical_milestone", assessment["signals"])
+        self.assertEqual(assessment["method"], "explainable_event_classification_and_source_delta")
+        self.assertIn("technical_milestone", assessment["signals"])
 
     def test_failed_notification_retries_with_same_id_and_bounded_attempts(self):
         with tempfile.TemporaryDirectory() as d:
