@@ -35,7 +35,7 @@ from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
-from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS
+from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
 from automation.overnight_planner import OvernightPlanner
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
@@ -237,7 +237,7 @@ class CommandDispatcher:
                 operation = str(request.get("operation") or "")
             except (ValueError, TypeError):
                 return []
-            if operation not in APPROVAL_OPERATIONS:
+            if operation not in APPROVAL_OPERATIONS and operation not in READ_ONLY_OPERATIONS:
                 return []
             return [{
                 "action": operation,
