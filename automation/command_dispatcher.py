@@ -163,6 +163,22 @@ class CommandDispatcher:
                 "foreground_activity_present": bool(result.get("stdout")),
             }
 
+        if operation == "android_accessibility_snapshot":
+            from screen_cast.receiver import get_receiver
+            result = get_receiver().control({"action": "snapshot"})
+            elements = result.get("elements") if isinstance(result, dict) else None
+            verified = (
+                isinstance(result, dict)
+                and result.get("ok") is True
+                and isinstance(elements, list)
+            )
+            if not verified:
+                return {"ok": False, "error": "android_accessibility_snapshot_unavailable"}
+            return {
+                "ok": True, "verified": True, "operation": operation,
+                "element_count": len(elements),
+            }
+
         if operation in APPROVAL_OPERATIONS:
             from screen_cast.receiver import get_receiver
             action = {
@@ -553,10 +569,18 @@ class CommandDispatcher:
                     "home": "android_home",
                     "recents": "android_recents",
                     "notifications": "android_notifications",
+                    "snapshot": "android_accessibility_snapshot",
                 }
                 operation = operation_map.get(arg.lower())
                 if not operation:
-                    return "[ERROR] Usage: /autonomy android back|home|recents|notifications"
+                    return "[ERROR] Usage: /autonomy android snapshot|back|home|recents|notifications"
+                if operation == "android_accessibility_snapshot":
+                    self.autonomy.ingest(
+                        "android_request",
+                        json.dumps({"operation": operation}),
+                        event_id=f"android-request-{uuid.uuid4().hex[:12]}",
+                    )
+                    return "[QUEUED] Read-only Android accessibility snapshot requested."
                 self.autonomy.ingest(
                     "android_request",
                     json.dumps({"operation": operation}),
