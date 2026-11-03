@@ -110,6 +110,40 @@ def collect_checks():
         checks.append(("WARN", "Storage", "usage unavailable"))
 
     checks.append(("OK", "Memory", _memory_summary()))
+
+    # Research state is inspected locally; no source URLs, message contents,
+    # recipient numbers, or credential values are printed.
+    research_dir = ROOT / "data" / "research"
+    for filename, label in (("missions.json", "Research missions"),
+                            ("source_snapshots.json", "Research source snapshots"),
+                            ("notification_outbox.json", "Research notification outbox")):
+        path = research_dir / filename
+        if not path.exists():
+            checks.append(("WARN", label, "not created yet"))
+            continue
+        try:
+            import json
+            value = json.loads(path.read_text(encoding="utf-8"))
+            count = len(value) if isinstance(value, list) else 0
+            checks.append(("OK", label, f"{count} record(s)"))
+        except (OSError, ValueError):
+            checks.append(("WARN", label, "state file is unreadable or invalid JSON"))
+
+    wa_target = os.getenv("JARVIS_WA_RESEARCH_NOTIFY_TO", "").strip()
+    if not wa_target:
+        try:
+            for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith("JARVIS_WA_RESEARCH_NOTIFY_TO="):
+                    wa_target = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+        except OSError:
+            pass
+    digits = "".join(ch for ch in wa_target if ch.isdigit())
+    checks.append(("OK" if 10 <= len(digits) <= 15 else "INFO",
+                   "WhatsApp research alerts",
+                   "owner DM destination configured (number hidden)" if 10 <= len(digits) <= 15
+                   else "disabled; set JARVIS_WA_RESEARCH_NOTIFY_TO to enable owner-only DM alerts"))
+
     api = shutil.which("termux-battery-status")
     checks.append(("OK" if api else "WARN", "Termux:API",
                    "battery command available" if api else "not detected; battery diagnostics unavailable"))
