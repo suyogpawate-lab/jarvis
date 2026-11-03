@@ -129,41 +129,76 @@ class CommandDispatcher:
             autonomy.ingest("health", warning, event_id=f"health-{uuid.uuid4().hex[:12]}")
 
     def _execute_autonomy_action(self, operation: str) -> dict[str, Any]:
-        """Execute the sole allowlisted read-only autonomy operation."""
-        if operation != "health_snapshot":
-            return {"ok": False, "error": "operation_not_allowlisted"}
+        """Execute fixed read-only operations; never dispatch model or event text."""
+        if operation == "health_snapshot":
+            result = self.health_manager.collect()
+            verified = (
+                isinstance(result, dict)
+                and isinstance(result.get("timestamp"), (int, float))
+                and isinstance(result.get("services"), dict)
+                and isinstance(result.get("warnings"), list)
+            )
+            if not verified:
+                return {"ok": False, "error": "health_snapshot_postcondition_failed"}
+            return {
+                "ok": True, "verified": True, "operation": operation,
+                "service_count": len(result["services"]),
+                "warning_count": len(result["warnings"]),
+                "timestamp": result["timestamp"],
+            }
 
-        result = self.health_manager.collect()
-        verified = (
-            isinstance(result, dict)
-            and isinstance(result.get("timestamp"), (int, float))
-            and isinstance(result.get("services"), dict)
-            and isinstance(result.get("warnings"), list)
+        if operation == "android_foreground_snapshot":
+            result = self.android.get_foreground_app()
+            if not isinstance(result, dict) or result.get("exit") != 0:
+                return {"ok": False, "error": "android_snapshot_unavailable"}
+            return {
+                "ok": True, "verified": bool(result.get("stdout")),
+                "operation": operation,
+                "foreground_activity_present": bool(result.get("stdout")),
+            }
+
+        # These operations acknowledge a persisted observation only. They
+        # deliberately do not read message bodies, reply, send, or share data.
+        if operation in {
+            "notification_observed",
+            "whatsapp_message_observed",
+            "planning_checkpoint",
+        }:
+            return {
+                "ok": True, "verified": True, "operation": operation,
+                "recorded": True,
+            }
+
+        return {"ok": False, "error": "operation_not_allowlisted"}
+
+    def ingest_autonomy_event(self, source: str, event_id: str) -> None:
+        """Accept metadata-only external events; never persist message contents."""
+        allowed = {"notification", "whatsapp", "scheduler"}
+        if source not in allowed:
+            return
+        identifier = str(event_id or "").strip()[:128]
+        if not identifier:
+            return
+        self.autonomy.ingest(
+            source,
+            {"kind": "external_event", "content_included": False},
+            event_id=f"{source}-{identifier}",
         )
-        if not verified:
-            return {"ok": False, "error": "health_snapshot_postcondition_failed"}
-
-        # Store only a compact verification receipt, not full telemetry.
-        return {
-            "ok": True,
-            "verified": True,
-            "operation": "health_snapshot",
-            "service_count": len(result["services"]),
-            "warning_count": len(result["warnings"]),
-            "timestamp": result["timestamp"],
-        }
 
     def _autonomy_decide(self, event: dict[str, Any]) -> list[dict[str, Any]]:
-        # Event payloads are untrusted data, never instructions. Only a
-        # health event may request the fixed read-only health_snapshot op.
-        if event.get("source") == "health":
-            return [{
-                "action": "health_snapshot",
-                "description": "Verify current device and service health after a health warning.",
-            }]
-        # Scheduler command text and notification content are intentionally
-        # not converted into missions. Notification autonomy remains disabled.
-        return []
+        # Event payloads are metadata-only. No model-generated instructions
+        # or notification/WhatsApp body text can become an operation.
+        source_operations = {
+            "health": ("health_snapshot", "Verify current device and service health."),
+            "notification": ("notification_observed", "Record a newly observed Android notification."),
+            "whatsapp": ("whatsapp_message_observed", "Record a newly observed WhatsApp DM for owner review."),
+            "scheduler": ("planning_checkpoint", "Record a bounded scheduled planning checkpoint."),
+        }
+        selected = source_operations.get(str(event.get("source") or ""))
+        if not selected:
+            return []
+        operation, description = selected
+        return [{"action": operation, "description": description}]
 
     def stop_background_services(self) -> None:
         """Stop dispatcher-owned monitors without touching user data."""
