@@ -21,6 +21,7 @@ import re
 import shlex
 import json
 import os
+import uuid
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -33,6 +34,7 @@ from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
+from automation.autonomy_supervisor import AutonomySupervisor
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
@@ -47,7 +49,7 @@ from search.deep_search import DeepSearch
 class CommandDispatcher:
 
     COMMAND_PATTERN = re.compile(
-        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
+        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory|autonomy)\b",
         re.IGNORECASE,
     )
 
@@ -110,6 +112,24 @@ class CommandDispatcher:
         self.health_manager = HealthManager()
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
         self.health_manager.start()
+
+        self.autonomy = AutonomySupervisor(
+            decide=self._autonomy_decide,
+            execute=lambda action: self.dispatch(action, source="autonomy"),
+        )
+        self.autonomy.start()
+
+    def _autonomy_decide(self, event: dict[str, Any]) -> list[dict[str, Any]]:
+        source = event.get("source", "unknown")
+        payload = event.get("payload", "")
+        if source == "health":
+            return [{"action": "check service status", "risk": "read_only", "description": f"Health check alert: {payload}"}]
+        elif source == "notification":
+            return [{"action": "notifications", "risk": "read_only", "description": f"Notification alert: {payload}"}]
+        elif source == "scheduler":
+            return [{"action": payload, "risk": "approval_required", "description": f"Scheduled task action: {payload}"}]
+        else:
+            return [{"action": "status", "risk": "read_only", "description": f"Generic event: {payload}"}]
 
     # ==========================================================
     # COMMAND SPLITTING
@@ -396,6 +416,30 @@ class CommandDispatcher:
                 )
 
             return self.memory.format_memory()
+
+        # ------------------------------------------------------
+        # AUTONOMY
+        # ------------------------------------------------------
+
+        if command == "autonomy":
+            parts = argument.strip().split(maxsplit=1)
+            sub = parts[0].lower() if parts else "status"
+            arg = parts[1].strip() if len(parts) > 1 else ""
+
+            if sub == "status":
+                return json.dumps(self.autonomy.status(), indent=2)
+            elif sub == "tick":
+                return json.dumps(self.autonomy.tick(), indent=2)
+            elif sub == "approve":
+                if not arg:
+                    return "[ERROR] Mission ID missing. Usage: /autonomy approve mission-<id>"
+                return json.dumps(self.autonomy.approve(arg), indent=2)
+            elif sub == "reject":
+                if not arg:
+                    return "[ERROR] Mission ID missing. Usage: /autonomy reject mission-<id>"
+                return json.dumps(self.autonomy.reject(arg), indent=2)
+            else:
+                return "[ERROR] Unknown /autonomy subcommand. Use status, tick, approve, reject."
 
         # ------------------------------------------------------
         # DISCUSSION
@@ -1410,6 +1454,7 @@ Rules:
 
     def _scheduled_callback(self, text):
         """Execute a scheduled command and announce its result."""
+        self.autonomy.ingest("scheduler", text, event_id=f"sched-{uuid.uuid4().hex[:10]}")
         result = self.dispatch(text)
 
         if result:
