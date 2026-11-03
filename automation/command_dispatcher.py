@@ -1812,6 +1812,8 @@ Rules:
         if cancel_match:
             return self.research.cancel_mission(cancel_match.group(1), self.automation)
 
+        if re.fullmatch(r"(?:research\s+status|status\s+of\s+research|monitoring\s+status)", text, re.I):
+            return json.dumps(self.research.status(), indent=2)
         if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
             missions = self.research.list_missions()
             if not missions:
