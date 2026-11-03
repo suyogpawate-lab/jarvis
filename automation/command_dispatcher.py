@@ -1501,9 +1501,29 @@ Rules:
         )
 
     def _scheduled_callback(self, text):
-        """Execute a scheduled command and announce its result."""
-        self.autonomy.ingest("scheduler", text, event_id=f"sched-{uuid.uuid4().hex[:10]}")
-        result = self.dispatch(text)
+        """Execute a user-scheduled command and record only its outcome metadata."""
+        try:
+            result = self.dispatch(text)
+        except Exception:
+            self.autonomy.ingest(
+                "scheduler",
+                {"outcome": "exception"},
+                event_id=f"sched-{uuid.uuid4().hex[:10]}",
+            )
+            raise
+
+        failed = result is None or (
+            isinstance(result, dict) and (result.get("error") or result.get("ok") is False)
+        )
+        if isinstance(result, str):
+            failed = not result.strip() or result.lstrip().upper().startswith(
+                ("[ERROR]", "[FAIL]", "[FAILED]", "[BLOCKED]")
+            )
+        self.autonomy.ingest(
+            "scheduler",
+            {"outcome": "failed" if failed else "returned"},
+            event_id=f"sched-{uuid.uuid4().hex[:10]}",
+        )
 
         if result:
             try:
