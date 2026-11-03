@@ -21,6 +21,8 @@ import re
 import shlex
 import json
 import os
+import uuid
+from typing import Any
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -33,6 +35,7 @@ from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
+from automation.autonomy_supervisor import AutonomySupervisor
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
@@ -47,7 +50,7 @@ from search.deep_search import DeepSearch
 class CommandDispatcher:
 
     COMMAND_PATTERN = re.compile(
-        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory)\b",
+        r"/(exec|bg|notifications?|discuss\d*(?:s|m)?|remember|project|memory|autonomy)\b",
         re.IGNORECASE,
     )
 
@@ -107,9 +110,73 @@ class CommandDispatcher:
         self.skill_forge = SkillForge(self.task_executor)
 
         # Coordinate existing providers, persisted workflows, and read-only health checks.
-        self.health_manager = HealthManager()
+        self.health_manager = HealthManager(on_warning=self._on_health_warning)
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
+
+        # The autonomy executor is deliberately separate from dispatch(): it
+        # accepts only exact operation IDs and never interprets model text.
+        self.autonomy = AutonomySupervisor(
+            decide=self._autonomy_decide,
+            execute=self._execute_autonomy_action,
+        )
+        self.autonomy.start()
         self.health_manager.start()
+
+    def _on_health_warning(self, warning: str) -> None:
+        """Persist a bounded, non-sensitive health observation for assessment."""
+        autonomy = getattr(self, "autonomy", None)
+        if autonomy is not None:
+            autonomy.ingest("health", warning, event_id=f"health-{uuid.uuid4().hex[:12]}")
+
+    def _execute_autonomy_action(self, operation: str) -> dict[str, Any]:
+        """Execute the sole allowlisted read-only autonomy operation."""
+        if operation != "health_snapshot":
+            return {"ok": False, "error": "operation_not_allowlisted"}
+
+        result = self.health_manager.collect()
+        verified = (
+            isinstance(result, dict)
+            and isinstance(result.get("timestamp"), (int, float))
+            and isinstance(result.get("services"), dict)
+            and isinstance(result.get("warnings"), list)
+        )
+        if not verified:
+            return {"ok": False, "error": "health_snapshot_postcondition_failed"}
+
+        # Store only a compact verification receipt, not full telemetry.
+        return {
+            "ok": True,
+            "verified": True,
+            "operation": "health_snapshot",
+            "service_count": len(result["services"]),
+            "warning_count": len(result["warnings"]),
+            "timestamp": result["timestamp"],
+        }
+
+    def _autonomy_decide(self, event: dict[str, Any]) -> list[dict[str, Any]]:
+        # Event payloads are untrusted data, never instructions. Only a
+        # health event may request the fixed read-only health_snapshot op.
+        if event.get("source") == "health":
+            return [{
+                "action": "health_snapshot",
+                "description": "Verify current device and service health after a health warning.",
+            }]
+        # Scheduler command text and notification content are intentionally
+        # not converted into missions. Notification autonomy remains disabled.
+        return []
+
+    def stop_background_services(self) -> None:
+        """Stop dispatcher-owned monitors without touching user data."""
+        for name, service in (
+            ("autonomy", getattr(self, "autonomy", None)),
+            ("health", getattr(self, "health_manager", None)),
+        ):
+            if service is None:
+                continue
+            try:
+                service.stop()
+            except Exception as exc:
+                print(f"[SHUTDOWN WARN] {name}: {exc}", flush=True)
 
     # ==========================================================
     # COMMAND SPLITTING
@@ -192,6 +259,7 @@ class CommandDispatcher:
         self,
         command,
         argument,
+        source="external",
     ):
 
         # ------------------------------------------------------
@@ -398,6 +466,35 @@ class CommandDispatcher:
             return self.memory.format_memory()
 
         # ------------------------------------------------------
+        # AUTONOMY
+        # ------------------------------------------------------
+
+        if command == "autonomy":
+            parts = argument.strip().split(maxsplit=1)
+            sub = parts[0].lower() if parts else "status"
+            arg = parts[1].strip() if len(parts) > 1 else ""
+
+            if sub == "status":
+                return json.dumps(self.autonomy.status(), indent=2)
+            elif sub == "tick":
+                return json.dumps(self.autonomy.tick(), indent=2)
+            elif sub in {"approve", "reject"}:
+                if source != "text":
+                    # Log the security event without recording command arguments
+                    # or any potentially private message content.
+                    print(
+                        "[AUTONOMY SECURITY] Blocked mission approval/rejection from a non-local source.",
+                        flush=True,
+                    )
+                    return "[BLOCKED] Mission approval/rejection is restricted to the local interactive CLI."
+                if not arg:
+                    return f"[ERROR] Mission ID missing. Usage: /autonomy {sub} mission-<id>"
+                result = self.autonomy.approve(arg) if sub == "approve" else self.autonomy.reject(arg)
+                return json.dumps(result, indent=2)
+            else:
+                return "[ERROR] Unknown /autonomy subcommand. Use status, tick, approve, reject."
+
+        # ------------------------------------------------------
         # DISCUSSION
         # ------------------------------------------------------
 
@@ -437,7 +534,7 @@ class CommandDispatcher:
     # MULTI COMMAND
     # ==========================================================
 
-    def dispatch_commands(self, text):
+    def dispatch_commands(self, text, source="external"):
 
         commands = self.split_commands(text)
 
@@ -453,6 +550,7 @@ class CommandDispatcher:
                 result = self.execute_one(
                     command,
                     argument,
+                    source=source,
                 )
 
                 if result:
@@ -1409,8 +1507,29 @@ Rules:
         )
 
     def _scheduled_callback(self, text):
-        """Execute a scheduled command and announce its result."""
-        result = self.dispatch(text)
+        """Execute a user-scheduled command and record only its outcome metadata."""
+        try:
+            result = self.dispatch(text)
+        except Exception:
+            self.autonomy.ingest(
+                "scheduler",
+                {"outcome": "exception"},
+                event_id=f"sched-{uuid.uuid4().hex[:10]}",
+            )
+            raise
+
+        failed = result is None or (
+            isinstance(result, dict) and (result.get("error") or result.get("ok") is False)
+        )
+        if isinstance(result, str):
+            failed = not result.strip() or result.lstrip().upper().startswith(
+                ("[ERROR]", "[FAIL]", "[FAILED]", "[BLOCKED]")
+            )
+        self.autonomy.ingest(
+            "scheduler",
+            {"outcome": "failed" if failed else "returned"},
+            event_id=f"sched-{uuid.uuid4().hex[:10]}",
+        )
 
         if result:
             try:
@@ -2293,4 +2412,4 @@ Rules:
 
             return "[ERROR] Groq main agent unavailable."
 
-        return self.dispatch_commands(text)
+        return self.dispatch_commands(text, source=source)

@@ -1191,6 +1191,13 @@ def init_services():
 
 def shutdown():
     try:
+        active_dispatcher = globals().get("dispatcher")
+        if active_dispatcher is not None:
+            active_dispatcher.stop_background_services()
+    except Exception as exc:
+        print(f"[SHUTDOWN WARN] Dispatcher-owned services: {exc}", flush=True)
+
+    try:
         if whatsapp_autoreply is not None:
             whatsapp_autoreply.stop()
     except Exception as exc:

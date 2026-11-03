@@ -148,8 +148,11 @@ class HealthManager:
         self._thread.start()
         return True
 
-    def stop(self):
+    def stop(self, timeout=2.0):
         self._stop.set()
+        thread = self._thread
+        if thread and thread.is_alive():
+            thread.join(max(0.0, min(float(timeout), 10.0)))
 
     def _run(self):
         while not self._stop.wait(self.interval):
