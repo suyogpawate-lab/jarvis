@@ -19,8 +19,8 @@ from typing import Any, Callable
 MAX_EVENTS = 500
 MAX_EVENT_TEXT = 4000
 MAX_ACTIONS_PER_EVENT = 8
-TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
-AUTO_RISK = {"safe", "read_only"}
+TERMINAL = {"COMPLETED", "FAILED", "BLOCKED", "UNVERIFIED", "REJECTED", "CANCELLED"}
+AUTO_RISK = {"read_only"}
 READ_ONLY_OPERATIONS = frozenset({"health_snapshot"})
 
 
