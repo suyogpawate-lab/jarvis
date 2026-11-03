@@ -136,14 +136,14 @@ class AIEEngine:
         now = time.time()
         goal_id = self._id("goal")
         criteria = success_criteria if isinstance(success_criteria, list) else []
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("""INSERT INTO goals VALUES(?,?,?,?,?,?,?,?,?)""",
                        (goal_id, title, str(description or title)[:2000], "ACTIVE", priority,
                         now, now, json.dumps(criteria, ensure_ascii=False), str(source)[:40]))
         return self.get_goal(goal_id)
 
     def get_goal(self, goal_id):
-        with self._connect() as db:
+        with self._db() as db:
             row = db.execute("SELECT * FROM goals WHERE id=?", (goal_id,)).fetchone()
         return dict(row) if row else None
 
@@ -154,13 +154,13 @@ class AIEEngine:
             query += " WHERE status NOT IN ('COMPLETED','CANCELLED')"
         query += " ORDER BY priority DESC, updated_at DESC LIMIT ?"
         params.append(max(1, min(int(limit), 100)))
-        with self._connect() as db:
+        with self._db() as db:
             return [dict(x) for x in db.execute(query, params).fetchall()]
 
     def set_goal_status(self, goal_id, status):
         if status not in {"ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"}:
             raise ValueError("Invalid goal status.")
-        with self._connect() as db:
+        with self._db() as db:
             cur = db.execute("UPDATE goals SET status=?,updated_at=? WHERE id=?",
                              (status, time.time(), goal_id))
         return {"ok": cur.rowcount == 1, "goal_id": goal_id, "status": status}
@@ -170,7 +170,7 @@ class AIEEngine:
         now = time.time()
         safe_payload = json.dumps(payload if isinstance(payload, (dict, list, str, int, float, bool)) else str(payload),
                                   ensure_ascii=False)[:8000]
-        with self._connect() as db:
+        with self._db() as db:
             cur = db.execute("""INSERT OR IGNORE INTO events
                 (id,source,kind,payload,status,created_at,updated_at)
                 VALUES(?,?,?,?,?,?,?)""",
@@ -188,7 +188,7 @@ class AIEEngine:
         mission_id, now = self._id("mission"), time.time()
         needs_approval = RISK_ORDER[risk] >= 2
         status = "WAITING_APPROVAL" if needs_approval else "READY"
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("INSERT INTO missions VALUES(?,?,?,?,?,?,?,?,?)",
                        (mission_id, goal_id, str(title)[:240], status, risk,
                         json.dumps(task_specs, ensure_ascii=False), None, now, now))
@@ -207,7 +207,7 @@ class AIEEngine:
         return self.get_mission(mission_id)
 
     def get_mission(self, mission_id):
-        with self._connect() as db:
+        with self._db() as db:
             row = db.execute("SELECT * FROM missions WHERE id=?", (mission_id,)).fetchone()
             if not row:
                 return None
@@ -219,13 +219,13 @@ class AIEEngine:
             return result
 
     def list_missions(self, limit=30):
-        with self._connect() as db:
+        with self._db() as db:
             rows = db.execute("SELECT id FROM missions ORDER BY created_at DESC LIMIT ?",
                               (max(1, min(int(limit), 100)),)).fetchall()
         return [self.get_mission(x["id"]) for x in rows]
 
     def decide(self, event_id, decision, rationale, goal_id=None):
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("INSERT INTO decisions VALUES(?,?,?,?,?,?)",
                        (self._id("decision"), event_id, goal_id, str(decision)[:100],
                         str(rationale)[:1000], time.time()))
@@ -237,7 +237,7 @@ class AIEEngine:
             return False
         confidence = max(0.0, min(float(confidence), 1.0))
         expires = time.time() + int(ttl_seconds) if ttl_seconds else None
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("INSERT INTO memories VALUES(?,?,?,?,?,?,?)",
                        (self._id("mem"), kind, content, str(provenance)[:200],
                         confidence, time.time(), expires))
@@ -245,7 +245,7 @@ class AIEEngine:
 
     def recall(self, query="", limit=8):
         terms = [x.lower() for x in str(query).split() if len(x) > 2][:8]
-        with self._connect() as db:
+        with self._db() as db:
             rows = db.execute("SELECT * FROM memories WHERE expires_at IS NULL OR expires_at>?",
                               (time.time(),)).fetchall()
         scored = []
@@ -260,7 +260,7 @@ class AIEEngine:
     def approve(self, approval_id, approved=True):
         status = "APPROVED" if approved else "REJECTED"
         now = time.time()
-        with self._connect() as db:
+        with self._db() as db:
             row = db.execute("SELECT mission_id,status FROM approvals WHERE id=?", (approval_id,)).fetchone()
             if not row or row["status"] != "PENDING":
                 return {"ok": False, "error": "approval_not_pending"}
@@ -278,12 +278,12 @@ class AIEEngine:
             if mission["status"] != "READY":
                 return {"ok": False, "error": "mission_not_ready", "status": mission["status"]}
             if not mission["tasks"]:
-                with self._connect() as db:
+                with self._db() as db:
                     db.execute("UPDATE missions SET status='COMPLETED',result=?,updated_at=? WHERE id=?",
                                (json.dumps({"verified": True, "note": "Goal/mission recorded; no execution tasks requested."}),
                                 time.time(), mission_id))
                 return {"ok": True, "status": "COMPLETED", "verified": True}
-            with self._connect() as db:
+            with self._db() as db:
                 db.execute("UPDATE missions SET status='RUNNING',updated_at=? WHERE id=?",
                            (time.time(), mission_id))
             results = []
@@ -304,14 +304,14 @@ class AIEEngine:
                     if not verified:
                         raise AIEError("Capability did not return independently verified success.")
                     results.append({"task_id": task["id"], "capability": task["capability"], "result": result})
-                    with self._connect() as db:
+                    with self._db() as db:
                         db.execute("UPDATE tasks SET status='COMPLETED',result=?,updated_at=? WHERE id=?",
                                    (json.dumps(result, ensure_ascii=False)[:8000], time.time(), task["id"]))
                 status = "COMPLETED"
             except Exception as exc:
                 status = "UNVERIFIED" if isinstance(exc, AIEError) else "FAILED"
                 results.append({"error": type(exc).__name__, "message": str(exc)[:500]})
-            with self._connect() as db:
+            with self._db() as db:
                 db.execute("UPDATE missions SET status=?,result=?,updated_at=? WHERE id=?",
                            (status, json.dumps({"verified": status == "COMPLETED", "tasks": results},
                                                ensure_ascii=False)[:16000], time.time(), mission_id))
@@ -319,7 +319,7 @@ class AIEEngine:
                     "results": results}
 
     def process_one_event(self):
-        with self._connect() as db:
+        with self._db() as db:
             row = db.execute("SELECT * FROM events WHERE status='PENDING' ORDER BY created_at LIMIT 1").fetchone()
             if not row:
                 return {"processed": False}
@@ -332,7 +332,7 @@ class AIEEngine:
         decision = "REVIEW_ACTIVE_GOALS" if relevant else "RECORD_ONLY"
         rationale = "An observation arrived; active objectives were checked. No model text is executable."
         self.decide(row["id"], decision, rationale)
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("UPDATE events SET status='ASSESSED',updated_at=? WHERE id=?",
                        (time.time(), row["id"]))
         return {"processed": True, "event_id": row["id"], "decision": decision,
@@ -364,7 +364,7 @@ class AIEEngine:
                 continue
 
     def status(self):
-        with self._connect() as db:
+        with self._db() as db:
             counts = {}
             for table, column in (("goals","status"),("events","status"),("missions","status"),("approvals","status")):
                 counts[table] = {r["status"]: r["n"] for r in db.execute(
