@@ -62,6 +62,41 @@ class CommandDispatcherAutonomySecurityTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         dispatcher.android.get_foreground_app.assert_called_once_with()
 
+    @patch("screen_cast.receiver.get_receiver")
+    def test_android_navigation_requires_allowlisted_fixed_action(self, get_receiver):
+        dispatcher = self.dispatcher()
+        receiver = Mock()
+        receiver.control.return_value = {"ok": True}
+        get_receiver.return_value = receiver
+        result = dispatcher._execute_autonomy_action("android_back")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["verified"])
+        receiver.control.assert_called_once_with({"action": "back"})
+        rejected = dispatcher._execute_autonomy_action("android_tap:100:200")
+        self.assertFalse(rejected["ok"])
+
+    def test_android_request_event_accepts_only_fixed_operations(self):
+        dispatcher = self.dispatcher()
+        proposals = dispatcher._autonomy_decide({
+            "source": "android_request",
+            "payload": '{"operation":"android_home"}',
+        })
+        self.assertEqual([item["action"] for item in proposals], ["android_home"])
+        rejected = dispatcher._autonomy_decide({
+            "source": "android_request",
+            "payload": '{"operation":"android_tap:5:6"}',
+        })
+        self.assertEqual(rejected, [])
+
+    def test_android_navigation_request_is_local_cli_only(self):
+        dispatcher = self.dispatcher()
+        response = dispatcher.execute_one("autonomy", "android home", source="whatsapp")
+        self.assertIn("[BLOCKED]", response)
+        dispatcher.autonomy.ingest.assert_not_called()
+        response = dispatcher.execute_one("autonomy", "android home", source="text")
+        self.assertIn("[QUEUED]", response)
+        dispatcher.autonomy.ingest.assert_called_once()
+
     def test_autonomy_executor_accepts_only_exact_health_operation(self):
         dispatcher = self.dispatcher()
         dispatcher.health_manager.collect.return_value = {
