@@ -35,7 +35,7 @@ from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
-from automation.autonomy_supervisor import AutonomySupervisor
+from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS
 from automation.overnight_planner import OvernightPlanner
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
@@ -163,6 +163,19 @@ class CommandDispatcher:
                 "foreground_activity_present": bool(result.get("stdout")),
             }
 
+        if operation in APPROVAL_OPERATIONS:
+            from screen_cast.receiver import get_receiver
+            action = {
+                "android_back": "back",
+                "android_home": "home",
+                "android_recents": "recents",
+                "android_notifications": "notifications",
+            }[operation]
+            result = get_receiver().control({"action": action})
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                return {"ok": False, "error": "android_control_not_confirmed"}
+            return {"ok": True, "verified": True, "operation": operation, "action_confirmed": True}
+
         # These operations acknowledge a persisted observation only. They
         # deliberately do not read message bodies, reply, send, or share data.
         if operation in {
@@ -201,7 +214,20 @@ class CommandDispatcher:
             "scheduler": ("planning_checkpoint", "Record a bounded scheduled planning checkpoint."),
             "overnight_planning": ("planning_checkpoint", "Record completion of an owner-review planning cycle."),
         }
-        selected = source_operations.get(str(event.get("source") or ""))
+        source = str(event.get("source") or "")
+        if source == "android_request":
+            try:
+                request = json.loads(str(event.get("payload") or "{}"))
+                operation = str(request.get("operation") or "")
+            except (ValueError, TypeError):
+                return []
+            if operation not in APPROVAL_OPERATIONS:
+                return []
+            return [{
+                "action": operation,
+                "description": "Owner-requested Android navigation; local approval required.",
+            }]
+        selected = source_operations.get(source)
         if not selected:
             return []
         operation, description = selected
@@ -519,6 +545,24 @@ class CommandDispatcher:
 
             if sub == "status":
                 return json.dumps(self.autonomy.status(), indent=2)
+            elif sub == "android":
+                if source != "text":
+                    return "[BLOCKED] Android autonomy requests are restricted to the local interactive CLI."
+                operation_map = {
+                    "back": "android_back",
+                    "home": "android_home",
+                    "recents": "android_recents",
+                    "notifications": "android_notifications",
+                }
+                operation = operation_map.get(arg.lower())
+                if not operation:
+                    return "[ERROR] Usage: /autonomy android back|home|recents|notifications"
+                self.autonomy.ingest(
+                    "android_request",
+                    json.dumps({"operation": operation}),
+                    event_id=f"android-request-{uuid.uuid4().hex[:12]}",
+                )
+                return "[QUEUED] Android navigation request recorded. Check /autonomy status, then approve its mission ID locally."
             elif sub == "plan":
                 plan_path = Path("data/autonomy/overnight_plan.json")
                 if not plan_path.is_file():
