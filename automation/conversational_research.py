@@ -227,7 +227,7 @@ class ConversationalResearch:
                         and r.get("status") in {"COMPLETED", "NO_EVIDENCE"}]
         prior_keys = {self._source_key(s) for r in previous for s in r.get("sources", [])}
         new_sources = [s for s in sources if self._source_key(s) not in prior_keys]
-        changed_sources, source_fetch_failures = self.monitor.compare(sources) if previous else ([], [])
+        changed_sources, source_fetch_failures = self.monitor.compare(sources)
         significance = self.monitor.assess(summary, changed_sources, new_sources)
         local_lines = [f"- {x['title']}: {x['snippet']}" for x in local_evidence if x.get("snippet")]
         record = {
