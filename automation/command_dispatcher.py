@@ -1822,6 +1822,7 @@ Rules:
         if resume_match:
             return self.research.resume_mission(resume_match.group(1), self.automation)
         if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
+            self.research.status(self.automation)
             missions = self.research.list_missions()
             if not missions:
                 return "There are no saved research missions."
