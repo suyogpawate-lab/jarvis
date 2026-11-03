@@ -26,7 +26,7 @@ READ_ONLY_OPERATIONS = frozenset({
     "notification_observed",
     "whatsapp_message_observed",
     "planning_checkpoint",
-    "android_accessibility_snapshot",
+    "android_foreground_snapshot",
 })
 
 
