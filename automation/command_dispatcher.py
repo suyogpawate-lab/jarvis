@@ -1809,14 +1809,18 @@ Rules:
         original_text = text
 
         # AIE has a natural-language goal interface shared by voice and text.
+        aie_nl = getattr(self, "aie_nl", None)
         if re.match(r"^/aie(?:\s|$)", text, re.IGNORECASE):
+            if aie_nl is None:
+                return "[AIE] Engine is not initialized."
             argument = re.sub(r"^/aie\s*", "", text, flags=re.IGNORECASE).strip()
             if not argument or argument.lower() in {"status", "goals"}:
-                return self.aie_nl.status_text()
+                return aie_nl.status_text()
             return "[AIE] Use natural language to create, pause or resume goals; /aie status shows objectives."
-        aie_result = self.aie_nl.handle(text, source=source)
-        if aie_result is not None:
-            return aie_result
+        if aie_nl is not None:
+            aie_result = aie_nl.handle(text, source=source)
+            if aie_result is not None:
+                return aie_result
 
         # Explicit agent/task/health controls are deterministic and never sent to AI.
         if re.match(r"^/skill(?:\s|$)", text, re.IGNORECASE):
