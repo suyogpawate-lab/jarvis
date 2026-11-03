@@ -8,7 +8,7 @@ def build_temporal_context(scheduler=None, now=None, max_items=8):
     """Return factual local time and upcoming scheduler jobs; never infer deadlines."""
     timezone = getattr(scheduler, "timezone", None)
     timezone_name = getattr(scheduler, "timezone_name", "LOCAL")
-    current = now or datetime.now(timezone).astimezone() if timezone else now or datetime.now().astimezone()
+    current = now or (datetime.now(timezone) if timezone else datetime.now().astimezone())
     lines = [
         "CURRENT LOCAL TIME (device clock): " + current.isoformat(timespec="seconds"),
         "TIMEZONE: " + str(timezone_name),
