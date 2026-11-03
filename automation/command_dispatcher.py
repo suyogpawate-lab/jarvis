@@ -120,6 +120,7 @@ class CommandDispatcher:
         # Persistent AIE goal/event control plane; typed capabilities only.
         self.aie = AIEEngine(health_provider=self._aie_health_snapshot)
         self.aie_nl = NaturalLanguageAIE(self.aie)
+        self.aie.start()
 
         # The autonomy executor is deliberately separate from dispatch(): it
         # accepts only exact operation IDs and never interprets model text.
@@ -153,6 +154,9 @@ class CommandDispatcher:
         autonomy = getattr(self, "autonomy", None)
         if autonomy is not None:
             autonomy.ingest("health", warning, event_id=f"health-{uuid.uuid4().hex[:12]}")
+        aie = getattr(self, "aie", None)
+        if aie is not None:
+            aie.ingest_event("health", "health_warning", {"warning_type": str(warning)[:160]})
 
     def _execute_autonomy_action(self, operation: str) -> dict[str, Any]:
         """Execute fixed read-only operations; never dispatch model or event text."""
@@ -275,6 +279,7 @@ class CommandDispatcher:
             ("overnight_planner", getattr(self, "overnight_planner", None)),
             ("autonomy", getattr(self, "autonomy", None)),
             ("health", getattr(self, "health_manager", None)),
+            ("aie", getattr(self, "aie", None)),
         ):
             if service is None:
                 continue
