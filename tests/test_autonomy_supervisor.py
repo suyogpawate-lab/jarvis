@@ -67,7 +67,7 @@ class AutonomySupervisorTests(unittest.TestCase):
 
         self.assertTrue(supervisor.approve(mission_id)["ok"])
         execution = supervisor.execute_once()
-        self.assertFalse(execution["executed"])
+        self.assertTrue(execution["executed"])
         self.assertEqual(execution["status"], "COMPLETED")
         self.assertEqual(supervisor.status()["completed_missions"], 1)
         self.assertEqual(self.executed, ["android_back"])
