@@ -32,6 +32,25 @@ class ResearchMonitorTests(unittest.TestCase):
         self.assertGreaterEqual(assessment["score"], 35)
         self.assertEqual(assessment["method"], "transparent_keyword_and_source_change_heuristic")
 
+    def test_failed_notification_retries_with_same_id_and_bounded_attempts(self):
+        with tempfile.TemporaryDirectory() as d:
+            sent = []
+            def notifier(title, content, alert_id):
+                sent.append(alert_id)
+                return {"ok": len(sent) >= 2}
+            monitor = ResearchMonitor(d, notifier=notifier)
+            evidence = [{"url": "https://example.org/a", "sha256": "abc"}]
+            assessment = {"level": "important", "score": 40}
+            first = monitor.notify_once("robotics", evidence, "Update", assessment)
+            self.assertFalse(first["sent"])
+            rows = monitor._read(monitor.outbox_path)
+            rows[0]["retry_at"] = 0
+            monitor._write(monitor.outbox_path, rows)
+            retried = monitor.retry_pending()
+            self.assertTrue(retried[0]["sent"])
+            self.assertEqual(sent[0], sent[1])
+            self.assertEqual(monitor.status()["pending_notifications"], 0)
+
     def test_notification_outbox_deduplicates_successful_delivery(self):
         with tempfile.TemporaryDirectory() as d:
             sent = []
