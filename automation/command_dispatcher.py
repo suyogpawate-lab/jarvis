@@ -37,6 +37,8 @@ from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
 from automation.overnight_planner import OvernightPlanner
+from automation.conversational_research import ConversationalResearch
+from core.temporal_context import build_temporal_context
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
@@ -130,6 +132,9 @@ class CommandDispatcher:
         )
         if os.getenv("JARVIS_OVERNIGHT_PLANNING", "1").strip().lower() not in {"0", "false", "no", "off"}:
             self.overnight_planner.start()
+
+        # Voice and text share dispatch(), so research uses one intake path.
+        self.research = ConversationalResearch(self.search_hub, self.deep_search)
 
     def _on_health_warning(self, warning: str) -> None:
         """Persist a bounded, non-sensitive health observation for assessment."""
@@ -1799,6 +1804,29 @@ Rules:
             return self.execute_one("doctor", "")
 
         # ======================================================
+        # CONVERSATIONAL RESEARCH — shared voice/text intake.
+        # Scheduled jobs re-enter this route through the scheduler.
+        # ======================================================
+        if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
+            missions = self.research.list_missions()
+            if not missions:
+                return "There are no saved research missions."
+            return "Research missions:\n" + "\n".join(
+                f"{item.get('id')} — {item.get('status')} — {item.get('query', '')}"
+                for item in missions[-10:]
+            )
+
+        research_request = self.research.parse_request(text)
+        if research_request:
+            if research_request["timing"] == "now":
+                return self.research.research_now(research_request["query"])
+            return self.research.schedule(
+                research_request["query"], research_request["timing"],
+                self.automation, self.automation.timezone,
+                schedule_at=research_request.get("schedule_at"),
+            )
+
+        # ======================================================
         # DETERMINISTIC AUTOMATION ROUTE
         # Timers, reminders, and scheduled commands must never
         # be sent through Groq/OmniRoute for interpretation.
@@ -2484,6 +2512,12 @@ Rules:
                     + "\n\nCURRENT USER REQUEST:\n"
                     + text
                 )
+
+            # Factual local time and upcoming jobs inform ordinary reasoning.
+            try:
+                text = build_temporal_context(self.automation) + "\n\n" + text
+            except Exception as exc:
+                print(f"[TIME CONTEXT WARN] {type(exc).__name__}: {exc}", flush=True)
 
             # --------------------------------------------------
             # GROQ MAIN AGENT
