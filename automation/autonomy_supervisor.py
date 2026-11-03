@@ -209,7 +209,7 @@ class AutonomySupervisor:
                     "description": _bounded_text(proposal.get("description") or action, 300),
                     "action": action,
                     "risk": risk,
-                    "status": "PENDING" if risk in AUTO_RISK else "WAITING_APPROVAL",
+                    "status": "PENDING" if risk == "read_only" else ("WAITING_APPROVAL" if risk == "approval_required" else "BLOCKED"),
                     "created_at": time.time(),
                     "updated_at": time.time(),
                     "result": None,
