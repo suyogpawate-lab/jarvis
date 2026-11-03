@@ -42,22 +42,61 @@ class ConversationalResearch:
         )
 
     def _fetch_monitor_source(self, url):
-        # Only fetch public HTTPS URLs; reject literal private/reserved IPs and local hostnames.
-        from urllib.parse import urlsplit
+        """Fetch public HTTPS source text with DNS/IP and redirect guards."""
         import ipaddress
+        import socket
+        from html.parser import HTMLParser
+        from urllib.parse import urlsplit
+        from urllib.request import Request, build_opener, HTTPRedirectHandler
+
         parts = urlsplit(str(url))
-        if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
-            raise ValueError("source URL is not public HTTPS")
+        if (parts.scheme != "https" or not parts.hostname or parts.username
+                or parts.password or parts.port not in (None, 443)):
+            raise ValueError("source URL must be public HTTPS on port 443")
         host = parts.hostname.lower().rstrip(".")
         if host == "localhost" or host.endswith((".local", ".internal")):
             raise ValueError("local source host rejected")
         try:
-            if not ipaddress.ip_address(host).is_global:
-                raise ValueError("non-public source IP rejected")
-        except ValueError as exc:
-            if "does not appear" not in str(exc):
-                raise
-        return self.search_hub.fetch(url, timeout=5)
+            addresses = {item[4][0] for item in socket.getaddrinfo(
+                host, 443, type=socket.SOCK_STREAM)}
+        except OSError as exc:
+            raise ValueError("source DNS resolution failed") from exc
+        if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
+            raise ValueError("source resolves to a non-public IP")
+
+        class NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                raise ValueError("source redirects are not followed")
+
+        request = Request(str(url), headers={"User-Agent": "JARVIS-ResearchMonitor/1.0"})
+        opener = build_opener(NoRedirect)
+        with opener.open(request, timeout=5) as response:
+            final = urlsplit(response.geturl())
+            if final.scheme != "https" or final.hostname != host:
+                raise ValueError("source origin changed")
+            raw = response.read(512_001)
+        if len(raw) > 512_000:
+            raw = raw[:512_000]
+        html = raw.decode("utf-8", errors="replace")
+
+        class TextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.parts = []
+                self.hidden = 0
+            def handle_starttag(self, tag, attrs):
+                if tag.lower() in {"script", "style", "noscript", "svg"}:
+                    self.hidden += 1
+            def handle_endtag(self, tag):
+                if tag.lower() in {"script", "style", "noscript", "svg"} and self.hidden:
+                    self.hidden -= 1
+            def handle_data(self, data):
+                if not self.hidden:
+                    self.parts.append(data)
+
+        parser = TextExtractor()
+        parser.feed(html)
+        return " ".join(" ".join(parser.parts).split())[:192000]
 
     @staticmethod
     def _send_monitor_notification(title, content, alert_id):
@@ -189,6 +228,8 @@ class ConversationalResearch:
         if not query:
             return "[ERROR] Research topic is empty."
         started = time.time()
+        if notify:
+            self.monitor.retry_pending()
         providers, failures, sources = [], [], []
         local_evidence = []
         # Query provider registry once for auditable availability and source counts.
