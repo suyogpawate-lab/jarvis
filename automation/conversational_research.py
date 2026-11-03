@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 from typing import Any
+from automation.research_monitor import ResearchMonitor
 
 MAX_QUERY = 500
 MAX_SUMMARY = 5000
@@ -34,6 +35,83 @@ class ConversationalResearch:
         self.knowledge_hub_url = "http://127.0.0.1:8766/api/search"
         self.state_path = Path(state_path)
         self._lock = threading.RLock()
+        self.monitor = ResearchMonitor(
+            directory=str(self.state_path.parent),
+            fetcher=self._fetch_monitor_source,
+            notifier=self._send_monitor_notification,
+        )
+
+    def _fetch_monitor_source(self, url):
+        """Fetch public HTTPS source text with DNS/IP and redirect guards."""
+        import ipaddress
+        import socket
+        from html.parser import HTMLParser
+        from urllib.parse import urlsplit
+        from urllib.request import Request, build_opener, HTTPRedirectHandler
+
+        parts = urlsplit(str(url))
+        if (parts.scheme != "https" or not parts.hostname or parts.username
+                or parts.password or parts.port not in (None, 443)):
+            raise ValueError("source URL must be public HTTPS on port 443")
+        host = parts.hostname.lower().rstrip(".")
+        if host == "localhost" or host.endswith((".local", ".internal")):
+            raise ValueError("local source host rejected")
+        try:
+            addresses = {item[4][0] for item in socket.getaddrinfo(
+                host, 443, type=socket.SOCK_STREAM)}
+        except OSError as exc:
+            raise ValueError("source DNS resolution failed") from exc
+        if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
+            raise ValueError("source resolves to a non-public IP")
+
+        class NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                raise ValueError("source redirects are not followed")
+
+        request = Request(str(url), headers={"User-Agent": "JARVIS-ResearchMonitor/1.0"})
+        opener = build_opener(NoRedirect)
+        with opener.open(request, timeout=5) as response:
+            final = urlsplit(response.geturl())
+            if final.scheme != "https" or final.hostname != host:
+                raise ValueError("source origin changed")
+            raw = response.read(512_001)
+        if len(raw) > 512_000:
+            raw = raw[:512_000]
+        html = raw.decode("utf-8", errors="replace")
+
+        class TextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.parts = []
+                self.hidden = 0
+            def handle_starttag(self, tag, attrs):
+                if tag.lower() in {"script", "style", "noscript", "svg"}:
+                    self.hidden += 1
+            def handle_endtag(self, tag):
+                if tag.lower() in {"script", "style", "noscript", "svg"} and self.hidden:
+                    self.hidden -= 1
+            def handle_data(self, data):
+                if not self.hidden:
+                    self.parts.append(data)
+
+        parser = TextExtractor()
+        parser.feed(html)
+        return " ".join(" ".join(parser.parts).split())[:192000]
+
+    @staticmethod
+    def _send_monitor_notification(title, content, alert_id):
+        import shutil
+        import subprocess
+        executable = shutil.which("termux-notification")
+        if not executable:
+            return {"ok": False, "error": "termux-notification unavailable"}
+        result = subprocess.run(
+            [executable, "--id", alert_id[:32], "--title", title[:100],
+             "--content", content[:900], "--priority", "high"],
+            capture_output=True, text=True, timeout=8, check=False,
+        )
+        return {"ok": result.returncode == 0, "exit": result.returncode,
+                "error": (result.stderr or "")[:250]}
 
     @staticmethod
     def parse_request(text: str) -> dict[str, Any] | None:
@@ -95,6 +173,15 @@ class ConversationalResearch:
         with self._lock:
             return self._load()[-20:]
 
+    def status(self):
+        missions = self.list_missions()
+        counts = {}
+        for item in missions:
+            state = str(item.get("status", "UNKNOWN"))
+            counts[state] = counts.get(state, 0) + 1
+        return {"mission_counts": counts, "recent_missions": missions[-10:],
+                "monitor": self.monitor.status()}
+
     def cancel_mission(self, mission_or_job_id, scheduler):
         target = _clean(mission_or_job_id, 100)
         if not target:
@@ -136,11 +223,13 @@ class ConversationalResearch:
             return url
         return hashlib.sha256((source.get("provider", "") + "|" + source.get("title", "")).encode()).hexdigest()
 
-    def research_now(self, query: str) -> str:
+    def research_now(self, query: str, notify: bool = False) -> str:
         query = _clean(query)
         if not query:
             return "[ERROR] Research topic is empty."
         started = time.time()
+        if notify:
+            self.monitor.retry_pending()
         providers, failures, sources = [], [], []
         local_evidence = []
         # Query provider registry once for auditable availability and source counts.
@@ -188,6 +277,8 @@ class ConversationalResearch:
                         and r.get("status") in {"COMPLETED", "NO_EVIDENCE"}]
         prior_keys = {self._source_key(s) for r in previous for s in r.get("sources", [])}
         new_sources = [s for s in sources if self._source_key(s) not in prior_keys]
+        changed_sources, source_fetch_failures = self.monitor.compare(sources)
+        significance = self.monitor.assess(summary, changed_sources, new_sources)
         local_lines = [f"- {x['title']}: {x['snippet']}" for x in local_evidence if x.get("snippet")]
         record = {
             "id": "research-" + uuid.uuid4().hex[:10], "query": query,
@@ -196,6 +287,9 @@ class ConversationalResearch:
             "providers": providers, "provider_failures": failures, "sources": sources,
             "new_source_count": len(new_sources),
             "new_sources": new_sources,
+            "changed_sources": changed_sources,
+            "source_fetch_failures": source_fetch_failures,
+            "significance": significance,
             "local_evidence": local_evidence,
             "duration_seconds": round(time.time() - started, 2),
             "coverage_note": "Configured reachable providers, DeepSearch crawl and loopback Knowledge Hub only; not exhaustive internet coverage.",
@@ -203,19 +297,23 @@ class ConversationalResearch:
         self._record(record)
         if not summary:
             return "I couldn't produce a supported research summary. Check provider connectivity and the saved mission report."
-        # On repeated runs, only source discovery is treated as a change signal.
-        # A changed model summary alone is not called significant.
-        if previous and not new_sources:
-            return ("Monitoring check complete: no new source URLs were discovered since the previous run. "
-                    "This check does not detect changed content at existing URLs.")
-        source_lines = [f"- {s['provider']}: {s['title']} — {s['url']}" for s in (new_sources if previous else sources) if s.get("url")]
+        delivery = None
+        if notify and previous and (changed_sources or new_sources) and significance["level"] == "important":
+            delivery = self.monitor.notify_once(query, changed_sources + new_sources, summary, significance)
+        if previous and not new_sources and not changed_sources:
+            return ("Monitoring check complete: no new source URLs or changed source content were detected. "
+                    f"Source fetch failures: {len(source_fetch_failures)}.")
+        source_lines = [f"- {s.get('provider', 'content-change')}: {s.get('title', 'Source') } — {s['url']}" for s in (changed_sources + new_sources if previous else sources) if s.get("url")]
         local_block = ("\nLocal Knowledge Hub matches (not independently web-verified):\n" + "\n".join(local_lines[:6]) + "\n") if local_lines else ""
         failed_names = ", ".join(x["name"] for x in failures) or "none"
         return (f"Research complete.\n\n{summary}\n{local_block}\n"
                 f"Providers queried: {', '.join(x['name'] for x in providers) or 'none'}. "
                 f"Provider failures: {failed_names}.\n"
                 + ("New sources:\n" + "\n".join(source_lines) + "\n" if source_lines else "")
-                + "Coverage: configured reachable sources only; not the entire internet.")
+                + f"\nContent changes: {len(changed_sources)}; new URLs: {len(new_sources)}; significance: {significance['level']} ({significance['score']}/100)."
+                + f"\nSource fetch failures: {len(source_fetch_failures)}."
+                + ("\nNotification: sent." if delivery and delivery.get("sent") else "\nNotification: delivery failed or unavailable." if notify and delivery else "\nNotification: not requested.")
+                + " Coverage: configured reachable sources only; not the entire internet.")
 
     def schedule(self, query: str, timing: str, scheduler, timezone, schedule_at=None):
         now = datetime.now(timezone)

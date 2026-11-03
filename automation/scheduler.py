@@ -94,6 +94,7 @@ class AutomationScheduler:
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
+        self._recover_interrupted()
 
         self._thread = threading.Thread(
             target=self._loop,
@@ -102,6 +103,23 @@ class AutomationScheduler:
         )
 
         self._thread.start()
+
+    def _recover_interrupted(self):
+        """Never replay work interrupted mid-execution; preserve it for review."""
+        with self._lock:
+            for filename in os.listdir(self.base_dir):
+                if not filename.endswith(".json"):
+                    continue
+                automation = self._load(filename[:-5])
+                if automation and automation.get("status") == "RUNNING":
+                    automation["status"] = "PAUSED_RECOVERY"
+                    automation["last_status"] = "PAUSED_RECOVERY"
+                    automation["recovery_note"] = (
+                        "The process stopped before completion was verified. "
+                        "This job was not automatically replayed."
+                    )
+                    automation["recovered_at"] = time.time()
+                    self._save(automation)
 
     # ----------------------------------------------------------
     # STORAGE
@@ -352,6 +370,13 @@ class AutomationScheduler:
 
         if not command:
             return
+
+        # Persist RUNNING before invoking user work so a process restart can
+        # distinguish interrupted work from a job that was never started.
+        with self._lock:
+            automation["status"] = "RUNNING"
+            automation["started_at"] = time.time()
+            self._save(automation)
 
         try:
             result = self.callback(command)
