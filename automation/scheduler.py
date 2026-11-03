@@ -331,6 +331,26 @@ class AutomationScheduler:
 
             return automation
 
+    def resume_recovered(self, automation_id):
+        """Resume an interrupted job only after an explicit owner command."""
+        with self._lock:
+            automation = self._load(automation_id)
+            if not automation:
+                return {"error": f"Unknown automation: {automation_id}"}
+            if automation.get("status") != "PAUSED_RECOVERY":
+                return {"error": "Only PAUSED_RECOVERY jobs can be explicitly resumed."}
+            automation["status"] = "SCHEDULED"
+            automation["next_run"] = time.time()
+            automation["resumed_at"] = time.time()
+            automation["recovery_note"] = (
+                "Owner explicitly authorized resumption; the command will run once."
+            )
+            automation["repeat_seconds"] = None
+            automation["repeat_mode"] = None
+            automation["repeat_at"] = None
+            self._save(automation)
+            return automation
+
     def get(self, automation_id):
         return self._load(automation_id)
 
