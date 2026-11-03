@@ -200,7 +200,8 @@ class ConversationalResearch:
             return self._load()[-20:]
 
     def status(self, scheduler=None):
-        missions = self.list_missions()
+        with self._lock:
+            missions = self._load()
         counts = {}
         for item in missions:
             state = str(item.get("status", "UNKNOWN"))
