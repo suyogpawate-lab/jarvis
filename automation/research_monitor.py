@@ -81,7 +81,7 @@ class ResearchMonitor:
         if self.notifier is None:
             return {"sent": False, "error": "notification_adapter_not_configured"}
         fingerprint = hashlib.sha256((query.casefold() + "|" +
-            "|".join(sorted(x.get("url", "") for x in evidence))).encode()).hexdigest()
+            "|".join(sorted(x.get("url", "") + ":" + x.get("sha256", x.get("content_hash", "")) for x in evidence))).encode()).hexdigest()
         rows = self._read(self.outbox_path)
         if any(x.get("fingerprint") == fingerprint and x.get("status") == "SENT" for x in rows):
             return {"sent": False, "duplicate": True}
