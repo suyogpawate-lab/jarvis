@@ -35,6 +35,7 @@ class ConversationalResearch:
         self.knowledge_hub_url = "http://127.0.0.1:8766/api/search"
         self.state_path = Path(state_path)
         self._lock = threading.RLock()
+        self.whatsapp_sender = None
         self.monitor = ResearchMonitor(
             directory=str(self.state_path.parent),
             fetcher=self._fetch_monitor_source,
@@ -98,20 +99,45 @@ class ConversationalResearch:
         parser.feed(html)
         return " ".join(" ".join(parser.parts).split())[:192000]
 
-    @staticmethod
-    def _send_monitor_notification(title, content, alert_id):
+    def set_whatsapp_sender(self, sender):
+        """Attach an explicitly configured owner-DM delivery adapter."""
+        self.whatsapp_sender = sender
+
+    def _send_monitor_notification(self, title, content, alert_id):
         import shutil
         import subprocess
+        outcomes = {}
         executable = shutil.which("termux-notification")
-        if not executable:
-            return {"ok": False, "error": "termux-notification unavailable"}
-        result = subprocess.run(
-            [executable, "--id", alert_id[:32], "--title", title[:100],
-             "--content", content[:900], "--priority", "high"],
-            capture_output=True, text=True, timeout=8, check=False,
-        )
-        return {"ok": result.returncode == 0, "exit": result.returncode,
-                "error": (result.stderr or "")[:250]}
+        if executable:
+            try:
+                result = subprocess.run(
+                    [executable, "--id", alert_id[:32], "--title", title[:100],
+                     "--content", content[:900], "--priority", "high"],
+                    capture_output=True, text=True, timeout=8, check=False,
+                )
+                outcomes["termux"] = {"ok": result.returncode == 0, "exit": result.returncode,
+                                      "error": (result.stderr or "")[:250]}
+            except Exception as exc:
+                outcomes["termux"] = {"ok": False, "error": type(exc).__name__}
+        else:
+            outcomes["termux"] = {"ok": False, "error": "termux-notification unavailable"}
+
+        recipient = re.sub(r"\\D", "", os.getenv("JARVIS_WA_RESEARCH_NOTIFY_TO", ""))
+        if recipient and self.whatsapp_sender:
+            if not 10 <= len(recipient) <= 15:
+                outcomes["whatsapp"] = {"ok": False, "error": "configured owner number must contain 10-15 digits"}
+            else:
+                try:
+                    result = self.whatsapp_sender(recipient, f"{title}\\n{content}"[:1200])
+                    outcomes["whatsapp"] = {"ok": bool(result), "result": str(result)[:200]}
+                except Exception as exc:
+                    outcomes["whatsapp"] = {"ok": False, "error": type(exc).__name__}
+        elif recipient:
+            outcomes["whatsapp"] = {"ok": False, "error": "WhatsApp worker unavailable"}
+        else:
+            outcomes["whatsapp"] = {"ok": False, "error": "not configured"}
+
+        return {"ok": any(item.get("ok") for item in outcomes.values()), "channels": outcomes}
 
     @staticmethod
     def parse_request(text: str) -> dict[str, Any] | None:
