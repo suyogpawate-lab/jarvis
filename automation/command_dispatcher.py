@@ -1808,14 +1808,25 @@ Rules:
         # CONVERSATIONAL RESEARCH — shared voice/text intake.
         # Scheduled jobs re-enter this route through the scheduler.
         # ======================================================
+        cancel_match = re.fullmatch(r"cancel\s+research\s+([A-Za-z0-9_-]+)", text, re.I)
+        if cancel_match:
+            return self.research.cancel_mission(cancel_match.group(1), self.automation)
+
         if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
             missions = self.research.list_missions()
             if not missions:
                 return "There are no saved research missions."
-            return "Research missions:\n" + "\n".join(
-                f"{item.get('id')} — {item.get('status')} — {item.get('query', '')}"
-                for item in missions[-10:]
-            )
+            lines = []
+            for item in missions[-10:]:
+                status = item.get("status", "UNKNOWN")
+                automation_id = item.get("automation_id")
+                if automation_id:
+                    job = self.automation.get(automation_id) or {}
+                    status = job.get("status", status)
+                lines.append(
+                    f"{item.get('id')} / {automation_id or 'one-shot'} — {status} — {item.get('query', '')}"
+                )
+            return "Research missions:\\n" + "\\n".join(lines)
 
         research_request = self.research.parse_request(text)
         if research_request:
