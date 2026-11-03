@@ -295,6 +295,13 @@ class AutomationScheduler:
                     return next_run
                 local_date += timedelta(days=1)
 
+        if automation.get("repeat_mode") == "weekly" and previous is not None:
+            scheduled = datetime.fromtimestamp(float(previous), self.timezone)
+            next_local = scheduled + timedelta(days=7)
+            while next_local.timestamp() <= now:
+                next_local += timedelta(days=7)
+            return next_local.timestamp()
+
         repeat_seconds = automation.get("repeat_seconds")
         if repeat_seconds:
             next_run = (
@@ -329,6 +336,26 @@ class AutomationScheduler:
 
             self._save(automation)
 
+            return automation
+
+    def resume_recovered(self, automation_id):
+        """Resume an interrupted job only after an explicit owner command."""
+        with self._lock:
+            automation = self._load(automation_id)
+            if not automation:
+                return {"error": f"Unknown automation: {automation_id}"}
+            if automation.get("status") != "PAUSED_RECOVERY":
+                return {"error": "Only PAUSED_RECOVERY jobs can be explicitly resumed."}
+            automation["status"] = "SCHEDULED"
+            automation["next_run"] = time.time()
+            automation["resumed_at"] = time.time()
+            automation["recovery_note"] = (
+                "Owner explicitly authorized resumption; the command will run once."
+            )
+            automation["repeat_seconds"] = None
+            automation["repeat_mode"] = None
+            automation["repeat_at"] = None
+            self._save(automation)
             return automation
 
     def get(self, automation_id):

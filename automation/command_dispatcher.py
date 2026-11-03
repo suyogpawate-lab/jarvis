@@ -1671,8 +1671,12 @@ Rules:
         return result
 
     def set_whatsapp_confirmation_worker(self, worker):
-        """Attach the WhatsApp group-confirmation owner."""
+        """Attach WhatsApp confirmation and optional research-notification delivery."""
         self.whatsapp_confirmation_worker = worker
+        if worker is not None:
+            self.research.set_whatsapp_sender(
+                lambda recipient, message: worker.whatsapp.send(recipient, message)
+            )
 
     def _whatsapp_send(self, to, message):
         """
@@ -1813,8 +1817,12 @@ Rules:
             return self.research.cancel_mission(cancel_match.group(1), self.automation)
 
         if re.fullmatch(r"(?:research\s+status|status\s+of\s+research|monitoring\s+status)", text, re.I):
-            return json.dumps(self.research.status(), indent=2)
+            return json.dumps(self.research.status(self.automation), indent=2)
+        resume_match = re.fullmatch(r"resume\s+research\s+([A-Za-z0-9_-]+)", text, re.I)
+        if resume_match:
+            return self.research.resume_mission(resume_match.group(1), self.automation)
         if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
+            self.research.status(self.automation)
             missions = self.research.list_missions()
             if not missions:
                 return "There are no saved research missions."

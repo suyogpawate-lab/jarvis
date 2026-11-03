@@ -119,6 +119,29 @@ class ConversationalResearchTests(unittest.TestCase):
             self.assertIn("Research complete", first)
             self.assertIn("no new source URLs", second)
 
+    def test_whatsapp_alert_requires_explicit_owner_number_and_worker(self):
+        import os
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")
+            manager.set_whatsapp_sender(lambda recipient, message: {"id": "sent"})
+            with patch.dict(os.environ, {"JARVIS_WA_RESEARCH_NOTIFY_TO": "919876543210"}), \
+                 patch("shutil.which", return_value=None):
+                result = manager._send_monitor_notification("JARVIS", "Update", "alert-1")
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["channels"]["whatsapp"]["ok"], True)
+
+    def test_whatsapp_alert_does_not_guess_a_recipient(self):
+        import os
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")
+            manager.set_whatsapp_sender(lambda *args: self.fail("must not send without opt-in"))
+            with patch.dict(os.environ, {}, clear=True), patch("shutil.which", return_value=None):
+                result = manager._send_monitor_notification("JARVIS", "Update", "alert-2")
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["channels"]["whatsapp"]["error"], "not configured")
+
     def test_cancel_scheduled_research(self):
         with tempfile.TemporaryDirectory() as directory:
             manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")

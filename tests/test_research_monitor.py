@@ -30,7 +30,8 @@ class ResearchMonitorTests(unittest.TestCase):
         assessment = ResearchMonitor.assess("A major discovery demonstrated a breakthrough", [{"url":"a"}], [])
         self.assertEqual(assessment["level"], "important")
         self.assertGreaterEqual(assessment["score"], 35)
-        self.assertEqual(assessment["method"], "transparent_keyword_and_source_change_heuristic")
+        self.assertEqual(assessment["method"], "explainable_event_classification_and_source_delta")
+        self.assertIn("technical_milestone", assessment["signals"])
 
     def test_failed_notification_retries_with_same_id_and_bounded_attempts(self):
         with tempfile.TemporaryDirectory() as d:
@@ -50,6 +51,15 @@ class ResearchMonitorTests(unittest.TestCase):
             self.assertTrue(retried[0]["sent"])
             self.assertEqual(sent[0], sent[1])
             self.assertEqual(monitor.status()["pending_notifications"], 0)
+
+    def test_same_url_new_content_has_a_distinct_notification_fingerprint(self):
+        with tempfile.TemporaryDirectory() as d:
+            sent = []
+            monitor = ResearchMonitor(d, notifier=lambda *args: (sent.append(args) or {"ok": True}))
+            assessment = {"level": "important", "score": 40}
+            monitor.notify_once("robotics", [{"url": "https://example.org/a", "sha256": "one"}], "Update one", assessment)
+            monitor.notify_once("robotics", [{"url": "https://example.org/a", "sha256": "two"}], "Update two", assessment)
+            self.assertEqual(len(sent), 2)
 
     def test_notification_outbox_deduplicates_successful_delivery(self):
         with tempfile.TemporaryDirectory() as d:

@@ -35,6 +35,7 @@ class ConversationalResearch:
         self.knowledge_hub_url = "http://127.0.0.1:8766/api/search"
         self.state_path = Path(state_path)
         self._lock = threading.RLock()
+        self.whatsapp_sender = None
         self.monitor = ResearchMonitor(
             directory=str(self.state_path.parent),
             fetcher=self._fetch_monitor_source,
@@ -98,20 +99,45 @@ class ConversationalResearch:
         parser.feed(html)
         return " ".join(" ".join(parser.parts).split())[:192000]
 
-    @staticmethod
-    def _send_monitor_notification(title, content, alert_id):
+    def set_whatsapp_sender(self, sender):
+        """Attach an explicitly configured owner-DM delivery adapter."""
+        self.whatsapp_sender = sender
+
+    def _send_monitor_notification(self, title, content, alert_id):
         import shutil
         import subprocess
+        outcomes = {}
         executable = shutil.which("termux-notification")
-        if not executable:
-            return {"ok": False, "error": "termux-notification unavailable"}
-        result = subprocess.run(
-            [executable, "--id", alert_id[:32], "--title", title[:100],
-             "--content", content[:900], "--priority", "high"],
-            capture_output=True, text=True, timeout=8, check=False,
-        )
-        return {"ok": result.returncode == 0, "exit": result.returncode,
-                "error": (result.stderr or "")[:250]}
+        if executable:
+            try:
+                result = subprocess.run(
+                    [executable, "--id", alert_id[:32], "--title", title[:100],
+                     "--content", content[:900], "--priority", "high"],
+                    capture_output=True, text=True, timeout=8, check=False,
+                )
+                outcomes["termux"] = {"ok": result.returncode == 0, "exit": result.returncode,
+                                      "error": (result.stderr or "")[:250]}
+            except Exception as exc:
+                outcomes["termux"] = {"ok": False, "error": type(exc).__name__}
+        else:
+            outcomes["termux"] = {"ok": False, "error": "termux-notification unavailable"}
+
+        recipient = re.sub(r"\\D", "", os.getenv("JARVIS_WA_RESEARCH_NOTIFY_TO", ""))
+        if recipient and self.whatsapp_sender:
+            if not 10 <= len(recipient) <= 15:
+                outcomes["whatsapp"] = {"ok": False, "error": "configured owner number must contain 10-15 digits"}
+            else:
+                try:
+                    result = self.whatsapp_sender(recipient, f"{title}\\n{content}"[:1200])
+                    outcomes["whatsapp"] = {"ok": bool(result), "result": str(result)[:200]}
+                except Exception as exc:
+                    outcomes["whatsapp"] = {"ok": False, "error": type(exc).__name__}
+        elif recipient:
+            outcomes["whatsapp"] = {"ok": False, "error": "WhatsApp worker unavailable"}
+        else:
+            outcomes["whatsapp"] = {"ok": False, "error": "not configured"}
+
+        return {"ok": any(item.get("ok") for item in outcomes.values()), "channels": outcomes}
 
     @staticmethod
     def parse_request(text: str) -> dict[str, Any] | None:
@@ -173,14 +199,42 @@ class ConversationalResearch:
         with self._lock:
             return self._load()[-20:]
 
-    def status(self):
-        missions = self.list_missions()
+    def status(self, scheduler=None):
+        with self._lock:
+            missions = self._load()
         counts = {}
         for item in missions:
             state = str(item.get("status", "UNKNOWN"))
+            if scheduler is not None and item.get("automation_id"):
+                job = scheduler.get(item["automation_id"]) or {}
+                state = str(job.get("status", state))
+                item["status"] = state
+                if job.get("last_result") is not None:
+                    item["last_result"] = str(job["last_result"])[:500]
+                if job.get("last_run") is not None:
+                    item["last_run"] = job["last_run"]
             counts[state] = counts.get(state, 0) + 1
         return {"mission_counts": counts, "recent_missions": missions[-10:],
                 "monitor": self.monitor.status()}
+
+    def resume_mission(self, mission_or_job_id, scheduler):
+        target = _clean(mission_or_job_id, 100)
+        if not target:
+            return "[ERROR] Supply a research mission or automation ID."
+        with self._lock:
+            records = self._load()
+            matches = [r for r in records if r.get("id") == target or r.get("automation_id") == target]
+            if not matches:
+                return f"[ERROR] Research mission not found: {target}"
+            record = matches[-1]
+            automation_id = record.get("automation_id") or target
+            result = scheduler.resume_recovered(automation_id)
+            if result.get("error"):
+                return "[ERROR] " + result["error"]
+            record["status"] = "SCHEDULED"
+            record["resumed_at"] = time.time()
+            self._save(records)
+        return f"Research mission {target} explicitly resumed as {automation_id}; it is queued to run once."
 
     def cancel_mission(self, mission_or_job_id, scheduler):
         target = _clean(mission_or_job_id, 100)
@@ -339,10 +393,8 @@ class ConversationalResearch:
             if run_at <= now: run_at += timedelta(days=1)
         job = scheduler.schedule(
             command="research " + query, run_at=run_at.timestamp(),
-            repeat_mode="daily" if timing == "daily" else None,
+            repeat_mode=timing if timing in {"daily", "weekly"} else None,
             repeat_at="21:00" if timing == "daily" else None,
-            # Weekly cadence is calendar-based to avoid DST drift in follow-up.
-            repeat_seconds=7 * 86400 if timing == "weekly" else None,
             description="Research: " + query[:180],
         )
         self._record({"id": "research-" + uuid.uuid4().hex[:10], "query": query,
