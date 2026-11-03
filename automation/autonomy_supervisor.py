@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import threading
 import time
 import uuid
@@ -22,23 +21,12 @@ MAX_EVENT_TEXT = 4000
 MAX_ACTIONS_PER_EVENT = 8
 TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
 AUTO_RISK = {"safe", "read_only"}
-_READ_ONLY_ACTION = re.compile(
-    r"^\s*(?:show|list|check|inspect|read|search|find|summari[sz]e|"
-    r"what|who|when|where|how many|get|report|status|display|explain|"
-    r"tell me)\b",
-    re.IGNORECASE,
-)
-_READ_ONLY_SHELL = re.compile(
-    r"^\s*(?:pwd|ls|stat|file|head|tail|cat|wc|grep|rg|find|du|df|"
-    r"free|ps|uptime|whoami|id|date|uname|git\s+(?:status|log|diff|show))"
-    r"(?:\s|$)",
-    re.IGNORECASE,
-)
+READ_ONLY_OPERATIONS = frozenset({"health_snapshot"})
 
 
 def _policy_risk(action: str) -> str:
-    """Classify unattended actions deterministically; never trust model labels."""
-    if _READ_ONLY_ACTION.match(action) or _READ_ONLY_SHELL.match(action):
+    """Classify only exact structured operation identifiers as unattended-safe."""
+    if isinstance(action, str) and action.strip() in READ_ONLY_OPERATIONS:
         return "read_only"
     return "approval_required"
 
@@ -51,10 +39,10 @@ def _bounded_text(value: Any, limit: int = MAX_EVENT_TEXT) -> str:
 class AutonomySupervisor:
     """Persistent event/mission loop with conservative unattended execution.
 
-    decide(event) returns a list of action dictionaries. Each action must
-    contain an "action" string and may contain "description" and "risk".
-    execute(action_text) must route through JARVIS's existing dispatcher.
-    Risk values other than "safe" or "read_only" require explicit approval.
+    decide(event) returns action dictionaries. Only exact operation identifiers
+    in READ_ONLY_OPERATIONS may execute unattended. The injected execute callback
+    must independently enforce the same allowlist and return a structured,
+    independently verified result before a mission can become COMPLETED.
     """
 
     def __init__(
@@ -242,10 +230,15 @@ class AutonomySupervisor:
             mission = next((m for m in self._state["missions"] if m.get("status") == "PENDING"), None)
             if mission is None:
                 return {"executed": False, "reason": "no_approved_pending_missions"}
-            if mission.get("risk") not in AUTO_RISK:
-                mission["status"] = "WAITING_APPROVAL"
-                self._save()
-                return {"executed": False, "reason": "approval_required"}
+            # Re-evaluate the stored operation immediately before execution.
+            # Approval never expands the unattended operation allowlist.
+            if mission.get("risk") not in AUTO_RISK or _policy_risk(mission.get("action", "")) != "read_only":
+                if mission.get("status") == "PENDING":
+                    mission["status"] = "BLOCKED"
+                    mission["result"] = "Operation is not in the restricted unattended allowlist."
+                    mission["updated_at"] = time.time()
+                    self._save()
+                return {"executed": False, "reason": "operation_not_allowlisted"}
             mission["status"] = "RUNNING"
             mission["updated_at"] = time.time()
             self._save()
@@ -254,15 +247,15 @@ class AutonomySupervisor:
 
         try:
             result = self.execute(action)
-            failed = result is None or (
-                isinstance(result, dict) and (result.get("error") or result.get("ok") is False)
-            )
-            if isinstance(result, str):
-                failed = not result.strip() or result.lstrip().upper().startswith(
-                    ("[ERROR]", "[FAIL]", "[FAILED]", "[BLOCKED]", "[NEEDS_APPROVAL]")
-                )
             rendered = _bounded_text(result, 1000)
-            status = "FAILED" if failed else "COMPLETED"
+            if isinstance(result, dict) and result.get("ok") is False:
+                status = "FAILED"
+            elif isinstance(result, dict) and result.get("ok") is True and result.get("verified") is True:
+                status = "COMPLETED"
+            elif result is None:
+                status = "FAILED"
+            else:
+                status = "UNVERIFIED"
         except Exception as exc:
             rendered = _bounded_text(f"{type(exc).__name__}: {exc}", 1000)
             status = "FAILED"
@@ -286,7 +279,8 @@ class AutonomySupervisor:
             if mission.get("status") != "WAITING_APPROVAL":
                 return {"ok": False, "error": "mission_not_waiting_for_approval"}
             mission["status"] = "PENDING"
-            mission["risk"] = "safe"
+            # Approval is recorded for this mission only. It does not alter
+            # risk classification or grant access to the execution adapter.
             mission["approved_at"] = time.time()
             mission["updated_at"] = time.time()
             self._save()
@@ -318,6 +312,8 @@ class AutonomySupervisor:
                 "waiting_approval": sum(m.get("status") == "WAITING_APPROVAL" for m in missions),
                 "completed_missions": sum(m.get("status") == "COMPLETED" for m in missions),
                 "failed_missions": sum(m.get("status") == "FAILED" for m in missions),
+                "blocked_missions": sum(m.get("status") == "BLOCKED" for m in missions),
+                "unverified_missions": sum(m.get("status") == "UNVERIFIED" for m in missions),
                 "paused_missions": sum(m.get("status") == "PAUSED_RECOVERY" for m in missions),
                 "recent_missions": [
                     {k: m.get(k) for k in ("id", "description", "risk", "status", "result")}
