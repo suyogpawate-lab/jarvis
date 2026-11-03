@@ -21,14 +21,29 @@ MAX_EVENT_TEXT = 4000
 MAX_ACTIONS_PER_EVENT = 8
 TERMINAL = {"COMPLETED", "FAILED", "BLOCKED", "UNVERIFIED", "REJECTED", "CANCELLED"}
 AUTO_RISK = {"read_only"}
-READ_ONLY_OPERATIONS = frozenset({"health_snapshot"})
+APPROVAL_OPERATIONS = frozenset({
+    "android_back",
+    "android_home",
+    "android_recents",
+    "android_notifications",
+})
+READ_ONLY_OPERATIONS = frozenset({
+    "health_snapshot",
+    "notification_observed",
+    "whatsapp_message_observed",
+    "planning_checkpoint",
+    "android_foreground_snapshot",
+    "android_accessibility_snapshot",
+})
 
 
 def _policy_risk(action: str) -> str:
     """Classify only exact structured operation identifiers as unattended-safe."""
     if isinstance(action, str) and action.strip() in READ_ONLY_OPERATIONS:
         return "read_only"
-    return "approval_required"
+    if isinstance(action, str) and action.strip() in APPROVAL_OPERATIONS:
+        return "approval_required"
+    return "blocked"
 
 
 def _bounded_text(value: Any, limit: int = MAX_EVENT_TEXT) -> str:
@@ -194,7 +209,7 @@ class AutonomySupervisor:
                     "description": _bounded_text(proposal.get("description") or action, 300),
                     "action": action,
                     "risk": risk,
-                    "status": "PENDING" if risk in AUTO_RISK else "WAITING_APPROVAL",
+                    "status": "PENDING" if risk == "read_only" else ("WAITING_APPROVAL" if risk == "approval_required" else "BLOCKED"),
                     "created_at": time.time(),
                     "updated_at": time.time(),
                     "result": None,
@@ -232,13 +247,20 @@ class AutonomySupervisor:
                 return {"executed": False, "reason": "no_approved_pending_missions"}
             # Re-evaluate the stored operation immediately before execution.
             # Approval never expands the unattended operation allowlist.
-            if mission.get("risk") not in AUTO_RISK or _policy_risk(mission.get("action", "")) != "read_only":
+            action_policy = _policy_risk(mission.get("action", ""))
+            unattended_safe = action_policy == "read_only" and mission.get("risk") in AUTO_RISK
+            explicitly_approved = (
+                action_policy == "approval_required"
+                and mission.get("action") in APPROVAL_OPERATIONS
+                and bool(mission.get("approved_at"))
+            )
+            if not (unattended_safe or explicitly_approved):
                 if mission.get("status") == "PENDING":
                     mission["status"] = "BLOCKED"
-                    mission["result"] = "Operation is not in the restricted unattended allowlist."
+                    mission["result"] = "Operation is neither read-only allowlisted nor explicitly approved from the local CLI."
                     mission["updated_at"] = time.time()
                     self._save()
-                return {"executed": False, "reason": "operation_not_allowlisted"}
+                return {"executed": False, "reason": "operation_not_allowlisted_or_approved"}
             mission["status"] = "RUNNING"
             mission["updated_at"] = time.time()
             self._save()
@@ -278,6 +300,8 @@ class AutonomySupervisor:
                 return {"ok": False, "error": "mission_not_found"}
             if mission.get("status") != "WAITING_APPROVAL":
                 return {"ok": False, "error": "mission_not_waiting_for_approval"}
+            if mission.get("action") not in APPROVAL_OPERATIONS:
+                return {"ok": False, "error": "operation_not_in_explicit_approval_allowlist"}
             mission["status"] = "PENDING"
             # Approval is recorded for this mission only. It does not alter
             # risk classification or grant access to the execution adapter.

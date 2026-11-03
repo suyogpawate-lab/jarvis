@@ -38,12 +38,14 @@ class WhatsAppAutoReplyWorker:
         context_limit=12,
         max_age_seconds=600,
         hourly_reply_cap=20,
+        autonomy_event_callback=None,
     ):
         self.poll_interval = float(poll_interval)
         self.queue_limit = max(1, min(int(queue_limit), 200))
         self.context_limit = max(1, min(int(context_limit), 50))
         self.max_age_seconds = int(max_age_seconds)
         self.hourly_reply_cap = int(hourly_reply_cap)
+        self.autonomy_event_callback = autonomy_event_callback
 
         self.hub_url = os.getenv(
             "JARVIS_HUB_URL", "http://127.0.0.1:8766"
@@ -860,6 +862,14 @@ class WhatsAppAutoReplyWorker:
 
         fresh.sort(key=lambda m: float(m.get("timestamp") or 0))
         ids = [self._message_id(m) for m in fresh]
+        # Autonomy receives only opaque message IDs, never message text,
+        # sender identity, chat JID, or model instructions.
+        if self.autonomy_event_callback:
+            for message_id in ids:
+                try:
+                    self.autonomy_event_callback("whatsapp", message_id)
+                except Exception:
+                    pass
         sender = self._sender_name(fresh[-1])
         incoming = "\n".join(self._message_text(m) for m in fresh)
         alt_jid = next(

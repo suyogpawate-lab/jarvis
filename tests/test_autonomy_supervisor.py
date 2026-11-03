@@ -45,7 +45,7 @@ class AutonomySupervisorTests(unittest.TestCase):
         self.assertEqual(self.executed, ["health_snapshot"])
         self.assertEqual(supervisor.status()["completed_missions"], 1)
 
-    def test_unknown_risk_waits_for_approval(self):
+    def test_unknown_risk_is_blocked_without_approval_path(self):
         supervisor = self.supervisor(
             lambda event: [{"action": "send a message", "risk": "unknown"}]
         )
@@ -54,12 +54,12 @@ class AutonomySupervisorTests(unittest.TestCase):
         result = supervisor.tick()
 
         self.assertFalse(result["execution"]["executed"])
-        self.assertEqual(supervisor.status()["waiting_approval"], 1)
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
         self.assertEqual(self.executed, [])
 
     def test_approval_is_explicit_and_one_time(self):
         supervisor = self.supervisor(
-            lambda event: [{"action": "perform approved action", "risk": "sensitive"}]
+            lambda event: [{"action": "android_back", "risk": "sensitive"}]
         )
         supervisor.ingest("event", "requested action", event_id="evt-4")
         supervisor.process_once()
@@ -67,10 +67,10 @@ class AutonomySupervisorTests(unittest.TestCase):
 
         self.assertTrue(supervisor.approve(mission_id)["ok"])
         execution = supervisor.execute_once()
-        self.assertFalse(execution["executed"])
-        self.assertEqual(execution["reason"], "operation_not_allowlisted")
-        self.assertEqual(supervisor.status()["blocked_missions"], 1)
-        self.assertEqual(self.executed, [])
+        self.assertTrue(execution["executed"])
+        self.assertEqual(execution["status"], "COMPLETED")
+        self.assertEqual(supervisor.status()["completed_missions"], 1)
+        self.assertEqual(self.executed, ["android_back"])
         self.assertFalse(supervisor.approve(mission_id)["ok"])
 
     def test_interrupted_running_mission_is_not_replayed(self):
@@ -115,8 +115,10 @@ class AutonomySupervisorTests(unittest.TestCase):
         ]
         for action in dangerous:
             with self.subTest(action=action):
-                self.assertEqual(_policy_risk(action), "approval_required")
+                self.assertIn(_policy_risk(action), {"approval_required", "blocked"})
         self.assertEqual(_policy_risk("health_snapshot"), "read_only")
+        self.assertEqual(_policy_risk("android_back"), "approval_required")
+        self.assertEqual(_policy_risk("android_tap:1:2"), "blocked")
 
     def test_unverified_executor_result_is_not_completed(self):
         supervisor = AutonomySupervisor(
@@ -140,13 +142,26 @@ class AutonomySupervisorTests(unittest.TestCase):
         supervisor.stop(timeout=2)
         self.assertFalse(thread.is_alive())
 
+    def test_unknown_action_cannot_be_approved_into_execution(self):
+        supervisor = self.supervisor(
+            lambda event: [{"action": "run arbitrary command"}]
+        )
+        supervisor.ingest("event", "request", event_id="evt-unknown-approval")
+        supervisor.process_once()
+        mission_id = supervisor.status()["recent_missions"][0]["id"]
+        result = supervisor.approve(mission_id)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "mission_not_waiting_for_approval")
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
+        self.assertEqual(self.executed, [])
+
     def test_model_risk_label_cannot_downgrade_mutating_action(self):
         supervisor = self.supervisor(
             lambda event: [{"action": "send a WhatsApp message", "risk": "read_only"}]
         )
         supervisor.ingest("event", "untrusted request", event_id="evt-risk-downgrade")
         supervisor.process_once()
-        self.assertEqual(supervisor.status()["waiting_approval"], 1)
+        self.assertEqual(supervisor.status()["blocked_missions"], 1)
         self.assertEqual(self.executed, [])
 
     def test_exact_allowlisted_operation_ignores_model_risk_label(self):

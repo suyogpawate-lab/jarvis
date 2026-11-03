@@ -1155,7 +1155,9 @@ def start_whatsapp_autoreply():
         return
 
     try:
-        whatsapp_autoreply = worker_class()
+        whatsapp_autoreply = worker_class(
+            autonomy_event_callback=dispatcher.ingest_autonomy_event,
+        )
         # The same worker owns explicit group-send confirmations and DM reviews.
         # Attach it before accepting CLI requests so group sends can be queued.
         dispatcher.set_whatsapp_confirmation_worker(whatsapp_autoreply)
@@ -1179,7 +1181,8 @@ def init_services():
     start_whatsapp_autoreply()
 
     notification_watcher = NotificationWatcher(
-        output_queue=notification_queue
+        output_queue=notification_queue,
+        autonomy_event_callback=dispatcher.ingest_autonomy_event,
     ).start()
 
     try:

@@ -8,6 +8,7 @@ New notifications are collected into a short batch and analyzed together.
 import threading
 import queue
 import time
+import hashlib
 
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.fast_agent import FastAgent
@@ -22,9 +23,11 @@ class NotificationWatcher:
         max_seen=500,
         output_callback=None,
         cooldown_seconds=30.0,
+        autonomy_event_callback=None,
     ):
         self.output_queue = output_queue
         self.output_callback = output_callback
+        self.autonomy_event_callback = autonomy_event_callback
 
         self.poll_interval = poll_interval
         self.batch_window = batch_window
@@ -87,13 +90,17 @@ class NotificationWatcher:
 
             previous = self.seen.get(key)
 
-            if previous is None:
+            if previous is None or previous != signature:
                 self.seen[key] = signature
                 self.pending.append(notification)
-
-            elif previous != signature:
-                self.seen[key] = signature
-                self.pending.append(notification)
+                # Feed only a stable opaque identifier into autonomy. Notification
+                # title/body are untrusted and remain in the existing summarizer.
+                if self.autonomy_event_callback:
+                    opaque_id = hashlib.sha256(repr((key, signature)).encode("utf-8", "replace")).hexdigest()[:24]
+                    try:
+                        self.autonomy_event_callback("notification", opaque_id)
+                    except Exception:
+                        pass
 
         self._trim()
 

@@ -35,7 +35,8 @@ from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.skill_forge import SkillForge
-from automation.autonomy_supervisor import AutonomySupervisor
+from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
+from automation.overnight_planner import OvernightPlanner
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
@@ -122,6 +123,11 @@ class CommandDispatcher:
         self.autonomy.start()
         self.health_manager.start()
 
+        # Overnight planning is opt-in to avoid unexpected API usage on mobile.
+        self.overnight_planner = OvernightPlanner(self.fast_agent, self.autonomy)
+        if os.getenv("JARVIS_OVERNIGHT_PLANNING", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            self.overnight_planner.start()
+
     def _on_health_warning(self, warning: str) -> None:
         """Persist a bounded, non-sensitive health observation for assessment."""
         autonomy = getattr(self, "autonomy", None)
@@ -129,45 +135,124 @@ class CommandDispatcher:
             autonomy.ingest("health", warning, event_id=f"health-{uuid.uuid4().hex[:12]}")
 
     def _execute_autonomy_action(self, operation: str) -> dict[str, Any]:
-        """Execute the sole allowlisted read-only autonomy operation."""
-        if operation != "health_snapshot":
-            return {"ok": False, "error": "operation_not_allowlisted"}
+        """Execute fixed read-only operations; never dispatch model or event text."""
+        if operation == "health_snapshot":
+            result = self.health_manager.collect()
+            verified = (
+                isinstance(result, dict)
+                and isinstance(result.get("timestamp"), (int, float))
+                and isinstance(result.get("services"), dict)
+                and isinstance(result.get("warnings"), list)
+            )
+            if not verified:
+                return {"ok": False, "error": "health_snapshot_postcondition_failed"}
+            return {
+                "ok": True, "verified": True, "operation": operation,
+                "service_count": len(result["services"]),
+                "warning_count": len(result["warnings"]),
+                "timestamp": result["timestamp"],
+            }
 
-        result = self.health_manager.collect()
-        verified = (
-            isinstance(result, dict)
-            and isinstance(result.get("timestamp"), (int, float))
-            and isinstance(result.get("services"), dict)
-            and isinstance(result.get("warnings"), list)
+        if operation == "android_foreground_snapshot":
+            result = self.android.get_foreground_app()
+            if not isinstance(result, dict) or result.get("exit") != 0:
+                return {"ok": False, "error": "android_snapshot_unavailable"}
+            return {
+                "ok": True, "verified": bool(result.get("stdout")),
+                "operation": operation,
+                "foreground_activity_present": bool(result.get("stdout")),
+            }
+
+        if operation == "android_accessibility_snapshot":
+            from screen_cast.receiver import get_receiver
+            result = get_receiver().control({"action": "snapshot"})
+            elements = result.get("elements") if isinstance(result, dict) else None
+            verified = (
+                isinstance(result, dict)
+                and result.get("ok") is True
+                and isinstance(elements, list)
+            )
+            if not verified:
+                return {"ok": False, "error": "android_accessibility_snapshot_unavailable"}
+            return {
+                "ok": True, "verified": True, "operation": operation,
+                "element_count": len(elements),
+            }
+
+        if operation in APPROVAL_OPERATIONS:
+            from screen_cast.receiver import get_receiver
+            action = {
+                "android_back": "back",
+                "android_home": "home",
+                "android_recents": "recents",
+                "android_notifications": "notifications",
+            }[operation]
+            result = get_receiver().control({"action": action})
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                return {"ok": False, "error": "android_control_not_confirmed"}
+            return {"ok": True, "verified": True, "operation": operation, "action_confirmed": True}
+
+        # These operations acknowledge a persisted observation only. They
+        # deliberately do not read message bodies, reply, send, or share data.
+        if operation in {
+            "notification_observed",
+            "whatsapp_message_observed",
+            "planning_checkpoint",
+        }:
+            return {
+                "ok": True, "verified": True, "operation": operation,
+                "recorded": True,
+            }
+
+        return {"ok": False, "error": "operation_not_allowlisted"}
+
+    def ingest_autonomy_event(self, source: str, event_id: str) -> None:
+        """Accept metadata-only external events; never persist message contents."""
+        allowed = {"notification", "whatsapp", "scheduler"}
+        if source not in allowed:
+            return
+        identifier = str(event_id or "").strip()[:128]
+        if not identifier:
+            return
+        self.autonomy.ingest(
+            source,
+            {"kind": "external_event", "content_included": False},
+            event_id=f"{source}-{identifier}",
         )
-        if not verified:
-            return {"ok": False, "error": "health_snapshot_postcondition_failed"}
-
-        # Store only a compact verification receipt, not full telemetry.
-        return {
-            "ok": True,
-            "verified": True,
-            "operation": "health_snapshot",
-            "service_count": len(result["services"]),
-            "warning_count": len(result["warnings"]),
-            "timestamp": result["timestamp"],
-        }
 
     def _autonomy_decide(self, event: dict[str, Any]) -> list[dict[str, Any]]:
-        # Event payloads are untrusted data, never instructions. Only a
-        # health event may request the fixed read-only health_snapshot op.
-        if event.get("source") == "health":
+        # Event payloads are metadata-only. No model-generated instructions
+        # or notification/WhatsApp body text can become an operation.
+        source_operations = {
+            "health": ("health_snapshot", "Verify current device and service health."),
+            "notification": ("notification_observed", "Record a newly observed Android notification."),
+            "whatsapp": ("whatsapp_message_observed", "Record a newly observed WhatsApp DM for owner review."),
+            "scheduler": ("planning_checkpoint", "Record a bounded scheduled planning checkpoint."),
+            "overnight_planning": ("planning_checkpoint", "Record completion of an owner-review planning cycle."),
+        }
+        source = str(event.get("source") or "")
+        if source == "android_request":
+            try:
+                request = json.loads(str(event.get("payload") or "{}"))
+                operation = str(request.get("operation") or "")
+            except (ValueError, TypeError):
+                return []
+            if operation not in APPROVAL_OPERATIONS and operation not in READ_ONLY_OPERATIONS:
+                return []
             return [{
-                "action": "health_snapshot",
-                "description": "Verify current device and service health after a health warning.",
+                "action": operation,
+                "description": "Owner-requested Android navigation; local approval required.",
             }]
-        # Scheduler command text and notification content are intentionally
-        # not converted into missions. Notification autonomy remains disabled.
-        return []
+        selected = source_operations.get(source)
+        if not selected:
+            return []
+        operation, description = selected
+        return [{"action": operation, "description": description}]
 
     def stop_background_services(self) -> None:
         """Stop dispatcher-owned monitors without touching user data."""
         for name, service in (
+            ("overnight_planner", getattr(self, "overnight_planner", None)),
             ("autonomy", getattr(self, "autonomy", None)),
             ("health", getattr(self, "health_manager", None)),
         ):
@@ -476,6 +561,40 @@ class CommandDispatcher:
 
             if sub == "status":
                 return json.dumps(self.autonomy.status(), indent=2)
+            elif sub == "android":
+                if source != "text":
+                    return "[BLOCKED] Android autonomy requests are restricted to the local interactive CLI."
+                operation_map = {
+                    "back": "android_back",
+                    "home": "android_home",
+                    "recents": "android_recents",
+                    "notifications": "android_notifications",
+                    "snapshot": "android_accessibility_snapshot",
+                }
+                operation = operation_map.get(arg.lower())
+                if not operation:
+                    return "[ERROR] Usage: /autonomy android snapshot|back|home|recents|notifications"
+                if operation == "android_accessibility_snapshot":
+                    self.autonomy.ingest(
+                        "android_request",
+                        json.dumps({"operation": operation}),
+                        event_id=f"android-request-{uuid.uuid4().hex[:12]}",
+                    )
+                    return "[QUEUED] Read-only Android accessibility snapshot requested."
+                self.autonomy.ingest(
+                    "android_request",
+                    json.dumps({"operation": operation}),
+                    event_id=f"android-request-{uuid.uuid4().hex[:12]}",
+                )
+                return "[QUEUED] Android navigation request recorded. Check /autonomy status, then approve its mission ID locally."
+            elif sub == "plan":
+                plan_path = Path("data/autonomy/overnight_plan.json")
+                if not plan_path.is_file():
+                    return "[INFO] No overnight plan is available yet. Set JARVIS_OVERNIGHT_PLANNING=1 to enable the opt-in planner."
+                try:
+                    return json.dumps(json.loads(plan_path.read_text(encoding="utf-8")), indent=2)
+                except (OSError, ValueError):
+                    return "[ERROR] The saved overnight plan could not be read."
             elif sub == "tick":
                 return json.dumps(self.autonomy.tick(), indent=2)
             elif sub in {"approve", "reject"}:
