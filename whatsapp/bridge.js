@@ -47,6 +47,10 @@ function isDirectJid(jid) {
   return value.endsWith("@s.whatsapp.net") || value.endsWith("@lid");
 }
 
+function isGroupJid(jid) {
+  return String(jid || "").endsWith("@g.us");
+}
+
 function extractMessageText(message) {
   if (!message) return "";
 
@@ -71,8 +75,8 @@ function storeIncomingMessage(message, { historical = false } = {}) {
   // Ignore WhatsApp Status/Broadcast messages.
   if (chatJid === "status@broadcast") return;
 
-  // DM-only: groups, newsletters and broadcasts are never stored.
-  if (!isDirectJid(chatJid)) return;
+  // Store direct chats and groups for context. Auto-reply queue remains DM-only.
+  if (!isDirectJid(chatJid) && !isGroupJid(chatJid)) return;
 
   const text = extractMessageText(message.message);
 
@@ -357,10 +361,10 @@ const server = http.createServer(async (req, res) => {
       const digitsOf = value => String(value || "").split("@")[0].replace(/\D/g, "");
       const wanted = digitsOf(chat);
 
-      if (chat.includes("@") && !isDirectJid(chat)) {
+      if (chat.includes("@") && !isDirectJid(chat) && !isGroupJid(chat)) {
         return sendJson(res, 400, {
           ok: false,
-          error: "History is only available for direct chats.",
+          error: "History is available only for direct chats and groups.",
         });
       }
 
@@ -401,6 +405,8 @@ const server = http.createServer(async (req, res) => {
           id: item.id,
           fromMe: item.fromMe,
           pushName: item.pushName,
+          senderJid: item.senderJid,
+          groupName: item.groupName || null,
           text: item.text,
           timestamp: item.timestamp,
         }));
