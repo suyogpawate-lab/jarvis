@@ -100,5 +100,32 @@ class AIEEngineTests(unittest.TestCase):
         self.assertEqual(len(mission["tasks"]), 1)
 
 
+    def test_due_goal_review_creates_proposal_without_execution(self):
+        goal = self.engine.create_goal("Monitor robotics research", review_interval=900)
+        self.engine.register_capability(
+            "test.review", lambda: {"ok": True, "verified": True},
+            input_validator=lambda args: args == {}
+        )
+        self.engine.goal_planner = lambda current: {
+            "title": "Review robotics research",
+            "tasks": [{"capability": "test.review", "arguments": {}, "dependencies": []}]
+        }
+        with self.engine._db() as db:
+            db.execute("UPDATE goals SET next_review_at=0 WHERE id=?", (goal["id"],))
+        reviewed = self.engine.evaluate_due_goals()
+        self.assertEqual(len(reviewed), 1)
+        self.assertIsNotNone(reviewed[0]["proposal"])
+        mission = self.engine.get_mission(reviewed[0]["proposal"])
+        self.assertEqual(mission["status"], "READY")
+        self.assertEqual(mission["tasks"][0]["status"], "PENDING")
+
+    def test_goal_pause_disables_due_reviews_and_resume_schedules_them(self):
+        goal = self.engine.create_goal("Track robotics research")
+        self.engine.set_goal_status(goal["id"], "PAUSED")
+        self.assertEqual(self.engine.evaluate_due_goals(), [])
+        self.engine.set_goal_status(goal["id"], "ACTIVE")
+        self.assertGreater(self.engine.get_goal(goal["id"])["next_review_at"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
