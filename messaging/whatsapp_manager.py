@@ -259,7 +259,7 @@ class WhatsAppManager:
         return data["result"]
 
     def get_history(self, chat_jid, limit=12):
-        """Recent stored messages (both directions) for one direct chat."""
+        """Recent stored messages (both directions) for one direct chat or group."""
         response = requests.get(
             f"{self.base_url}/history",
             params={"chat": str(chat_jid), "limit": int(limit)},
@@ -302,6 +302,12 @@ class WhatsAppManager:
                 except ValueError as exc:
                     if "Multiple contacts match" in str(exc):
                         raise
+                    # A unique group-name lookup is the fallback when no contact matches.
+                    try:
+                        group = self.resolve_group(value)
+                        chat = str(group["jid"])
+                    except RuntimeError:
+                        pass
                 except RuntimeError:
                     pass
 
