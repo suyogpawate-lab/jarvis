@@ -142,12 +142,12 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         response.json.return_value = {"ok": True, "messages": [
             {"id": "group-1", "text": "Dinner update"}
         ]}
-        with patch("messaging.whatsapp_manager.requests.get", return_value=response):
+        with patch("messaging.whatsapp_manager.requests.get", return_value=response) as get_request:
             rows = manager.get_chat_history("Bonnet Kitchen", limit=10)
         manager.resolve_group.assert_called_once_with("Bonnet Kitchen")
         self.assertEqual(rows[0]["text"], "Dinner update")
         self.assertEqual(
-            response.call_args.kwargs["params"]["chat"],
+            get_request.call_args.kwargs["params"]["chat"],
             "120363000000000000@g.us",
         )
 
