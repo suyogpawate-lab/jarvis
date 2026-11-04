@@ -43,7 +43,6 @@ from core.temporal_context import build_temporal_context
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
-from agents.local_ai import LocalAI
 from agents.fast_agent import FastAgent, JARVIS_ABILITIES
 from automation.scheduler import AutomationScheduler
 from voice.tts_manager import tts
@@ -77,7 +76,6 @@ class CommandDispatcher:
         self.jobs = JobManager()
         self.android = AndroidTools()
         self.notifications = NotificationIngestor()
-        self.local_ai = LocalAI(model="qwen2.5:0.5b")
         self.search_hub = build_default_search_hub()
         self.fast_agent = FastAgent(search_hub=self.search_hub)
         self.deep_search = DeepSearch(self.search_hub, self.fast_agent)
@@ -2528,7 +2526,7 @@ Rules:
 
         # Natural-language action requests use the Agent Engine immediately.
         # Keep this after deterministic device routes so simple local queries
-        # remain fast and do not incur Gemini planning overhead.
+        # remain fast and do not incur unnecessary planning overhead.
         if source != "agent_step" and self._looks_like_agent_task(text):
             return self.agent_engine.execute_goal(text, source=source)
 
