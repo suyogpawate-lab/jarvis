@@ -5,21 +5,18 @@ Priority:
 1. Explicit creative detection.
 2. Technical/domain detection.
 3. Simple factual detection.
-4. Ollama classification for ambiguous topics.
+4. Deterministic fallback to COMPLEX.
 5. Safe fallback -> COMPLEX.
 """
 
-import json
 import re
 
-from agents.providers.ollama import OllamaAgent
 
 
 class DiscussionRouter:
 
     def __init__(self):
-
-        self.ollama = OllamaAgent()
+        pass
 
     # ============================================================
     # LOCAL CLASSIFICATION
@@ -145,91 +142,12 @@ class DiscussionRouter:
         return None
 
     # ============================================================
-    # OLLAMA CLASSIFIER
+    # AMBIGUOUS TOPICS
     # ============================================================
 
-    def _ollama_classify(
-        self,
-        topic: str,
-    ):
-
-        prompt = f"""
-Classify the following user topic into exactly ONE category:
-
-SIMPLE
-CREATIVE
-COMPLEX
-
-SIMPLE:
-Straightforward factual questions and basic definitions.
-
-CREATIVE:
-Writing, storytelling, naming, brainstorming, fiction,
-design and imaginative tasks.
-
-COMPLEX:
-Science, physics, cosmology, mathematics, programming,
-engineering, research, technical analysis, difficult reasoning,
-or questions with multiple competing explanations.
-
-Topic:
-{topic}
-
-Return ONLY valid JSON:
-
-{{"category":"SIMPLE"}}
-"""
-
-        try:
-
-            result = (
-                self.ollama.ask(
-                    prompt
-                )
-                .strip()
-            )
-
-            match = re.search(
-                r"\{.*?\}",
-                result,
-                re.DOTALL,
-            )
-
-            if match:
-
-                data = json.loads(
-                    match.group(0)
-                )
-
-                category = str(
-                    data.get(
-                        "category",
-                        ""
-                    )
-                ).lower().strip()
-
-                if category in {
-                    "simple",
-                    "creative",
-                    "complex",
-                }:
-
-                    print(
-                        f"[ROUTER] Ollama -> "
-                        f"{category.upper()}",
-                        flush=True,
-                    )
-
-                    return category
-
-        except Exception as e:
-
-            print(
-                f"[ROUTER WARN] "
-                f"Ollama classifier failed: {e}",
-                flush=True,
-            )
-
+    @staticmethod
+    def _fallback_classify(topic: str):
+        # Ambiguous topics go to the complex OmniRoute discussion pool.
         return "complex"
 
     # ============================================================
@@ -255,6 +173,4 @@ Return ONLY valid JSON:
 
             return local
 
-        return self._ollama_classify(
-            topic
-        )
+        return self._fallback_classify(topic)
