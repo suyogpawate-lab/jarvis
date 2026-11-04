@@ -857,8 +857,8 @@ class CommandDispatcher:
         # App/media launch requests are single actions, not autonomous workflows.
         # Keep them on the normal Groq tool path instead of invoking OmniRoute planning.
         if re.match(
-            r"^(?:(?:jarvis)[,\\s]+)?(?:(?:please|can you|could you|would you)\\s+)*"
-            r"(?:run|open|launch|start|play)\\s+.+\\s+in the background[.!?]*$",
+            r"^(?:(?:jarvis)[,\s]+)?(?:(?:please|can you|could you|would you)\s+)*"
+            r"(?:run|open|launch|start|play)\s+.+\s+in the background[.!?]*$",
             value,
             re.IGNORECASE,
         ):
