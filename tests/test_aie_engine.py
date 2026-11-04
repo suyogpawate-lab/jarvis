@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+
 from automation.aie import AIEEngine, NaturalLanguageAIE
 
 
@@ -64,11 +65,6 @@ class AIEEngineTests(unittest.TestCase):
             approval_id = db.execute("SELECT id FROM approvals WHERE mission_id=?", (mission["id"],)).fetchone()["id"]
         self.assertTrue(self.engine.approve(approval_id)["ok"])
         self.assertEqual(self.engine.get_mission(mission["id"])["status"], "READY")
-
-
-
-
-    unittest.main()
 
     def test_empty_mission_is_not_reported_verified(self):
         mission = self.engine.create_mission("No work", tasks=[])
