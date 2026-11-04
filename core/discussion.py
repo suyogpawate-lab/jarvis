@@ -18,7 +18,6 @@ import time
 
 from agents.providers.omniroute import OmniRouteAgent
 from agents.providers.groq import GroqAgent
-from agents.providers.ollama import OllamaAgent
 
 from routing.model_registry import get_models
 from routing.router import DiscussionRouter
@@ -82,10 +81,6 @@ class DiscussionCoordinator:
 
             agent = GroqAgent()
             agent.model = model
-
-        elif provider == "ollama":
-
-            agent = OllamaAgent(model=model)
 
         else:
 
