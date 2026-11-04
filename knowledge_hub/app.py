@@ -242,15 +242,16 @@ def home():
     return render_template("index.html")
 
 def _safe_display_name(original_filename, requested_name):
-    original = secure_filename(Path(original_filename).name)
-    ext = Path(original).suffix.lower()
+    # Preserve the extension from the raw upload name: secure_filename() can
+    # strip a non-ASCII-only stem and its separating dot (e.g. "报告.pdf" -> "pdf").
+    raw_name = str(original_filename or "").replace("\\\\", "/").rsplit("/", 1)[-1]
+    ext = Path(raw_name).suffix.lower()
     requested = str(requested_name or "").strip()
-    if not requested:
-        return original
-    # The extension is always inherited from the actual uploaded file.
-    stem = secure_filename(Path(requested).stem).strip(" ._-")
-    if not stem:
-        raise ValueError("Enter a valid filename.")
+    source_stem = Path(requested).stem if requested else Path(raw_name).stem
+
+    # Sanitise only the stem. A Unicode-only stem is valid, so give it a safe
+    # ASCII fallback instead of accidentally dropping the real file extension.
+    stem = secure_filename(source_stem).strip(" ._-") or "upload"
     return f"{stem[:150]}{ext}"
 
 
