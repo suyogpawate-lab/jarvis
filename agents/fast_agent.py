@@ -588,10 +588,6 @@ class FastAgent:
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "provider": {
-                                "type": "string",
-                                "enum": ["omniroute"]
-                            },
                             "task": {
                                 "type": "string",
                                 "description": (
@@ -600,7 +596,7 @@ class FastAgent:
                                 )
                             }
                         },
-                        "required": ["provider", "task"]
+                        "required": ["task"]
                     }
                 }
             },
@@ -1560,11 +1556,9 @@ class FastAgent:
                 }
 
         if name == "escalate_to_expert":
-            provider = arguments.get("provider")
             task = arguments.get("task")
+            provider = "omniroute"
 
-            if provider != "omniroute":
-                return {"ok": False, "error": "Invalid specialist provider."}
             if not isinstance(task, str) or not task.strip():
                 return {"ok": False, "error": "Specialist task is empty."}
 
@@ -1587,10 +1581,7 @@ class FastAgent:
                     "temperature": 0.2,
                     "timeout": 60,
                 }
-                if provider == "omniroute":
-                    result = self._omniroute_request(**kwargs)
-                else:
-                    result = self._omniroute_request(**kwargs)
+                result = self._omniroute_request(**kwargs)
 
                 if not result:
                     return {
@@ -2788,13 +2779,13 @@ class FastAgent:
         if shell_result is not None:
             return shell_result
 
-        # RAG questions go straight to OmniRoute; fall back to Groq if it fails.
+        # RAG questions use OmniRoute with locally retrieved document passages.
         if self._is_rag_request(prompt):
             print("[JARVIS ROUTER] RAG -> OMNIROUTE")
             try:
                 return self._omniroute_fallback(prompt)
             except Exception as exc:
-                print(f"OmniRoute RAG route failed, using Groq: {exc}")
+                return f"[ERROR] OmniRoute RAG request failed: {exc}"
 
         # Cheap factual questions do not need the full tool catalogue or skill index.
         direct_question = self._simple_direct_request(prompt)
