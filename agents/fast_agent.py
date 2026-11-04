@@ -301,33 +301,6 @@ class FastAgent:
         if last is None:
             raise RuntimeError("Could not reach Groq with any configured key.")
 
-        # If every Groq key is TPM/RPM-limited, let the already-configured
-        # Gemini provider continue the current tool round. This avoids restarting
-        # a multi-step screen workflow or waiting on a slow OmniRoute fallback.
-        gemini_keys = getattr(self, "gemini_api_keys", [])
-        if last.status_code == 429 and gemini_keys:
-            fallback_payload = dict(payload)
-            fallback_payload["model"] = getattr(self, "gemini_model", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-            gemini_base_url = getattr(self, "gemini_base_url", "https://generativelanguage.googleapis.com/v1beta/openai")
-            for index, key in enumerate(gemini_keys[:2], 1):
-                try:
-                    response = requests.post(
-                        f"{self.gemini_base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {key}",
-                            "Content-Type": "application/json",
-                        },
-                        json=fallback_payload,
-                        timeout=min(timeout, 12),
-                    )
-                    if response.status_code == 200:
-                        print(f" Gemini account {index}: continuing after Groq rate limit.", flush=True)
-                        return response
-                    if response.status_code >= 500:
-                        continue
-                except requests.exceptions.RequestException:
-                    continue
-
         return last
 
     def _groq_limit_message(self, response):
@@ -609,7 +582,7 @@ class FastAgent:
                     "name": "escalate_to_expert",
                     "description": (
                         "Escalate genuinely complex debugging, engineering, "
-                        "or specialist analysis to Gemini or Claude. Groq "
+                        "or specialist analysis to OmniRoute or OmniRoute. Groq "
                         "remains the primary agent and reviews the result."
                     ),
                     "parameters": {
@@ -617,7 +590,7 @@ class FastAgent:
                         "properties": {
                             "provider": {
                                 "type": "string",
-                                "enum": ["gemini", "claude"]
+                                "enum": ["omniroute"]
                             },
                             "task": {
                                 "type": "string",
@@ -1590,7 +1563,7 @@ class FastAgent:
             provider = arguments.get("provider")
             task = arguments.get("task")
 
-            if provider not in ("gemini", "claude"):
+            if provider != "omniroute":
                 return {"ok": False, "error": "Invalid specialist provider."}
             if not isinstance(task, str) or not task.strip():
                 return {"ok": False, "error": "Specialist task is empty."}
@@ -1614,7 +1587,7 @@ class FastAgent:
                     "temperature": 0.2,
                     "timeout": 60,
                 }
-                if provider == "gemini":
+                if provider == "omniroute":
                     result = self._omniroute_request(**kwargs)
                 else:
                     result = self._omniroute_request(**kwargs)
@@ -2048,53 +2021,8 @@ class FastAgent:
         return any(item in text for item in complex_indicators)
 
     def _select_complex_provider(self, prompt):
-        """
-        Select ONE complex provider.
-
-        There is intentionally NO Gemini -> Claude fallback here.
-        Each provider owns its own independent five-key fallback pool.
-        """
-
-        forced = os.getenv(
-            "JARVIS_COMPLEX_PROVIDER",
-            "",
-        ).strip().lower()
-
-        if forced in ("gemini", "claude"):
-            return forced
-
-        text = str(prompt).lower()
-
-        claude_indicators = (
-            "python",
-            "javascript",
-            "typescript",
-            "node",
-            "npm",
-            "pip",
-            "code",
-            "coding",
-            "program",
-            "programming",
-            "function",
-            "class ",
-            "refactor",
-            "bug",
-            "exception",
-            "traceback",
-            "stack trace",
-            "repository",
-            "repo",
-            "git",
-            "compile",
-            "implementation",
-        )
-
-        if any(item in text for item in claude_indicators):
-            return "claude"
-
-        return "gemini"
-
+        """Complex reasoning always uses OmniRoute, never a model-specific provider."""
+        return "omniroute"
     def _complex_shell_plan(self, provider, prompt):
         """
         Ask the selected complex provider for a shell plan.
@@ -2117,7 +2045,7 @@ class FastAgent:
             "Do not use markdown fences."
         )
 
-        if provider == "gemini":
+        if provider == "omniroute":
             return self._omniroute_request(
                 [
                     {
@@ -2198,7 +2126,7 @@ class FastAgent:
             "useful action. Keep the answer concise."
         )
 
-        if provider == "gemini":
+        if provider == "omniroute":
             return self._omniroute_request(
                 [
                     {
@@ -2230,7 +2158,7 @@ class FastAgent:
         Main shell reasoning router.
 
         SIMPLE  -> existing Groq ask() path
-        COMPLEX -> exactly one of Gemini/Claude
+        COMPLEX -> exactly one of OmniRoute/OmniRoute
         """
 
         if not self._is_shell_reasoning_request(prompt):
@@ -2261,7 +2189,7 @@ class FastAgent:
             )
 
     # ------------------------------------------------------------------
-    # Google Form filling (Gemini drafts, user confirms, JARVIS submits)
+    # Google Form filling (OmniRoute drafts, user confirms, JARVIS submits)
     # ------------------------------------------------------------------
     _FORM_KINDS = {
         0: "short_text", 1: "paragraph", 2: "choice", 3: "dropdown",
@@ -2365,14 +2293,14 @@ class FastAgent:
         )
 
         # Form preparation is a single structured-generation task. Prefer the
-        # existing Groq route; do not fan out to every Gemini key when Gemini
+        # existing Groq route; do not fan out to every OmniRoute key when OmniRoute
         # is overloaded. The surrounding tool flow already asks Groq to invoke
         # this tool, so this is one bounded draft request, not one request per
-        # question. Gemini remains available for other routes when appropriate.
+        # question. OmniRoute remains available for other routes when appropriate.
         if not self.api_keys:
             raise RuntimeError(
                 "Google Form drafting needs a configured Groq API key; "
-                "Gemini was not retried to avoid an overload cascade."
+                "OmniRoute was not retried to avoid an overload cascade."
             )
 
         response = self._groq_post(
@@ -2635,8 +2563,8 @@ class FastAgent:
 
         return bool(self._RAG_PATTERN.search(text))
 
-    def _gemini_fallback(self, prompt):
-        """Search the local Knowledge Hub, then let Gemini answer from it."""
+    def _omniroute_fallback(self, prompt):
+        """Search the local Knowledge Hub, then let OmniRoute answer from it."""
         passages = ""
         try:
             r = requests.post(
@@ -2671,7 +2599,7 @@ class FastAgent:
         """Detect substantial engineering work from the current user message only."""
         raw = str(prompt or "")
         # The conversation wrapper may contain older project requests. Never let
-        # those historical words turn a simple current message into a Gemini plan.
+        # those historical words turn a simple current message into a OmniRoute plan.
         marker = "CURRENT USER MESSAGE:"
         if marker in raw:
             current = raw.split(marker, 1)[1]
@@ -2690,8 +2618,8 @@ class FastAgent:
         )
         return bool(project_cues and local_cues and len(text) >= 45)
 
-    def _gemini_shell_plan(self, prompt):
-        """Ask Gemini for a bounded plan; local tools still perform the work."""
+    def _omniroute_shell_plan(self, prompt):
+        """Ask OmniRoute for a bounded plan; local tools still perform the work."""
         return self._omniroute_request(
             [{"role": "user", "content": (
                 "Create a concise, ordered implementation plan for this local "
@@ -2702,7 +2630,7 @@ class FastAgent:
                 "User request:\n" + str(prompt)[:8000]
             )}],
             system_prompt=(
-                "You are Gemini, JARVIS's engineering planner. Return a practical "
+                "You are OmniRoute, JARVIS's engineering planner. Return a practical "
                 "plan, not executable shell code. Prefer inspect-before-edit, minimal "
                 "changes, backups for important data, and tests. Never recommend "
                 "disabling the shell safety guard."
@@ -2860,13 +2788,13 @@ class FastAgent:
         if shell_result is not None:
             return shell_result
 
-        # RAG questions go straight to Gemini; fall back to Groq if it fails.
+        # RAG questions go straight to OmniRoute; fall back to Groq if it fails.
         if self._is_rag_request(prompt):
-            print("[JARVIS ROUTER] RAG -> GEMINI")
+            print("[JARVIS ROUTER] RAG -> OMNIROUTE")
             try:
-                return self._gemini_fallback(prompt)
+                return self._omniroute_fallback(prompt)
             except Exception as exc:
-                print(f"Gemini RAG route failed, using Groq: {exc}")
+                print(f"OmniRoute RAG route failed, using Groq: {exc}")
 
         # Cheap factual questions do not need the full tool catalogue or skill index.
         direct_question = self._simple_direct_request(prompt)
@@ -2876,21 +2804,21 @@ class FastAgent:
             except Exception as exc:
                 return f"[ERROR] Simple Groq request failed ({type(exc).__name__}: {exc})"
 
-        # Gemini plans complex local engineering; Groq remains the tool executor.
-        if self._is_complex_shell_project(prompt) and self.gemini_api_keys:
+        # OmniRoute plans complex local engineering; Groq remains the tool executor.
+        if self._is_complex_shell_project(prompt):
             try:
-                print("[JARVIS ROUTER] Complex shell/project task -> GEMINI PLAN")
-                plan = self._gemini_shell_plan(prompt)
+                print("[JARVIS ROUTER] Complex shell/project task -> OMNIROUTE PLAN")
+                plan = self._omniroute_shell_plan(prompt)
                 prompt = (
                     str(prompt)
-                    + "\n\nGEMINI ENGINEERING PLAN (advisory; verify each step):\n"
+                    + "\n\nOMNIROUTE ENGINEERING PLAN (advisory; verify each step):\n"
                     + plan
                     + "\n\nUse local tools to carry out the original request, "
                       "validate results, and stop on failures. The shell guard still "
                       "requires approval for destructive/high-impact actions."
                 )
             except Exception as exc:
-                print(f"Gemini planning failed; continuing with Groq tools: {exc}")
+                print(f"OmniRoute planning failed; continuing with Groq tools: {exc}")
 
         total_keys = len(self.api_keys)
         attempts = 0
@@ -2928,7 +2856,7 @@ class FastAgent:
                 )
 
                 if response.status_code == 413:
-                    return self._gemini_fallback(prompt)
+                    return self._omniroute_fallback(prompt)
 
                 if response.status_code != 200:
                     return self._groq_limit_message(response)
@@ -3029,7 +2957,7 @@ class FastAgent:
                     final_response = self._groq_post(final_payload, timeout=30)
 
                     if final_response.status_code == 413:
-                        return self._gemini_fallback(prompt)
+                        return self._omniroute_fallback(prompt)
 
                     if final_response.status_code != 200:
                         # Tools already ran. Never restart (that would run them again).
