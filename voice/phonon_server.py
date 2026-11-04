@@ -39,6 +39,7 @@ _worker_warmed = False
 _worker_busy = False
 _generation = 0
 _worker_read_buffers = {}
+_worker_memory_lock = {"requested": False, "locked": False, "error": "not attempted"}
 
 
 def _temp_wav() -> Path:
@@ -114,7 +115,7 @@ def _stop_worker_locked() -> None:
 
 def _ensure_worker_locked() -> subprocess.Popen:
     """Start the worker once, run a real synthesis, and retain it for reuse."""
-    global _worker, _worker_warmed
+    global _worker, _worker_warmed, _worker_memory_lock
     with _state_lock:
         process = _worker
         warmed = _worker_warmed
@@ -142,6 +143,11 @@ def _ensure_worker_locked() -> subprocess.Popen:
             with _state_lock:
                 _worker = process
                 _worker_warmed = False
+                _worker_memory_lock = ready.get("memory_lock") or {
+                    "requested": False,
+                    "locked": False,
+                    "error": "worker did not report memory-lock status",
+                }
         except Exception:
             if process.poll() is None:
                 process.terminate()
@@ -171,7 +177,7 @@ def _ensure_worker_locked() -> subprocess.Popen:
 
 
 def _memory_for_pid(pid: int) -> dict:
-    wanted = {"VmRSS", "VmSwap", "VmHWM", "Threads"}
+    wanted = {"VmRSS", "VmSwap", "VmHWM", "VmLck", "Threads"}
     result = {}
     try:
         for line in Path(f"/proc/{pid}/status").read_text(encoding="utf-8").splitlines():
@@ -268,6 +274,7 @@ class Handler(BaseHTTPRequestHandler):
             "quant": quant,
             "worker_pid": process.pid if process is not None and process.poll() is None else None,
             "worker_memory": _memory_for_pid(process.pid) if process is not None and process.poll() is None else {},
+            "memory_lock": dict(_worker_memory_lock),
         })
 
     def do_POST(self):
