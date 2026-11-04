@@ -17,6 +17,7 @@ import queue
 import re
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 import threading
 import time
 from pathlib import Path
@@ -588,6 +589,45 @@ class WhatsAppAutoReplyWorker:
                     )
                 if match:
                     result["description"] = html.unescape(match.group(1))[:1800]
+
+                # If YouTube exposes a caption track in its player metadata,
+                # retrieve its text. The caption URL is accepted only when it
+                # points back to YouTube; no arbitrary page URL is fetched.
+                captions = re.search(
+                    r'"captionTracks"\s*:\s*\[\s*\{.*?"baseUrl"\s*:\s*"([^"]+)"',
+                    source,
+                    re.DOTALL,
+                )
+                if captions:
+                    try:
+                        caption_url = json.loads('"' + captions.group(1) + '"')
+                        caption_host = (urlparse(caption_url).hostname or "").lower()
+                        if (
+                            urlparse(caption_url).scheme == "https"
+                            and caption_host in {"youtube.com", "www.youtube.com"}
+                        ):
+                            caption_response = requests.get(caption_url, timeout=8)
+                            final_caption_host = (
+                                urlparse(caption_response.url).hostname or ""
+                            ).lower()
+                            if final_caption_host in {"youtube.com", "www.youtube.com"}:
+                                caption_response.raise_for_status()
+                                root = ET.fromstring(caption_response.text[:1_000_000])
+                                transcript_parts = [
+                                    html.unescape("".join(node.itertext())).strip()
+                                    for node in root.iter("text")
+                                ]
+                                transcript = " ".join(
+                                    part for part in transcript_parts if part
+                                )[:6000]
+                                if transcript:
+                                    result["transcript"] = transcript
+                                    result["transcript_available"] = True
+                                    result["content_access"] = "transcript"
+                    except Exception:
+                        # Metadata remains useful even if captions are blocked,
+                        # malformed, or unavailable for this video.
+                        pass
         except Exception:
             pass
 
@@ -603,8 +643,9 @@ class WhatsAppAutoReplyWorker:
                         "Inspect a YouTube video link received in the message. "
                         "Call this for YouTube URLs before deciding how to respond. "
                         "Returns verified public title, channel and, when available, "
-                        "description. Metadata is not a transcript: never claim to "
-                        "have watched or understood the video itself from metadata alone."
+                        "description and, when public captions exist, a transcript. "
+                        "Use transcript text as evidence when supplied. If only metadata "
+                        "is returned, do not claim to have watched or understood the video."
                     ),
                     "parameters": {
                         "type": "object",
@@ -733,8 +774,9 @@ class WhatsAppAutoReplyWorker:
             "Never invent facts, availability, plans, promises, personal opinions, or "
             "details that are not present in the evidence. If an incoming message contains "
             "a YouTube URL, call inspect_youtube_link before deciding. Use its title, "
-            "channel and description as limited metadata evidence; this does not mean you "
-            "watched the video. Do not infer video contents beyond the returned evidence. "
+            "channel and description as metadata evidence. If a transcript is returned, "
+            "use it to understand the video. If only metadata is returned, do not infer "
+            "video contents or claim to have watched it. "
             "If the link is only metadata-accessible and the sender's intent is unclear, "
             "ask the owner locally with a useful summary of what was identified; do not "
             "send the contact a generic 'let me check' acknowledgement. If the message "
