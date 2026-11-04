@@ -167,6 +167,7 @@ def _ensure_worker_locked() -> subprocess.Popen:
             if _worker is process and process.poll() is None:
                 _worker_warmed = True
         print("[JARVIS Phonon] Model initialized; real synthesis warmup passed; worker retained.", flush=True)
+        print(f"[JARVIS Phonon] Memory lock: {_worker_memory_lock}", flush=True)
         print(f"[JARVIS Phonon] Warmup memory: {_memory_for_pid(process.pid)}", flush=True)
         return process
     except Exception:
