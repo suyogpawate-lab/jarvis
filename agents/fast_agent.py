@@ -752,7 +752,7 @@ class FastAgent:
                 "type": "function",
                 "function": {
                     "name": "whatsapp_read_chat",
-                    "description": "Read the recent WhatsApp conversation (both directions, oldest first) with one contact. Call this BEFORE whatsapp_send whenever the message depends on what was said ('tell him ok', 'reply to her', 'send what we discussed'), and for 'what did X say'.",
+                    "description": "Read recent WhatsApp conversation context (both directions, oldest first) for one contact or group. Call this BEFORE whatsapp_send whenever the message depends on what was said ('tell him ok', 'reply to her', 'send what we discussed'), and for 'what did X say'.",
                     "parameters": {
                         "type": "object",
                         "properties": {
