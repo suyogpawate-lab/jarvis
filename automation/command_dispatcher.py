@@ -119,7 +119,18 @@ class CommandDispatcher:
 
         # Persistent AIE goal/event control plane; typed capabilities only.
         self.aie = AIEEngine(health_provider=self._aie_health_snapshot)
-        self.aie_nl = NaturalLanguageAIE(self.aie)
+        self.aie.register_capability(
+            "research.search", self._aie_research_search, risk="read_only",
+            description="Search public research sources for a bounded topic.",
+            input_validator=lambda args: (
+                isinstance(args.get("topic"), str)
+                and 5 <= len(args["topic"].strip()) <= 240
+                and set(args).issubset({"topic", "limit"})
+                and isinstance(args.get("limit", 5), int)
+                and 1 <= args.get("limit", 5) <= 5
+            ),
+        )
+        self.aie_nl = NaturalLanguageAIE(self.aie, plan_provider=self._aie_plan_provider)
         self.aie.start()
 
         # The autonomy executor is deliberately separate from dispatch(): it
@@ -141,6 +152,30 @@ class CommandDispatcher:
 
         # Voice and text share dispatch(), so research uses one intake path.
         self.research = ConversationalResearch(self.search_hub, self.deep_search)
+
+    def _aie_plan_provider(self, goal):
+        capabilities = {
+            "research.search": {"purpose": "Search public research sources.", "arguments": {"topic": "string 5-240 chars", "limit": "integer 1-5"}},
+            "system.health_snapshot": {"purpose": "Read-only JARVIS health snapshot.", "arguments": {}},
+        }
+        prompt = (
+            "Create a plan for this persistent goal. Return JSON only: title and tasks. "
+            "Each task has capability, arguments, dependencies (zero-based earlier task indexes). "
+            "Use ONLY the listed capabilities. No shell commands, code, messages, Android controls, "
+            "or side effects. At most 8 tasks. The owner reviews before execution.\n"
+            + json.dumps({"goal": {"title": goal["title"], "description": goal["description"]},
+                          "capabilities": capabilities}, ensure_ascii=False)
+        )
+        return self.fast_agent.ask(prompt)
+
+    def _aie_research_search(self, topic, limit=5):
+        if not isinstance(topic, str) or not 5 <= len(topic.strip()) <= 240:
+            return {"ok": False, "verified": False, "error": "invalid_topic"}
+        result = self.deep_search.search(topic.strip(), limit=max(1, min(int(limit), 5)))
+        summary = " ".join(str(result or "").split())[:5000]
+        if not summary:
+            return {"ok": False, "verified": False, "error": "no_research_result"}
+        return {"ok": True, "verified": True, "topic": topic.strip(), "summary": summary}
 
     def _aie_health_snapshot(self):
         result = self.health_manager.collect()
@@ -1816,7 +1851,10 @@ Rules:
             argument = re.sub(r"^/aie\s*", "", text, flags=re.IGNORECASE).strip()
             if not argument or argument.lower() in {"status", "goals"}:
                 return aie_nl.status_text()
-            return "[AIE] Use natural language to create, pause or resume goals; /aie status shows objectives."
+            result = aie_nl.handle(argument, source=source)
+            if result is not None:
+                return result
+            return "[AIE] Use natural language to create goals, 'plan <goal>', or 'run mission <id>'."
         if aie_nl is not None:
             aie_result = aie_nl.handle(text, source=source)
             if aie_result is not None:

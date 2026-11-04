@@ -185,6 +185,19 @@ class AIEEngine:
         task_specs = tasks if isinstance(tasks, list) else []
         if len(task_specs) > 20:
             raise ValueError("A mission may contain at most 20 tasks.")
+        normalized = []
+        for index, spec in enumerate(task_specs):
+            if not isinstance(spec, dict):
+                raise ValueError("Every mission task must be an object.")
+            capability = str(spec.get("capability", ""))
+            arguments = spec.get("arguments", {})
+            dependencies = spec.get("dependencies", [])
+            if not capability or not isinstance(arguments, dict) or not isinstance(dependencies, list):
+                raise ValueError("Task capability, object arguments and dependency list are required.")
+            if any(not isinstance(dep, int) or isinstance(dep, bool) or dep < 0 or dep >= index for dep in dependencies):
+                raise ValueError("Dependencies must reference earlier task indexes.")
+            normalized.append({"capability": capability, "arguments": arguments, "dependencies": dependencies})
+        task_specs = normalized
         mission_id, now = self._id("mission"), time.time()
         needs_approval = RISK_ORDER[risk] >= 2
         status = "WAITING_APPROVAL" if needs_approval else "READY"
@@ -205,6 +218,31 @@ class AIEEngine:
                            (self._id("approval"), mission_id, "PENDING",
                             json.dumps({"mission_id": mission_id, "risk": risk}), now, None))
         return self.get_mission(mission_id)
+
+    def create_planned_mission(self, goal_id, plan):
+        """Validate model output against registered capabilities before persistence."""
+        goal = self.get_goal(goal_id)
+        if not goal or goal["status"] != "ACTIVE":
+            raise AIEError("Only an active goal can receive a plan.")
+        if not isinstance(plan, dict) or not isinstance(plan.get("tasks"), list):
+            raise AIEError("Planner output must contain a task list.")
+        tasks = plan["tasks"]
+        if not tasks or len(tasks) > 12:
+            raise AIEError("A plan must contain between 1 and 12 tasks.")
+        risk = "read_only"
+        for spec in tasks:
+            if not isinstance(spec, dict):
+                raise AIEError("Each task must be an object.")
+            cap = self._capabilities.get(str(spec.get("capability", "")))
+            if not cap:
+                raise AIEError("Planner selected an unavailable capability.")
+            args = spec.get("arguments", {})
+            if not isinstance(args, dict) or (cap["validator"] and not cap["validator"](args)):
+                raise AIEError("Planner arguments failed validation.")
+            if RISK_ORDER[cap["risk"]] > RISK_ORDER[risk]:
+                risk = cap["risk"]
+        title = " ".join(str(plan.get("title") or goal["title"]).split())[:240]
+        return self.create_mission(title, goal_id=goal_id, tasks=tasks, risk=risk)
 
     def get_mission(self, mission_id):
         with self._db() as db:
@@ -279,16 +317,20 @@ class AIEEngine:
                 return {"ok": False, "error": "mission_not_ready", "status": mission["status"]}
             if not mission["tasks"]:
                 with self._db() as db:
-                    db.execute("UPDATE missions SET status='COMPLETED',result=?,updated_at=? WHERE id=?",
-                               (json.dumps({"verified": True, "note": "Goal/mission recorded; no execution tasks requested."}),
+                    db.execute("UPDATE missions SET status='UNVERIFIED',result=?,updated_at=? WHERE id=?",
+                               (json.dumps({"verified": False, "error": "empty_mission_has_no_verifiable_work"}),
                                 time.time(), mission_id))
-                return {"ok": True, "status": "COMPLETED", "verified": True}
+                return {"ok": False, "status": "UNVERIFIED", "verified": False}
             with self._db() as db:
                 db.execute("UPDATE missions SET status='RUNNING',updated_at=? WHERE id=?",
                            (time.time(), mission_id))
             results = []
             try:
-                for task in mission["tasks"]:
+                completed_indexes = set()
+                for index, task in enumerate(mission["tasks"]):
+                    dependencies = json.loads(task["dependencies"])
+                    if any(dep not in completed_indexes for dep in dependencies):
+                        raise AIEError("Task dependency has not completed successfully.")
                     cap = self._capabilities.get(task["capability"])
                     if not cap:
                         raise AIEError("Capability is not registered: " + task["capability"])
@@ -306,6 +348,7 @@ class AIEEngine:
                     if not verified:
                         raise AIEError("Capability did not return independently verified success.")
                     results.append({"task_id": task["id"], "capability": task["capability"], "result": result})
+                    completed_indexes.add(index)
                     with self._db() as db:
                         db.execute("UPDATE tasks SET status='COMPLETED',result=?,updated_at=? WHERE id=?",
                                    (json.dumps(result, ensure_ascii=False)[:8000], time.time(), task["id"]))
