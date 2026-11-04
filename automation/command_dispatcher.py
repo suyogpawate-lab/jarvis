@@ -118,7 +118,7 @@ class CommandDispatcher:
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
 
         # Persistent AIE goal/event control plane; typed capabilities only.
-        self.aie = AIEEngine(health_provider=self._aie_health_snapshot)
+        self.aie = AIEEngine(health_provider=self._aie_health_snapshot, goal_planner=self._aie_plan_provider)
         self.aie.register_capability(
             "research.search", self._aie_research_search, risk="read_only",
             description="Search public research sources for a bounded topic.",
