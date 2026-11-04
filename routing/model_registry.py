@@ -9,12 +9,6 @@ DISCUSSION_MODELS = {
     "simple": [
 
         {
-            "name": "Gemini Flash",
-            "provider": "omniroute",
-            "model": "gemini/gemini-3.7-flash",
-        },
-
-        {
             "name": "Qwen",
             "provider": "omniroute",
             "model": "cfp/qwen/qwen3-30b-a3b-fp8",
@@ -31,27 +25,9 @@ DISCUSSION_MODELS = {
             "provider": "groq",
             "model": "openai/gpt-oss-20b",
         },
-
-        {
-            "name": "Ollama",
-            "provider": "ollama",
-            "model": "qwen2.5:0.5b",
-        },
     ],
 
     "creative": [
-
-        {
-            "name": "Claude Sonnet",
-            "provider": "omniroute",
-            "model": "antigravity/sonnet-4-6-thinking",
-        },
-
-        {
-            "name": "Gemini",
-            "provider": "omniroute",
-            "model": "gemini/gemini-3.6-flash",
-        },
 
         {
             "name": "GPT-5.6 Luna",
@@ -76,27 +52,9 @@ DISCUSSION_MODELS = {
             "provider": "groq",
             "model": "openai/gpt-oss-20b",
         },
-
-        {
-            "name": "Ollama",
-            "provider": "ollama",
-            "model": "qwen2.5:0.5b",
-        },
     ],
 
     "complex": [
-
-        {
-            "name": "Claude Opus",
-            "provider": "omniroute",
-            "model": "antigravity/opus-4-6-thinking",
-        },
-
-        {
-            "name": "Gemini Pro",
-            "provider": "omniroute",
-            "model": "gemini/gemini-3.1-pro-preview",
-        },
 
         {
             "name": "GPT-5.6 Luna",
@@ -105,21 +63,9 @@ DISCUSSION_MODELS = {
         },
 
         {
-            "name": "Claude Sonnet",
-            "provider": "omniroute",
-            "model": "antigravity/sonnet-4-6-thinking",
-        },
-
-        {
             "name": "Groq",
             "provider": "groq",
             "model": "openai/gpt-oss-20b",
-        },
-
-        {
-            "name": "Ollama",
-            "provider": "ollama",
-            "model": "qwen2.5:0.5b",
         },
     ],
 }
