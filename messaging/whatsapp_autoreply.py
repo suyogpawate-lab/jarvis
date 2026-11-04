@@ -807,7 +807,7 @@ class WhatsAppAutoReplyWorker:
             "actually analysed. If the sender's intent is unclear or owner judgement is "
             "needed, choose ask_owner; the worker will send a brief acknowledgement and "
             "create a local owner review. If the message and evidence make the answer clear, "
-            "respond directly. 
+            "respond directly. "
             "Do not send vague filler, "
             "generic acknowledgements, or 'I'll get back to you' merely to avoid silence. "
             "Use decision='send' only when the answer is sufficiently supported and safe "
