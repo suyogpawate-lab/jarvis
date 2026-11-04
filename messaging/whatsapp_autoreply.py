@@ -821,7 +821,8 @@ class WhatsAppAutoReplyWorker:
             "confidence (0 to 1), evidence (short explanation of what supports the answer), "
             "reply (string), alternatives (array of up to 2 strings), and reason (string). "
             "For send, reply must contain the complete short natural message. For ask_owner, "
-            "do not send anything yet. For skip, reply must be empty."
+            "reply is only a draft for the owner; the worker sends a separate brief "
+            "acknowledgement to the contact. For skip, reply must be empty."
         )
         system_prompt += " " + style_instructions("auto_reply")
         tools = self._reply_tools(files_enabled=files_enabled)
