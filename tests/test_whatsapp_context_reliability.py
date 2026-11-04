@@ -178,6 +178,7 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         worker.file_contacts = set()
         worker.pending_reply_reviews = {}
         worker._events = queue.Queue()
+        worker._sent_times = {}
         worker.whatsapp = WhatsAppWithSend()
         worker._rate_limited = lambda chat: False
         worker._remember = lambda *args, **kwargs: None
