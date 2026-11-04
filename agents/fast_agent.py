@@ -135,7 +135,12 @@ class FastAgent:
             "only when clearly asked; group sends need confirmation. Be formal for "
             "official, serious, or apology contexts. Have respect for yourself, you can fight back for your respect\n\n"
             "ALARMS: Use alarm/timer tools, never shell. Use website_ip for IP lookups.\n\n"
-            "SCREEN: For a website or URL, use open_url (Chrome), never launch_android_app. "
+            "LINKS: If the user asks what a URL contains, inspect it with inspect_public_link; "
+            "for YouTube use inspect_youtube_link and ground any reaction in returned public captions. "
+            "If only metadata is available, say the video content could not be verified and ask the user "
+            "for a description. Do not claim to have watched it. Use open_url only when the user "
+            "explicitly asks to open the link in Chrome/browser.\n\n"
+            "SCREEN: For explicit website navigation, use open_url (Chrome), never launch_android_app. "
             "Use screen_view to inspect and screen_control for one action at a time, "
             "re-inspecting after every state change. Prefer Accessibility indexes over "
             "coordinates. Never solve CAPTCHAs; ask the user to do it, then resume. "
@@ -361,6 +366,35 @@ class FastAgent:
             return f"Searching your local knowledge for \u201c{clip(args.get('query'), 50)}\u201d"
         if name == "analyze_local_image":
             return "Looking at the image"
+        if name == "inspect_public_link":
+            url = str(arguments.get("url") or "").strip()
+            if not url:
+                return {"ok": False, "error": "A public URL is required."}
+            try:
+                from messaging.link_inspector import inspect_public_page
+                return inspect_public_page(url)
+            except Exception as exc:
+                return {"ok": False, "error": f"Link inspection failed: {type(exc).__name__}."}
+
+        if name == "inspect_youtube_link":
+            url = str(arguments.get("url") or "").strip()
+            if not url:
+                return {"ok": False, "error": "A YouTube URL is required."}
+            try:
+                # Reuse the same bounded, public-metadata/caption implementation
+                # used by the WhatsApp review worker.
+                from messaging.whatsapp_autoreply import WhatsAppAutoReplyWorker
+                inspector = WhatsAppAutoReplyWorker.__new__(WhatsAppAutoReplyWorker)
+                result = inspector._inspect_youtube_link(url)
+                if result.get("ok") and not result.get("transcript_available"):
+                    result["analysis_limit"] = (
+                        "No public transcript was available. Video frames/audio were not analysed; "
+                        "ask the user for a description before drafting a content-specific reaction."
+                    )
+                return result
+            except Exception as exc:
+                return {"ok": False, "error": f"YouTube inspection failed: {type(exc).__name__}."}
+
         if name == "screen_view":
             return "Inspecting the current Android screen"
         if name == "screen_control":
@@ -530,6 +564,39 @@ class FastAgent:
                         "required": ["to", "message"],
                     },
                 },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "inspect_public_link",
+                    "description": (
+                        "Read a public HTTP(S) webpage and return its title, description, "
+                        "and readable text. Use when the user asks what a link says or wants "
+                        "a reply based on its contents. Do not open Chrome unless explicitly asked."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"url": {"type": "string", "description": "Public HTTP(S) URL."}},
+                        "required": ["url"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "inspect_youtube_link",
+                    "description": (
+                        "Inspect a public YouTube video using its title, channel, description, "
+                        "and public captions/transcript when available. Use before drafting a "
+                        "reaction to a YouTube link. This tool does not analyse video frames or "
+                        "audio when captions are unavailable; ask the user for context instead."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"url": {"type": "string", "description": "Public YouTube video URL."}},
+                        "required": ["url"]
+                    }
+                }
             },
             {
                 "type": "function",
