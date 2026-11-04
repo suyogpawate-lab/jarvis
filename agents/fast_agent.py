@@ -94,7 +94,9 @@ class FastAgent:
         """Send complex reasoning requests exclusively through OmniRoute."""
         base_url = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1").rstrip("/")
         api_key = os.getenv("OMNIROUTE_API_KEY", "any-string").strip() or "any-string"
-        model = os.getenv("OMNIROUTE_COMPLEX_MODEL") or os.getenv("JARVIS_MODEL") or "auto/best-reasoning"
+        model = os.getenv("OMNIROUTE_COMPLEX_MODEL", "auto/best-reasoning").strip()
+        if re.search(r"gemini|claude|anthropic|antigravity", model, re.IGNORECASE):
+            raise RuntimeError("This model ID is disabled. Configure a non-Gemini, non-Claude OmniRoute model in OMNIROUTE_COMPLEX_MODEL.")
         payload_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else [])
         payload_messages.extend(messages)
         response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": model, "messages": payload_messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}, timeout=timeout)
