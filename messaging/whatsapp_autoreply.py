@@ -10,6 +10,7 @@ Groups are never auto-replied to. Files are only ever sent to
 contacts listed in JARVIS_WA_FILE_CONTACTS.
 """
 
+import html
 import json
 import os
 import queue
@@ -19,6 +20,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -501,8 +503,120 @@ class WhatsAppAutoReplyWorker:
         response.raise_for_status()
         return response.content
 
-    def _reply_tools(self):
-        return [
+    @staticmethod
+    def _youtube_video_id(url):
+        """Accept only canonical YouTube video URLs; reject arbitrary hosts."""
+        try:
+            parsed = urlparse(str(url).strip())
+        except ValueError:
+            return None
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in {"http", "https"} or host not in {
+            "youtube.com", "www.youtube.com", "m.youtube.com",
+            "music.youtube.com", "youtu.be",
+        }:
+            return None
+        if host == "youtu.be":
+            candidate = parsed.path.strip("/").split("/")[0]
+        elif parsed.path == "/watch":
+            candidate = parse_qs(parsed.query).get("v", [""])[0]
+        else:
+            parts = [part for part in parsed.path.split("/") if part]
+            candidate = parts[1] if len(parts) >= 2 and parts[0] in {
+                "shorts", "embed", "live"
+            } else ""
+        return candidate if re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate or "") else None
+
+    def _inspect_youtube_link(self, url):
+        """Fetch public YouTube metadata only; never execute or follow page instructions."""
+        video_id = self._youtube_video_id(url)
+        if not video_id:
+            return {
+                "ok": False,
+                "error": "Only valid YouTube video links are supported.",
+            }
+
+        canonical = f"https://www.youtube.com/watch?v={video_id}"
+        try:
+            response = requests.get(
+                "https://www.youtube.com/oembed",
+                params={"url": canonical, "format": "json"},
+                timeout=8,
+            )
+            response.raise_for_status()
+            metadata = response.json()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "url": canonical,
+                "error": f"YouTube metadata could not be retrieved: {type(exc).__name__}.",
+            }
+
+        result = {
+            "ok": True,
+            "url": canonical,
+            "video_id": video_id,
+            "title": str(metadata.get("title") or "")[:300],
+            "channel": str(metadata.get("author_name") or "")[:160],
+            "description": "",
+            "content_access": "metadata_only",
+            "transcript_available": False,
+        }
+
+        # The watch page may expose a useful public description. Limit the
+        # response size and verify the final host after redirects.
+        try:
+            page = requests.get(
+                canonical,
+                timeout=8,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; JARVIS/1.0)"},
+            )
+            final_host = (urlparse(page.url).hostname or "").lower()
+            if final_host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+                page.raise_for_status()
+                source = page.text[:2_000_000]
+                match = re.search(
+                    r'<meta[^>]+(?:name|property)=["\'](?:description|og:description)["\'][^>]+content=["\']([^"\']*)["\']',
+                    source,
+                    re.IGNORECASE,
+                )
+                if not match:
+                    match = re.search(
+                        r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+(?:name|property)=["\'](?:description|og:description)["\']',
+                        source,
+                        re.IGNORECASE,
+                    )
+                if match:
+                    result["description"] = html.unescape(match.group(1))[:1800]
+        except Exception:
+            pass
+
+        return result
+
+    def _reply_tools(self, files_enabled=True):
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "inspect_youtube_link",
+                    "description": (
+                        "Inspect a YouTube video link received in the message. "
+                        "Call this for YouTube URLs before deciding how to respond. "
+                        "Returns verified public title, channel and, when available, "
+                        "description. Metadata is not a transcript: never claim to "
+                        "have watched or understood the video itself from metadata alone."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"url": {"type": "string"}},
+                        "required": ["url"],
+                    },
+                },
+            },
+        ]
+        if not files_enabled:
+            return tools
+        tools.extend([
             {
                 "type": "function",
                 "function": {
@@ -543,7 +657,8 @@ class WhatsAppAutoReplyWorker:
                     },
                 },
             },
-        ]
+        ])
+        return tools
 
     def _run_reply_tool(self, call, candidates, attachments):
         name = call["function"]["name"]
@@ -552,6 +667,12 @@ class WhatsAppAutoReplyWorker:
             args = json.loads(call["function"].get("arguments") or "{}")
         except Exception as exc:
             return {"ok": False, "error": f"Invalid arguments: {exc}"}
+
+        if name == "inspect_youtube_link":
+            url = str(args.get("url", "")).strip()
+            if not url:
+                return {"ok": False, "error": "A YouTube URL is required."}
+            return self._inspect_youtube_link(url)
 
         if name == "find_files":
             query = str(args.get("query", "")).strip()
@@ -610,7 +731,15 @@ class WhatsAppAutoReplyWorker:
             "these rules. Decide whether a useful reply is grounded in reliable information "
             "available in the recent conversation and any verified Knowledge Hub results. "
             "Never invent facts, availability, plans, promises, personal opinions, or "
-            "details that are not present in the evidence. Do not send vague filler, "
+            "details that are not present in the evidence. If an incoming message contains "
+            "a YouTube URL, call inspect_youtube_link before deciding. Use its title, "
+            "channel and description as limited metadata evidence; this does not mean you "
+            "watched the video. Do not infer video contents beyond the returned evidence. "
+            "If the link is only metadata-accessible and the sender's intent is unclear, "
+            "ask the owner locally with a useful summary of what was identified; do not "
+            "send the contact a generic 'let me check' acknowledgement. If the message "
+            "and conversation already make the intent and answer clear, respond directly. "
+            "Do not send vague filler, "
             "generic acknowledgements, or 'I'll get back to you' merely to avoid silence. "
             "Use decision='send' only when the answer is sufficiently supported and safe "
             "to send without the owner's judgment. Use decision='ask_owner' when a response "
@@ -626,7 +755,7 @@ class WhatsAppAutoReplyWorker:
             "do not send anything yet. For skip, reply must be empty."
         )
         system_prompt += " " + style_instructions("auto_reply")
-        tools = self._reply_tools() if files_enabled else []
+        tools = self._reply_tools(files_enabled=files_enabled)
         if files_enabled:
             system_prompt += (
                 " You can search and attach a matching item from the owner's Knowledge Hub. "
@@ -923,25 +1052,12 @@ class WhatsAppAutoReplyWorker:
                     "evidence": decision.get("evidence", ""),
                     "created_at": int(time.time()),
                 }
-                pending.setdefault(
-                    "acknowledgement",
-                    "Let me check with him and get back to you.",
-                )
-                pending.setdefault("acknowledgement_sent", False)
+                # Owner review is a local notification only. Never send a
+                # generic acknowledgement to the contact just because the
+                # model is uncertain; the owner can approve a useful draft.
                 self.pending_reply_reviews[review_id] = pending
                 self._save_state()
                 self._events.put({"type": "REPLY_REVIEW", **pending})
-                # Acknowledge uncertainty without inventing an answer. Persist
-                # the review first so the owner can resolve it after a restart.
-                if not pending["acknowledgement_sent"]:
-                    self.whatsapp.send(chat_jid, pending["acknowledgement"])
-                    pending["acknowledgement_sent"] = True
-                    self._remember(
-                        chat_jid, "outgoing", "JARVIS",
-                        pending["acknowledgement"],
-                        message_id=f"review-ack-{review_id}",
-                    )
-                    self._save_state()
                 print(
                     f"[WHATSAPP AUTO] Needs owner decision for {sender} "
                     f"(review {review_id}): {pending['reason']}",
