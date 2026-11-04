@@ -61,7 +61,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak ollama python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make
+pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make
 
 if [ "$WITH_VOICE" -eq 1 ]; then
     pkg install -y portaudio
@@ -175,7 +175,6 @@ $ALIAS_START
 alias jarvis='python "$ROOT/jarvis_ui.py"'
 alias jarvis-cli='python "$ROOT/jarvis.py"'
 alias jarvis-float='python "$ROOT/jarvis_float.py"'
-alias olser='nohup ollama serve > /dev/null 2>&1 &'
 alias wa='nohup bash "$ROOT/whatsapp_daemon.sh" > /dev/null 2>&1 &'
 alias omni='bash "$ROOT/omniroute_daemon.sh"'
 alias rag='nohup python "$ROOT/knowledge_hub/app.py" > /dev/null 2>&1 &'
@@ -297,11 +296,6 @@ fi
 
 # ───────────────────────── report ─────────────────────────
 info "Checking optional components..."
-if command -v ollama >/dev/null 2>&1; then
-    ok "Ollama: $(ollama --version 2>/dev/null | head -n1 || echo installed)"
-else
-    warn "Ollama not installed; local-model support is unavailable."
-fi
 if curl -fsS http://127.0.0.1:20128/v1/models >/dev/null 2>&1; then
     ok "OmniRoute is responding on port 20128."
 else
