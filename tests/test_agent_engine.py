@@ -103,6 +103,8 @@ class AgentEngineTests(unittest.TestCase):
         self.assertTrue(dispatcher._looks_like_agent_task("Build a CLI tool"))
         self.assertFalse(dispatcher._looks_like_agent_task("How do I fix a test?"))
         self.assertFalse(dispatcher._looks_like_agent_task("What should I build?"))
+        self.assertFalse(dispatcher._looks_like_agent_task("run youtube music in the background"))
+        self.assertFalse(dispatcher._looks_like_agent_task("open Spotify in the background"))
 
 
 class HealthManagerTests(unittest.TestCase):
