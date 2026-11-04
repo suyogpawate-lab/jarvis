@@ -126,5 +126,92 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         self.assertEqual(worker.whatsapp.ack_calls, [["msg-1"], ["msg-1"]])
 
 
+
+    def test_youtube_video_id_accepts_youtube_hosts_only(self):
+        self.assertEqual(
+            WhatsAppAutoReplyWorker._youtube_video_id(
+                "https://youtu.be/nSWEroBrY_w?si=example"
+            ),
+            "nSWEroBrY_w",
+        )
+        self.assertEqual(
+            WhatsAppAutoReplyWorker._youtube_video_id(
+                "https://www.youtube.com/watch?v=nSWEroBrY_w"
+            ),
+            "nSWEroBrY_w",
+        )
+        self.assertIsNone(
+            WhatsAppAutoReplyWorker._youtube_video_id(
+                "https://example.com/watch?v=nSWEroBrY_w"
+            )
+        )
+        self.assertIsNone(
+            WhatsAppAutoReplyWorker._youtube_video_id(
+                "https://youtube.com.evil.example/watch?v=nSWEroBrY_w"
+            )
+        )
+
+    def test_link_inspection_tool_is_available_without_file_permissions(self):
+        worker = WhatsAppAutoReplyWorker.__new__(WhatsAppAutoReplyWorker)
+        names = [
+            item["function"]["name"]
+            for item in worker._reply_tools(files_enabled=False)
+        ]
+        self.assertEqual(names, ["inspect_youtube_link"])
+
+    def test_ask_owner_review_does_not_send_generic_acknowledgement(self):
+        import queue
+        import time
+
+        class WhatsAppWithSend(FakeWhatsApp):
+            def __init__(self):
+                super().__init__()
+                self.sent = []
+
+            def send(self, chat_jid, message):
+                self.sent.append((chat_jid, message))
+
+        worker = WhatsAppAutoReplyWorker.__new__(WhatsAppAutoReplyWorker)
+        worker.handled_ids = set()
+        worker.max_age_seconds = 600
+        worker.autonomy_event_callback = None
+        worker.file_contacts = set()
+        worker.pending_reply_reviews = {}
+        worker._events = queue.Queue()
+        worker.whatsapp = WhatsAppWithSend()
+        worker._rate_limited = lambda chat: False
+        worker._remember = lambda *args, **kwargs: None
+        worker._history_text = lambda *args, **kwargs: "Earlier context"
+        worker._generate_reply = lambda *args, **kwargs: (
+            {
+                "decision": "ask_owner",
+                "reason": "The link's purpose is unclear.",
+                "evidence": "YouTube link received; metadata needs owner review.",
+                "reply": "",
+                "alternatives": [],
+            },
+            [],
+        )
+        worker._save_state = lambda: None
+        worker._finish = lambda ids: None
+
+        worker._process_chat(
+            "contact@s.whatsapp.net",
+            [{
+                "id": "review-message-1",
+                "timestamp": time.time(),
+                "text": "https://youtu.be/nSWEroBrY_w",
+                "pushName": "Nehanth",
+            }],
+        )
+
+        self.assertEqual(worker.whatsapp.sent, [])
+        self.assertIn("review-message-1", worker.pending_reply_reviews)
+        self.assertEqual(
+            worker.pending_reply_reviews["review-message-1"]["reason"],
+            "The link's purpose is unclear.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
