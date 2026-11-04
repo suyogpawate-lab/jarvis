@@ -273,7 +273,22 @@ OPTIONAL_KEYS = [
 
 def step_keys(env):
     heading("AI provider keys")
-    info("Groq is the main model provider. Get a key at https://console.groq.com/keys")
+    # Remove credentials and model overrides for providers no longer supported.
+    legacy_keys = (
+        "GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_MODEL",
+        "ANTHROPIC_API_KEY", "ANTHROPIC_API_KEYS", "CLAUDE_MODEL",
+        "JARVIS_COMPLEX_PROVIDER",
+    )
+    removed_legacy = False
+    for name in legacy_keys:
+        if env.get(name):
+            env.unset(name)
+            removed_legacy = True
+    if removed_legacy:
+        env.save()
+        info("Removed obsolete Gemini/Claude provider settings from .env.")
+
+    info("Groq is the fast-response and tool provider. Get a key at https://console.groq.com/keys")
 
     current = split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY"))
     if current:
