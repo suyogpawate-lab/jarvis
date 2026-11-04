@@ -284,6 +284,11 @@ def step_keys(env):
         if env.get(name):
             env.unset(name)
             removed_legacy = True
+    for name in ("JARVIS_MODEL", "OMNIROUTE_MODEL", "OMNIROUTE_COMPLEX_MODEL"):
+        value = env.get(name, "")
+        if value and re.search(r"gemini|claude|anthropic|antigravity", value, re.IGNORECASE):
+            env.unset(name)
+            removed_legacy = True
     if removed_legacy:
         env.save()
         info("Removed obsolete Gemini/Claude provider settings from .env.")
