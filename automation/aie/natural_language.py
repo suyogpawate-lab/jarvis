@@ -17,6 +17,8 @@ class NaturalLanguageAIE:
 
     PLAN = re.compile(r"^(?:plan|make a plan for|create a plan for)\s+(.+)$", re.I)
     RUN = re.compile(r"^(?:run|execute)\s+mission\s+([a-z0-9-]+)$", re.I)
+    RECALL = re.compile(r"^(?:remember|recall|what do you remember about)\s+(.+)$", re.I)
+    MISSIONS = re.compile(r"^(?:show )?missions$", re.I)
 
     def __init__(self, engine: AIEEngine, plan_provider=None):
         self.engine = engine
@@ -28,6 +30,13 @@ class NaturalLanguageAIE:
             return None
         if self.STATUS.fullmatch(value):
             return self.status_text()
+        if self.MISSIONS.fullmatch(value):
+            missions = self.engine.list_missions(limit=8)
+            return "\n".join(f"{m['id']} — {m['status']} — {len(m['tasks'])} tasks" for m in missions) or "[AIE] No missions recorded."
+        match = self.RECALL.fullmatch(value)
+        if match:
+            memories = self.engine.recall(match.group(1), limit=6)
+            return "\n".join(f"- [{m['kind']}] {m['content']}" for m in memories) or "[AIE] No matching saved memory."
         match = self.RUN.fullmatch(value)
         if match:
             if source != "text":
@@ -104,6 +113,7 @@ class NaturalLanguageAIE:
         lines.append(f"Registered capabilities: {len(state['capabilities'])}")
         lines.append(f"Events: {state['counts']['events']}")
         lines.append(f"Missions: {state['counts']['missions']}")
+        lines.append(f"Background worker: {'running' if state.get('worker_alive') else 'stopped'}")
         if goals:
             lines.append("Current objectives:")
             lines.extend(f"- [{g['priority']}/10] {g['id']}: {g['title']} ({g['status']})" for g in goals)
