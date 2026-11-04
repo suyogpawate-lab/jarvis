@@ -1,6 +1,9 @@
 """Regression tests for WhatsApp context assembly and delivery reliability."""
 
 import unittest
+from unittest.mock import Mock, patch
+
+from messaging.whatsapp_manager import WhatsAppManager
 
 from messaging.whatsapp_autoreply import WhatsAppAutoReplyWorker
 
@@ -126,6 +129,27 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         self.assertEqual(worker.whatsapp.ack_calls, [["msg-1"], ["msg-1"]])
 
 
+
+    def test_group_name_resolves_to_group_jid_for_read_only_history(self):
+        manager = WhatsAppManager()
+        manager.resolve_contact = Mock(side_effect=ValueError("No contact found"))
+        manager.resolve_group = Mock(return_value={
+            "jid": "120363000000000000@g.us",
+            "subject": "Bonnet Kitchen",
+        })
+        response = Mock()
+        response.raise_for_status = Mock()
+        response.json.return_value = {"ok": True, "messages": [
+            {"id": "group-1", "text": "Dinner update"}
+        ]}
+        with patch("messaging.whatsapp_manager.requests.get", return_value=response):
+            rows = manager.get_chat_history("Bonnet Kitchen", limit=10)
+        manager.resolve_group.assert_called_once_with("Bonnet Kitchen")
+        self.assertEqual(rows[0]["text"], "Dinner update")
+        self.assertEqual(
+            response.call_args.kwargs["params"]["chat"],
+            "120363000000000000@g.us",
+        )
 
     def test_youtube_video_id_accepts_youtube_hosts_only(self):
         self.assertEqual(
