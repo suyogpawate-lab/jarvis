@@ -244,7 +244,7 @@ def home():
 def _safe_display_name(original_filename, requested_name):
     # Preserve the extension from the raw upload name: secure_filename() can
     # strip a non-ASCII-only stem and its separating dot (e.g. "报告.pdf" -> "pdf").
-    raw_name = str(original_filename or "").replace("\\\\", "/").rsplit("/", 1)[-1]
+    raw_name = str(original_filename or "").replace(chr(92), "/").rsplit("/", 1)[-1]
     ext = Path(raw_name).suffix.lower()
     requested = str(requested_name or "").strip()
     source_stem = Path(requested).stem if requested else Path(raw_name).stem
