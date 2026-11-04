@@ -36,12 +36,13 @@ AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
 
 
 def play_random_wake_response() -> bool:
-    """Play one prepared clip; synthesize a short fallback if clips aren't generated yet."""
+    """Play a pre-generated acknowledgement only; never synthesize on the wake path."""
     available = [AUDIO_DIR / f"wake_{i:02d}.mp3" for i in range(1, len(PHRASES) + 1)]
     available = [path for path in available if path.is_file()]
-    if available:
-        return play_recorded(str(random.choice(available)))
-
-    # This fallback keeps wake acknowledgement functional before one-time clip generation.
-    from voice.tts_manager import tts
-    return tts.speak_blocking(random.choice(PHRASES))
+    if len(available) != len(PHRASES):
+        missing = len(PHRASES) - len(available)
+        raise RuntimeError(
+            f"Wake acknowledgement cache incomplete: {len(available)}/{len(PHRASES)} clips; "
+            f"{missing} missing. Run the wake-response preparation command."
+        )
+    return play_recorded(str(random.choice(available)))

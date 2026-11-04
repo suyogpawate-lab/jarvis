@@ -50,12 +50,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let mut tts = checkpoint.builder(Lang::En).device(DeviceKind::Cpu).build()?;
     checkpoint.register_voices(&mut tts);
+    // Best-effort residency: ask Linux/Android to pin current and future pages.
+    // Android may reject this because RLIMIT_MEMLOCK is commonly very small.
+    let memory_lock = if std::env::var("JARVIS_PHONON_MLOCK")
+        .map(|value| value != "0")
+        .unwrap_or(true)
+    {
+        let result = unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) };
+        if result == 0 {
+            serde_json::json!({"requested": true, "locked": true, "error": null})
+        } else {
+            serde_json::json!({
+                "requested": true,
+                "locked": false,
+                "error": std::io::Error::last_os_error().to_string()
+            })
+        }
+    } else {
+        serde_json::json!({
+            "requested": false,
+            "locked": false,
+            "error": "disabled by JARVIS_PHONON_MLOCK=0"
+        })
+    };
     let available = tts.voices();
     if voice != "default" && !available.iter().any(|name| name == &voice) {
         return Err(format!("voice '{voice}' is not registered; available voices: {}", available.join(", ")).into());
     }
     eprintln!("[JARVIS Phonon] Model loaded once; persistent worker ready.");
-    respond(serde_json::json!({"ready": true, "voices": available.clone()}))?;
+    respond(serde_json::json!({
+        "ready": true,
+        "voices": available.clone(),
+        "memory_lock": memory_lock
+    }))?;
 
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
