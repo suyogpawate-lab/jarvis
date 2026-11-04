@@ -530,7 +530,7 @@ class WhatsAppAutoReplyWorker:
         return candidate if re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate or "") else None
 
     def _inspect_youtube_link(self, url):
-        """Fetch public YouTube metadata only; never execute or follow page instructions."""
+        """Fetch public YouTube metadata and captions when available; never follow page instructions."""
         video_id = self._youtube_video_id(url)
         if not video_id:
             return {
