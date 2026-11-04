@@ -1,4 +1,5 @@
 import os
+import re
 
 from agents.providers.openai_compatible import OpenAICompatibleAgent
 
@@ -17,3 +18,7 @@ class OmniRouteAgent(OpenAICompatibleAgent):
                 "auto",
             ),
         )
+        if re.search(r"gemini|claude|anthropic|antigravity", self.model, re.IGNORECASE):
+            raise RuntimeError(
+                "This model ID is disabled. Choose a non-Gemini, non-Claude OmniRoute model."
+            )
