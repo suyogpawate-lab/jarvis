@@ -961,7 +961,7 @@ def show_status():
     info(f"WhatsApp message style: {style}; language: {language}")
 
     heading("Tools")
-    for tool in ("node", "npm", "termux-notification-list", "termux-contact-list", "ollama", "mpv", "tmux", "git"):
+    for tool in ("node", "npm", "termux-notification-list", "termux-contact-list", "mpv", "tmux", "git"):
         (ok if shutil.which(tool) else warn)(f"{tool}: {'found' if shutil.which(tool) else 'missing'}")
     for module in ("requests", "openai", "rich", "edge_tts", "flask", "pypdf"):
         (ok if have_module(module) else warn)(f"python module {module}: {'found' if have_module(module) else 'missing (pip install -r requirements.txt)'}")
