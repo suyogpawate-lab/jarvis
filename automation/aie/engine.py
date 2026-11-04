@@ -370,6 +370,23 @@ class AIEEngine:
             return {"ok": status == "COMPLETED", "status": status, "verified": status == "COMPLETED",
                     "results": results}
 
+    @staticmethod
+    def _normalize_plan(raw):
+        """Parse planner JSON without treating model output as executable instructions."""
+        if isinstance(raw, dict):
+            plan = raw
+        else:
+            value = str(raw or "").strip()
+            fence = chr(96) * 3
+            if value.startswith(fence):
+                value = value.split("\\n", 1)[-1]
+                if value.rstrip().endswith(fence):
+                    value = value.rstrip()[:-3].strip()
+            plan = json.loads(value)
+        if not isinstance(plan, dict) or not isinstance(plan.get("tasks"), list):
+            raise AIEError("Planner response was not a valid mission object.")
+        return plan
+
     def evaluate_due_goals(self, limit=1):
         """Create review proposals on a cadence; never execute missions."""
         now = time.time()
@@ -381,8 +398,14 @@ class AIEEngine:
             result = {"goal_id":goal["id"],"proposal":None,"error":None}
             try:
                 if callable(self.goal_planner):
-                    plan = self.goal_planner(goal)
-                    if plan:
+                    with self._db() as db:
+                        existing = db.execute("SELECT id FROM missions WHERE goal_id=? AND status IN ('DRAFT','READY','RUNNING','PAUSED_RECOVERY') ORDER BY created_at DESC LIMIT 1", (goal["id"],)).fetchone()
+                    if existing:
+                        result["proposal"] = existing["id"]
+                        self.decide(None,"EXISTING_PROPOSAL","An unfinished mission already exists; duplicate proposal suppressed.",goal["id"])
+                    else:
+                        raw_plan = self.goal_planner(goal)
+                        plan = self._normalize_plan(raw_plan)
                         mission = self.create_planned_mission(goal["id"],plan)
                         result["proposal"] = mission["id"]
                         self.decide(None,"MISSION_PROPOSED","Periodic review prepared a mission for owner review.",goal["id"])
@@ -454,6 +477,10 @@ class AIEEngine:
             for table, column in (("goals","status"),("events","status"),("missions","status"),("approvals","status")):
                 counts[table] = {r["status"]: r["n"] for r in db.execute(
                     f"SELECT {column} AS status,COUNT(*) AS n FROM {table} GROUP BY {column}")}
+        with self._db() as db:
+            due = db.execute("SELECT COUNT(*) FROM goals WHERE status='ACTIVE' AND next_review_at<=?", (time.time(),)).fetchone()[0]
+        worker = getattr(self, "_worker", None)
         return {"schema_version": SCHEMA_VERSION, "database": str(self.db_path),
                 "capabilities": sorted(self._capabilities), "counts": counts,
-                "active_goals": len(self.list_goals())}
+                "active_goals": len(self.list_goals()), "due_goal_reviews": due,
+                "worker_alive": bool(worker and worker.is_alive())}

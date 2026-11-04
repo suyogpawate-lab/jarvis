@@ -127,5 +127,23 @@ class AIEEngineTests(unittest.TestCase):
         self.assertGreater(self.engine.get_goal(goal["id"])["next_review_at"], 0)
 
 
+    def test_due_goal_review_parses_json_and_suppresses_duplicate_proposals(self):
+        goal = self.engine.create_goal("Monitor robotics publications", review_interval=900)
+        self.engine.register_capability(
+            "test.review", lambda: {"ok": True, "verified": True},
+            input_validator=lambda args: args == {}
+        )
+        self.engine.goal_planner = lambda current: '{"title":"Review publications","tasks":[{"capability":"test.review","arguments":{},"dependencies":[]}]}'
+        with self.engine._db() as db:
+            db.execute("UPDATE goals SET next_review_at=0 WHERE id=?", (goal["id"],))
+        first = self.engine.evaluate_due_goals()
+        self.assertIsNotNone(first[0]["proposal"])
+        with self.engine._db() as db:
+            db.execute("UPDATE goals SET next_review_at=0 WHERE id=?", (goal["id"],))
+        second = self.engine.evaluate_due_goals()
+        self.assertEqual(first[0]["proposal"], second[0]["proposal"])
+        self.assertEqual(len(self.engine.list_missions()), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
