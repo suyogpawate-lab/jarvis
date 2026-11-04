@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "REJECTED"}
 RISK_ORDER = {"read_only": 0, "reversible": 1, "approval": 2, "external": 3, "destructive": 4}
 
@@ -28,10 +28,12 @@ class AIEError(Exception):
 
 
 class AIEEngine:
-    def __init__(self, db_path="data/aie/aie.db", health_provider=None, max_active_missions=2):
+    def __init__(self, db_path="data/aie/aie.db", health_provider=None, max_active_missions=2, goal_planner=None, notifier=None):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.health_provider = health_provider
+        self.goal_planner = goal_planner
+        self.notifier = notifier
         self.max_active_missions = max(1, min(int(max_active_missions), 4))
         self._lock = threading.RLock()
         self._capabilities: dict[str, dict[str, Any]] = {}
@@ -65,7 +67,9 @@ class AIEEngine:
             CREATE TABLE IF NOT EXISTS goals(
               id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
               status TEXT NOT NULL, priority INTEGER NOT NULL, created_at REAL NOT NULL,
-              updated_at REAL NOT NULL, success_criteria TEXT NOT NULL, source TEXT NOT NULL);
+              updated_at REAL NOT NULL, success_criteria TEXT NOT NULL, source TEXT NOT NULL,
+              review_interval REAL NOT NULL DEFAULT 21600, next_review_at REAL NOT NULL DEFAULT 0,
+              last_review_at REAL);
             CREATE TABLE IF NOT EXISTS events(
               id TEXT PRIMARY KEY, source TEXT NOT NULL, kind TEXT NOT NULL,
               payload TEXT NOT NULL, status TEXT NOT NULL, created_at REAL NOT NULL,
@@ -93,6 +97,9 @@ class AIEEngine:
               provenance TEXT NOT NULL, confidence REAL NOT NULL, created_at REAL NOT NULL,
               expires_at REAL);
             """)
+            cols = {r['name'] for r in db.execute('PRAGMA table_info(goals)')}
+            for col, decl in (("review_interval", "REAL NOT NULL DEFAULT 21600"), ("next_review_at", "REAL NOT NULL DEFAULT 0"), ("last_review_at", "REAL")):
+                if col not in cols: db.execute(f"ALTER TABLE goals ADD COLUMN {col} {decl}")
             version = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
             if version and int(version["value"]) > SCHEMA_VERSION:
                 raise AIEError("AIE database schema is newer than this JARVIS version.")
@@ -128,7 +135,7 @@ class AIEEngine:
     def _id(prefix):
         return prefix + "-" + uuid.uuid4().hex[:12]
 
-    def create_goal(self, title, description=None, priority=5, success_criteria=None, source="owner"):
+    def create_goal(self, title, description=None, priority=5, success_criteria=None, source="owner", review_interval=21600):
         title = " ".join(str(title or "").split())[:240]
         if not title:
             raise ValueError("A goal description is required.")
@@ -136,10 +143,10 @@ class AIEEngine:
         now = time.time()
         goal_id = self._id("goal")
         criteria = success_criteria if isinstance(success_criteria, list) else []
+        review_interval = max(900, min(float(review_interval), 2592000))
         with self._db() as db:
-            db.execute("""INSERT INTO goals VALUES(?,?,?,?,?,?,?,?,?)""",
-                       (goal_id, title, str(description or title)[:2000], "ACTIVE", priority,
-                        now, now, json.dumps(criteria, ensure_ascii=False), str(source)[:40]))
+            db.execute("""INSERT INTO goals (id,title,description,status,priority,created_at,updated_at,success_criteria,source,review_interval,next_review_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (goal_id,title,str(description or title)[:2000],"ACTIVE",priority,now,now,json.dumps(criteria,ensure_ascii=False),str(source)[:40],review_interval,now+review_interval))
         return self.get_goal(goal_id)
 
     def get_goal(self, goal_id):
@@ -161,8 +168,8 @@ class AIEEngine:
         if status not in {"ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"}:
             raise ValueError("Invalid goal status.")
         with self._db() as db:
-            cur = db.execute("UPDATE goals SET status=?,updated_at=? WHERE id=?",
-                             (status, time.time(), goal_id))
+            cur = db.execute("UPDATE goals SET status=?,updated_at=?,next_review_at=? WHERE id=?",
+                             (status,time.time(),time.time()+900 if status=="ACTIVE" else 0,goal_id))
         return {"ok": cur.rowcount == 1, "goal_id": goal_id, "status": status}
 
     def ingest_event(self, source, kind, payload=None, event_id=None):
@@ -209,7 +216,7 @@ class AIEEngine:
                 capability = str(spec.get("capability", "")) if isinstance(spec, dict) else ""
                 args = spec.get("arguments", {}) if isinstance(spec, dict) else {}
                 deps = spec.get("dependencies", []) if isinstance(spec, dict) else []
-                db.execute("INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?)",
+                db.execute("INSERT INTO tasks(id,mission_id,capability,arguments,dependencies,status,result,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
                            (self._id("task"), mission_id, capability,
                             json.dumps(args, ensure_ascii=False), json.dumps(deps),
                             "PENDING", None, now, now))
@@ -363,6 +370,78 @@ class AIEEngine:
             return {"ok": status == "COMPLETED", "status": status, "verified": status == "COMPLETED",
                     "results": results}
 
+    @staticmethod
+    def _normalize_plan(raw):
+        """Parse planner JSON without treating model output as executable instructions."""
+        if isinstance(raw, dict):
+            plan = raw
+        else:
+            value = str(raw or "").strip()
+            fence = chr(96) * 3
+            if value.startswith(fence):
+                value = value.split("\n", 1)[-1]
+                if value.rstrip().endswith(fence):
+                    value = value.rstrip()[:-3].strip()
+            plan = json.loads(value)
+        if not isinstance(plan, dict) or not isinstance(plan.get("tasks"), list):
+            raise AIEError("Planner response was not a valid mission object.")
+        return plan
+
+    def evaluate_due_goals(self, limit=1):
+        """Create review proposals on a cadence; never execute missions."""
+        now = time.time()
+        with self._db() as db:
+            due = db.execute(
+                "SELECT * FROM goals WHERE status='ACTIVE' AND next_review_at<=? "
+                "ORDER BY priority DESC,next_review_at LIMIT ?",
+                (now, max(1, min(int(limit), 2))),
+            ).fetchall()
+        results = []
+        for item in due:
+            goal = dict(item)
+            result = {"goal_id": goal["id"], "proposal": None, "error": None}
+            try:
+                if not callable(self.goal_planner):
+                    self.decide(None, "WAIT", "Planner unavailable; no action taken.", goal["id"])
+                else:
+                    with self._db() as db:
+                        existing = db.execute(
+                            "SELECT id FROM missions WHERE goal_id=? "
+                            "AND status IN ('DRAFT','READY','RUNNING','PAUSED_RECOVERY') "
+                            "ORDER BY created_at DESC LIMIT 1",
+                            (goal["id"],),
+                        ).fetchone()
+                    if existing:
+                        result["proposal"] = existing["id"]
+                        self.decide(None, "EXISTING_PROPOSAL",
+                                    "An unfinished mission already exists; duplicate proposal suppressed.",
+                                    goal["id"])
+                    else:
+                        plan = self._normalize_plan(self.goal_planner(goal))
+                        mission = self.create_planned_mission(goal["id"], plan)
+                        result["proposal"] = mission["id"]
+                        self.decide(None, "MISSION_PROPOSED",
+                                    "Periodic review prepared a mission for owner review.", goal["id"])
+                        if callable(self.notifier):
+                            try:
+                                self.notifier("JARVIS goal review",
+                                              f"Plan ready: {mission['id']}", mission["id"])
+                            except Exception:
+                                pass
+            except Exception as exc:
+                result["error"] = type(exc).__name__
+                self.decide(None, "REVIEW_FAILED",
+                            f"Review failed safely: {type(exc).__name__}.", goal["id"])
+            finally:
+                with self._db() as db:
+                    db.execute(
+                        "UPDATE goals SET last_review_at=?,next_review_at=? "
+                        "WHERE id=? AND status='ACTIVE'",
+                        (now, now + float(goal.get("review_interval", 21600)), goal["id"]),
+                    )
+            results.append(result)
+        return results
+
     def process_one_event(self):
         with self._db() as db:
             row = db.execute("SELECT * FROM events WHERE status='PENDING' ORDER BY created_at LIMIT 1").fetchone()
@@ -405,6 +484,7 @@ class AIEEngine:
         while not self._stop_event.wait(self._interval):
             try:
                 self.process_one_event()
+                self.evaluate_due_goals(limit=1)
             except Exception:
                 continue
 
@@ -414,6 +494,10 @@ class AIEEngine:
             for table, column in (("goals","status"),("events","status"),("missions","status"),("approvals","status")):
                 counts[table] = {r["status"]: r["n"] for r in db.execute(
                     f"SELECT {column} AS status,COUNT(*) AS n FROM {table} GROUP BY {column}")}
+        with self._db() as db:
+            due = db.execute("SELECT COUNT(*) FROM goals WHERE status='ACTIVE' AND next_review_at<=?", (time.time(),)).fetchone()[0]
+        worker = getattr(self, "_worker", None)
         return {"schema_version": SCHEMA_VERSION, "database": str(self.db_path),
                 "capabilities": sorted(self._capabilities), "counts": counts,
-                "active_goals": len(self.list_goals())}
+                "active_goals": len(self.list_goals()), "due_goal_reviews": due,
+                "worker_alive": bool(worker and worker.is_alive())}
