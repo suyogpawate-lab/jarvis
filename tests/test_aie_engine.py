@@ -67,7 +67,7 @@ class AIEEngineTests(unittest.TestCase):
 
 
 
-if __name__ == "__main__":
+
     unittest.main()
 
     def test_empty_mission_is_not_reported_verified(self):
@@ -102,3 +102,7 @@ if __name__ == "__main__":
         })
         self.assertEqual(mission["status"], "READY")
         self.assertEqual(len(mission["tasks"]), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
