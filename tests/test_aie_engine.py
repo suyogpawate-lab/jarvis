@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+
 from automation.aie import AIEEngine, NaturalLanguageAIE
 
 
@@ -64,6 +65,39 @@ class AIEEngineTests(unittest.TestCase):
             approval_id = db.execute("SELECT id FROM approvals WHERE mission_id=?", (mission["id"],)).fetchone()["id"]
         self.assertTrue(self.engine.approve(approval_id)["ok"])
         self.assertEqual(self.engine.get_mission(mission["id"])["status"], "READY")
+
+    def test_empty_mission_is_not_reported_verified(self):
+        mission = self.engine.create_mission("No work", tasks=[])
+        result = self.engine.execute_mission(mission["id"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["status"], "UNVERIFIED")
+
+    def test_dependency_indexes_must_reference_earlier_tasks(self):
+        with self.assertRaises(ValueError):
+            self.engine.create_mission("Bad DAG", tasks=[
+                {"capability": "x", "arguments": {}, "dependencies": [1]}
+            ])
+
+    def test_planner_cannot_select_unregistered_capability(self):
+        goal = self.engine.create_goal("Monitor robotics research")
+        with self.assertRaises(Exception):
+            self.engine.create_planned_mission(goal["id"], {
+                "title": "Unsafe plan",
+                "tasks": [{"capability": "shell.run", "arguments": {"command": "id"}, "dependencies": []}]
+            })
+
+    def test_planned_mission_accepts_only_registered_validated_capability(self):
+        goal = self.engine.create_goal("Monitor robotics research")
+        self.engine.register_capability(
+            "test.read", lambda topic: {"ok": True, "verified": True},
+            input_validator=lambda args: set(args) == {"topic"} and isinstance(args["topic"], str)
+        )
+        mission = self.engine.create_planned_mission(goal["id"], {
+            "title": "Research plan",
+            "tasks": [{"capability": "test.read", "arguments": {"topic": "robotics"}, "dependencies": []}]
+        })
+        self.assertEqual(mission["status"], "READY")
+        self.assertEqual(len(mission["tasks"]), 1)
 
 
 if __name__ == "__main__":
