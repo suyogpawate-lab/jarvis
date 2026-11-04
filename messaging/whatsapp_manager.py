@@ -306,6 +306,7 @@ class WhatsAppManager:
                     try:
                         group = self.resolve_group(value)
                         chat = str(group["jid"])
+                        name = ""
                     except RuntimeError:
                         pass
                 except RuntimeError:
