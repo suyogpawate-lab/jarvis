@@ -582,7 +582,7 @@ class FastAgent:
                     "name": "escalate_to_expert",
                     "description": (
                         "Escalate genuinely complex debugging, engineering, "
-                        "or specialist analysis to OmniRoute or OmniRoute. Groq "
+                        "or specialist analysis to OmniRoute. Groq "
                         "remains the primary agent and reviews the result."
                     ),
                     "parameters": {
@@ -2158,7 +2158,7 @@ class FastAgent:
         Main shell reasoning router.
 
         SIMPLE  -> existing Groq ask() path
-        COMPLEX -> exactly one of OmniRoute/OmniRoute
+        COMPLEX -> OmniRoute
         """
 
         if not self._is_shell_reasoning_request(prompt):
