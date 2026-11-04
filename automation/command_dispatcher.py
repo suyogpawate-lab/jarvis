@@ -853,6 +853,17 @@ class CommandDispatcher:
         value = str(text or "").strip()
         if len(value) < 8 or value.startswith("/"):
             return False
+
+        # App/media launch requests are single actions, not autonomous workflows.
+        # Keep them on the normal Groq tool path instead of invoking OmniRoute planning.
+        if re.match(
+            r"^(?:(?:jarvis)[,\\s]+)?(?:(?:please|can you|could you|would you)\\s+)*"
+            r"(?:run|open|launch|start|play)\\s+.+\\s+in the background[.!?]*$",
+            value,
+            re.IGNORECASE,
+        ):
+            return False
+
         pattern = (
             r"^(?:(?:jarvis)[,\s]+)?"
             r"(?:(?:please|can you|could you|would you)\s+)*"
