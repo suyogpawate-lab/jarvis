@@ -25,13 +25,13 @@ Optional environment overrides:
 - JARVIS_SCREEN_STREAM_PORT=21340
 - JARVIS_SCREEN_CONTROL_PORT=21341
 
-Configure GEMINI_API_KEYS (or GEMINI_API_KEY) in Termux for visual interpretation. Do not embed API keys in Android source.
+Configure OmniRoute in Termux and select a vision-capable model in OmniRoute for visual interpretation. Do not embed API keys in Android source.
 
 ## HTTP bridge API (authentication required except /health)
 
 - GET /screen/stream/status — stream freshness, frame count, bytes received, RAM-only status.
 - GET /screen/stream/frame — latest JPEG frame.
-- POST /screen/analyze with {"prompt":"What is visible?"} — analyze the latest frame using Gemini vision.
+- POST /screen/analyze with {"prompt":"What is visible?"} — analyze the latest frame using the configured OmniRoute vision-capable model.
 - POST /control with {"action":"tap","x":400,"y":500}.
 - POST /control with {"action":"swipe","x1":400,"y1":800,"x2":400,"y2":300,"duration_ms":350}.
 - POST /control with {"action":"type","text":"example text"}.
