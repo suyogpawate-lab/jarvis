@@ -151,7 +151,7 @@ class AgentEngine:
                 return created
             return (
                 f"[AGENT PLAN] Goal: {value}\n"
-                f"Planner: Gemini\n{created}\n"
+                f"Planner: OmniRoute\n{created}\n"
                 f"Review the steps, then run with: /agent run {match.group(1)}"
             )
         if action in {"run", "status", "approve", "deny", "cancel"}:
