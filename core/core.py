@@ -20,10 +20,12 @@ class Jarvis:
             "",
         )
 
-        self.model = os.getenv(
-            "JARVIS_MODEL",
-            "auto/best-reasoning",
-        )
+        self.model = os.getenv("OMNIROUTE_COMPLEX_MODEL", "auto/best-reasoning").strip()
+        if re.search(r"gemini|claude|anthropic|antigravity", self.model, re.IGNORECASE):
+            raise RuntimeError(
+                "This model ID is disabled. Configure a non-Gemini, non-Claude "
+                "OmniRoute model in OMNIROUTE_COMPLEX_MODEL."
+            )
 
         self.abilities = JARVIS_ABILITIES
 
