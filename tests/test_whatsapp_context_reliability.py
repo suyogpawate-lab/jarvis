@@ -157,9 +157,9 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
             item["function"]["name"]
             for item in worker._reply_tools(files_enabled=False)
         ]
-        self.assertEqual(names, ["inspect_youtube_link"])
+        self.assertEqual(names, ["inspect_public_link", "inspect_youtube_link"])
 
-    def test_ask_owner_review_does_not_send_generic_acknowledgement(self):
+    def test_ask_owner_review_sends_acknowledgement_and_creates_local_review(self):
         import queue
         import time
 
@@ -205,7 +205,17 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
             }],
         )
 
-        self.assertEqual(worker.whatsapp.sent, [])
+        self.assertEqual(len(worker.whatsapp.sent), 1)
+        self.assertEqual(
+            worker.whatsapp.sent[0],
+            (
+                "contact@s.whatsapp.net",
+                "I’m checking this with the account owner and will get back to you.",
+            ),
+        )
+        self.assertTrue(
+            worker.pending_reply_reviews["review-message-1"]["acknowledgement_sent"]
+        )
         self.assertIn("review-message-1", worker.pending_reply_reviews)
         self.assertEqual(
             worker.pending_reply_reviews["review-message-1"]["reason"],
