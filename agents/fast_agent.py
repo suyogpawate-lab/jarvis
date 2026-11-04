@@ -33,10 +33,10 @@ JARVIS_ABILITIES = [
     "Use persistent memory to remember and retrieve relevant information.",
     "Maintain project-specific context and state.",
     "Perform OSINT and XOSINT investigations through configured adapters.",
-    "Use local AI models through Ollama.",
-    "Use configured cloud AI providers when available.",
-    "Select appropriate AI models/providers for different tasks.",
-    "Use fallback providers when the preferred provider is unavailable.",
+    
+    
+    
+    
     "Use Needle 2 for structured tool selection and device-use operations.",
     "Execute Needle 2 tool calls through native Android ARM64 execution.",
     "Combine tool results with reasoning to determine subsequent actions.",
