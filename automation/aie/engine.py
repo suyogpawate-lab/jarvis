@@ -379,7 +379,7 @@ class AIEEngine:
             value = str(raw or "").strip()
             fence = chr(96) * 3
             if value.startswith(fence):
-                value = value.split("\\n", 1)[-1]
+                value = value.split("\n", 1)[-1]
                 if value.rstrip().endswith(fence):
                     value = value.rstrip()[:-3].strip()
             plan = json.loads(value)
@@ -391,37 +391,54 @@ class AIEEngine:
         """Create review proposals on a cadence; never execute missions."""
         now = time.time()
         with self._db() as db:
-            due = db.execute("SELECT * FROM goals WHERE status='ACTIVE' AND next_review_at<=? ORDER BY priority DESC,next_review_at LIMIT ?",(now,max(1,min(int(limit),2)))).fetchall()
+            due = db.execute(
+                "SELECT * FROM goals WHERE status='ACTIVE' AND next_review_at<=? "
+                "ORDER BY priority DESC,next_review_at LIMIT ?",
+                (now, max(1, min(int(limit), 2))),
+            ).fetchall()
         results = []
         for item in due:
             goal = dict(item)
-            result = {"goal_id":goal["id"],"proposal":None,"error":None}
+            result = {"goal_id": goal["id"], "proposal": None, "error": None}
             try:
-                if callable(self.goal_planner):
+                if not callable(self.goal_planner):
+                    self.decide(None, "WAIT", "Planner unavailable; no action taken.", goal["id"])
+                else:
                     with self._db() as db:
-                        existing = db.execute("SELECT id FROM missions WHERE goal_id=? AND status IN ('DRAFT','READY','RUNNING','PAUSED_RECOVERY') ORDER BY created_at DESC LIMIT 1", (goal["id"],)).fetchone()
+                        existing = db.execute(
+                            "SELECT id FROM missions WHERE goal_id=? "
+                            "AND status IN ('DRAFT','READY','RUNNING','PAUSED_RECOVERY') "
+                            "ORDER BY created_at DESC LIMIT 1",
+                            (goal["id"],),
+                        ).fetchone()
                     if existing:
                         result["proposal"] = existing["id"]
-                        self.decide(None,"EXISTING_PROPOSAL","An unfinished mission already exists; duplicate proposal suppressed.",goal["id"])
+                        self.decide(None, "EXISTING_PROPOSAL",
+                                    "An unfinished mission already exists; duplicate proposal suppressed.",
+                                    goal["id"])
                     else:
-                        raw_plan = self.goal_planner(goal)
-                        plan = self._normalize_plan(raw_plan)
-                        mission = self.create_planned_mission(goal["id"],plan)
+                        plan = self._normalize_plan(self.goal_planner(goal))
+                        mission = self.create_planned_mission(goal["id"], plan)
                         result["proposal"] = mission["id"]
-                        self.decide(None,"MISSION_PROPOSED","Periodic review prepared a mission for owner review.",goal["id"])
+                        self.decide(None, "MISSION_PROPOSED",
+                                    "Periodic review prepared a mission for owner review.", goal["id"])
                         if callable(self.notifier):
-                            try: self.notifier("JARVIS goal review",f"Plan ready: {mission['id']}",mission['id'])
-                            except Exception: pass
-                    else:
-                        self.decide(None,"WAIT","No actionable work found during periodic review.",goal["id"])
-                else:
-                    self.decide(None,"WAIT","Planner unavailable; no action taken.",goal["id"])
+                            try:
+                                self.notifier("JARVIS goal review",
+                                              f"Plan ready: {mission['id']}", mission["id"])
+                            except Exception:
+                                pass
             except Exception as exc:
                 result["error"] = type(exc).__name__
-                self.decide(None,"REVIEW_FAILED",f"Review failed safely: {type(exc).__name__}.",goal["id"])
+                self.decide(None, "REVIEW_FAILED",
+                            f"Review failed safely: {type(exc).__name__}.", goal["id"])
             finally:
                 with self._db() as db:
-                    db.execute("UPDATE goals SET last_review_at=?,next_review_at=? WHERE id=? AND status='ACTIVE'",(now,now+float(goal.get("review_interval",21600)),goal["id"]))
+                    db.execute(
+                        "UPDATE goals SET last_review_at=?,next_review_at=? "
+                        "WHERE id=? AND status='ACTIVE'",
+                        (now, now + float(goal.get("review_interval", 21600)), goal["id"]),
+                    )
             results.append(result)
         return results
 
