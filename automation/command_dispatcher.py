@@ -1468,6 +1468,19 @@ STRICT OUTPUT RULES:
             r"(auto-[a-f0-9]+)\s+(?:to|for|at)\s+(.+)",
             raw, re.IGNORECASE,
         )
+        # Also accept a clearly structured multi-sentence management request:
+        # it must name one automation ID, a management verb, and a time field.
+        if not reschedule_match:
+            automation_id_match = re.search(r"\b(auto-[a-f0-9]+)\b", raw, re.I)
+            management_verb = re.search(r"\b(?:reschedule|move|change|update)\b", raw, re.I)
+            time_clause = re.search(
+                r"\b(?:execution time|scheduled time|run time)\s+(?:to|for|at)\s+(.+?)(?:[.!?]|$)",
+                raw, re.I,
+            )
+            if automation_id_match and management_verb and time_clause:
+                reschedule_match = (
+                    automation_id_match.group(1), time_clause.group(1).strip()
+                )
         if reschedule_match:
             automation_id = reschedule_match.group(1)
             current = self.automation.get(automation_id)
