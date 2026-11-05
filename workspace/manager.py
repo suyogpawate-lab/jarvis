@@ -14,8 +14,8 @@ from urllib.parse import urlsplit
 import ipaddress
 
 MAX_SURFACES = 6
-KINDS = {"web", "youtube", "video", "image", "live_screen", "terminal", "app", "task", "tools", "telemetry"}
-STATUSES = {"active", "paused", "waiting", "complete", "error"}
+KINDS = {"web", "browser", "youtube", "video", "image", "pdf", "audio", "document", "live_screen", "terminal", "task", "tools", "telemetry"}
+STATUSES = {"active", "minimized", "paused", "waiting", "complete", "error"}
 _LABEL = re.compile(r"[^\w .()\-:/]{1,}", re.UNICODE)
 
 
@@ -53,6 +53,7 @@ class WorkspaceManager:
         self._started = time.monotonic()
         self._telemetry = {"input_tokens": None, "output_tokens": None,
                            "model": None, "confidence": None, "tools": []}
+        self._presence = "standby"
 
     def _emit(self, event, payload):
         self._seq += 1
@@ -101,6 +102,37 @@ class WorkspaceManager:
             self._emit("surface.update", item.copy())
             return item.copy()
 
+    def control_surfaces(self, action, title=None):
+        """Apply a JARVIS window command to matching surfaces."""
+        action = str(action or "").lower()
+        if action not in {"minimize", "restore", "close"}:
+            raise ValueError("Unsupported surface command")
+        target = _clean_text(title, 120).lower()
+        with self._lock:
+            matches = [x for x in self._surfaces.values()
+                       if not target or target in x["title"].lower()]
+            changed = []
+            for item in matches:
+                sid = item["id"]
+                if action == "close":
+                    self._surfaces.pop(sid, None)
+                    self._emit("surface.close", {"id": sid})
+                else:
+                    item["status"] = "minimized" if action == "minimize" else "active"
+                    self._emit("surface.update", item.copy())
+                changed.append(sid)
+            return changed
+
+    def presence(self, state):
+        state = str(state or "standby").lower()
+        if state not in {"standby", "listening", "thinking", "speaking", "alert"}:
+            state = "standby"
+        with self._lock:
+            if state != self._presence:
+                self._presence = state
+                self._emit("presence.update", {"state": state})
+            return self._presence
+
     def task_event(self, task_id, name, status="active", detail=""):
         if status not in STATUSES:
             raise ValueError("Invalid task status")
@@ -134,6 +166,7 @@ class WorkspaceManager:
             return {"surfaces": [x.copy() for x in self._surfaces.values()],
                     "tasks": [x.copy() for x in self._tasks.values()],
                     "telemetry": self._telemetry.copy(),
+                    "jarvis_state": self._presence,
                     "uptime_seconds": round(time.monotonic() - self._started, 1),
                     "sequence": self._seq}
 
