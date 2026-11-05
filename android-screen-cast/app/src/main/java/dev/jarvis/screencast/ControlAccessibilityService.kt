@@ -52,20 +52,6 @@ class ControlAccessibilityService : AccessibilityService() {
     private fun runAction(req: JSONObject): JSONObject {
         val action = req.optString("action", "")
         if (action == "snapshot") return buildSnapshot()
-        if (action == "launch_app") {
-            val packageName = req.optString("package", "")
-            if (!packageName.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))
-                return JSONObject().put("ok", false).put("error", "invalid package name")
-            val launch = packageManager.getLaunchIntentForPackage(packageName)
-                ?: return JSONObject().put("ok", false).put("error", "application not installed or launchable")
-            launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            return try {
-                startActivity(launch)
-                JSONObject().put("ok", true).put("action", action).put("package", packageName)
-            } catch (e: Exception) {
-                JSONObject().put("ok", false).put("error", "application launch failed")
-            }
-        }
         if (action == "click_element") {
             val index = req.optInt("element_index", -1)
             if (index !in 0..249) return JSONObject().put("ok", false).put("error", "invalid element_index")
