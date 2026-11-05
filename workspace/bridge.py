@@ -63,7 +63,7 @@ def _classify_window_intent(prompt):
         return {"action": "control", "command": action, "title": ""}
 
     explicit_window = bool(re.search(
-        r"\b(?:floating\s+window|window|panel|workspace|on the orb|inside the orb)\b",
+        r"\b(?:overlay|floating\s+window|window|panel|workspace|on the orb|inside the orb)\b",
         low,
     ))
     if not explicit_window:
@@ -71,6 +71,10 @@ def _classify_window_intent(prompt):
 
     url_match = re.search(r"https?://[^\s<>]+", text, re.I)
     url = url_match.group(0).rstrip(".,);]") if url_match else ""
+    if not url:
+        host_match = re.search(r"(?<![\w@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d{1,5})?(?:/[^\s<>]*)?", low)
+        if host_match:
+            url = "https://" + host_match.group(0).rstrip(".,);]")
     if url:
         parsed = urlsplit(url)
         host, path = (parsed.hostname or "").lower(), parsed.path.lower()
