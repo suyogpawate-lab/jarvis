@@ -105,7 +105,7 @@ class WorkspaceManager:
     def control_surfaces(self, action, title=None):
         """Apply a JARVIS window command to matching surfaces."""
         action = str(action or "").lower()
-        if action not in {"minimize", "restore", "close"}:
+        if action not in {"minimize", "restore", "close", "maximize", "focus"}:
             raise ValueError("Unsupported surface command")
         target = _clean_text(title, 120).lower()
         with self._lock:
@@ -117,6 +117,8 @@ class WorkspaceManager:
                 if action == "close":
                     self._surfaces.pop(sid, None)
                     self._emit("surface.close", {"id": sid})
+                elif action in {"maximize", "focus"}:
+                    self._emit("surface.action", {"id": sid, "action": action})
                 else:
                     item["status"] = "minimized" if action == "minimize" else "active"
                     self._emit("surface.update", item.copy())
