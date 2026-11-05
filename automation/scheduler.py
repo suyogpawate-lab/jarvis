@@ -8,6 +8,7 @@ Timezone-aware version.
 """
 
 import json
+import math
 import os
 import subprocess
 import threading
@@ -359,7 +360,40 @@ class AutomationScheduler:
             return automation
 
     def get(self, automation_id):
-        return self._load(automation_id)
+        with self._lock:
+            return self._load(automation_id)
+
+    def reschedule(self, automation_id, run_at):
+        """Move a pending automation without changing its command or identity."""
+        try:
+            timestamp = float(run_at)
+        except (TypeError, ValueError):
+            return {"error": "A valid Unix timestamp is required."}
+        if not math.isfinite(timestamp):
+            return {"error": "The scheduled timestamp must be finite."}
+        if timestamp <= time.time():
+            return {"error": "The new execution time must be in the future."}
+
+        with self._lock:
+            automation = self._load(automation_id)
+            if not automation:
+                return {"error": f"Unknown automation: {automation_id}"}
+            if automation.get("status") != "SCHEDULED":
+                return {
+                    "error": (
+                        f"Only SCHEDULED automations can be rescheduled; "
+                        f"this one is {automation.get('status', 'UNKNOWN')}."
+                    )
+                }
+
+            automation["run_at"] = timestamp
+            automation["next_run"] = timestamp
+            if automation.get("repeat_mode") == "daily":
+                local_time = datetime.fromtimestamp(timestamp, self.timezone)
+                automation["repeat_at"] = local_time.strftime("%H:%M")
+            automation["updated_at"] = time.time()
+            self._save(automation)
+            return automation
 
     # ----------------------------------------------------------
     # EXECUTION
@@ -414,7 +448,7 @@ class AutomationScheduler:
             automation["run_count"] = automation.get("run_count", 0) + 1
             automation["last_status"] = "FAILED" if failed else "DONE"
 
-            if automation.get("repeat_seconds") or automation.get("repeat_mode") == "daily":
+            if automation.get("repeat_seconds") or automation.get("repeat_mode") in {"daily", "weekly"}:
                 automation["next_run"] = self._next_repeat_time(automation)
                 automation["status"] = "SCHEDULED"
             else:
@@ -428,7 +462,7 @@ class AutomationScheduler:
 
             if (
                 automation.get("repeat_seconds")
-                or automation.get("repeat_mode") == "daily"
+                or automation.get("repeat_mode") in {"daily", "weekly"}
             ):
                 automation["next_run"] = self._next_repeat_time(automation)
                 automation["status"] = "SCHEDULED"

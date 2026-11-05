@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -19,6 +19,16 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(parsed["timing"], "now")
         self.assertIn("robotics", parsed["query"])
 
+    def test_scheduler_management_text_is_not_research_intent(self):
+        requests = (
+            "Reschedule auto-96307a83 to 2026-11-06 at 05:00 IST",
+            "Do NOT start research; find the existing task and preserve its research prompt",
+            "Change only the execution time of my scheduled research task",
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                self.assertIsNone(ConversationalResearch.parse_request(request))
+
     def test_parses_tonight_and_explicit_time(self):
         tonight = ConversationalResearch.parse_request(
             "Research semiconductor advances tonight and brief me"
@@ -30,6 +40,29 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(at_time["timing"], "at")
         self.assertEqual(at_time["schedule_at"], "at 7:30 pm")
         self.assertNotIn("7:30", at_time["query"])
+
+    def test_tomorrow_research_preserves_explicit_requested_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")
+            scheduler = Mock()
+            scheduler.schedule.return_value = {"id": "auto-1234abcd", "next_run": 1790000000}
+            zone = ZoneInfo("Asia/Kolkata")
+            topic = (
+                "How can JARVIS become a more reliable autonomous AI assistant "
+                "on Android 10 without consuming significantly more RAM?"
+            )
+            parsed = ConversationalResearch.parse_request(
+                "Research overnight on " + topic + " and show me the results tomorrow at 5 AM"
+            )
+            self.assertEqual(parsed["timing"], "tomorrow")
+            self.assertEqual(parsed["schedule_at"], "at 5 am")
+            self.assertEqual(parsed["query"], topic)
+            manager.schedule(parsed["query"], parsed["timing"], scheduler, zone,
+                             schedule_at=parsed["schedule_at"])
+            run_at = datetime.fromtimestamp(scheduler.schedule.call_args.kwargs["run_at"], zone)
+            expected_date = datetime.now(zone).date() + timedelta(days=1)
+            self.assertEqual(run_at.date(), expected_date)
+            self.assertEqual((run_at.hour, run_at.minute), (5, 0))
 
     def test_monitoring_request_becomes_daily_recurrence(self):
         parsed = ConversationalResearch.parse_request(

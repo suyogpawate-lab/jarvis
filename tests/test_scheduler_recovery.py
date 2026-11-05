@@ -39,6 +39,48 @@ class SchedulerRecoveryTests(unittest.TestCase):
             finally:
                 scheduler.shutdown()
 
+    def test_reschedule_preserves_task_identity_and_command(self):
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = AutomationScheduler(
+                lambda command: "done", base_dir=directory, timezone="Asia/Kolkata"
+            )
+            try:
+                original = scheduler.schedule(
+                    "research autonomous Android reliability",
+                    time.time() + 3600,
+                    description="Overnight research",
+                )
+                created_at = original["created_at"]
+                command = original["command"]
+                new_run = time.time() + 7200
+                updated = scheduler.reschedule(original["id"], new_run)
+                self.assertEqual(updated["status"], "SCHEDULED")
+                self.assertEqual(updated["command"], command)
+                self.assertEqual(updated["description"], "Overnight research")
+                self.assertEqual(updated["created_at"], created_at)
+                self.assertEqual(updated["run_at"], new_run)
+                self.assertEqual(updated["next_run"], new_run)
+            finally:
+                scheduler.shutdown()
+
+    def test_reschedule_rejects_completed_or_past_jobs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = AutomationScheduler(lambda command: "done", base_dir=directory)
+            try:
+                item = scheduler.schedule("noop", time.time() + 3600)
+                item["status"] = "DONE"
+                scheduler._save(item)
+                result = scheduler.reschedule(item["id"], time.time() + 7200)
+                self.assertIn("Only SCHEDULED", result["error"])
+                result = scheduler.reschedule("missing-auto", time.time() + 7200)
+                self.assertIn("Unknown automation", result["error"])
+                result = scheduler.reschedule(item["id"], time.time() - 1)
+                self.assertIn("future", result["error"])
+            finally:
+                scheduler.shutdown()
+
     def test_weekly_repeat_uses_local_calendar_days(self):
         from zoneinfo import ZoneInfo
         from datetime import datetime

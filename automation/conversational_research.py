@@ -143,7 +143,19 @@ class ConversationalResearch:
     def parse_request(text: str) -> dict[str, Any] | None:
         raw = _clean(text)
         lower = raw.lower()
-        if not re.search(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", lower):
+        # Only treat an explicit research/monitoring verb at the start as
+        # research intent. Merely mentioning "research" in a scheduler,
+        # status, or administrative request must never launch a research run.
+        research_intent = re.match(
+            r"^(?:please\s+)?(?:jarvis[, ]+)?(?:can you\s+|could you\s+|would you\s+)?"
+            r"(?:research|investigate|look into|study)\b",
+            raw, re.I,
+        )
+        monitoring_intent = re.match(
+            r"^(?:please\s+)?(?:jarvis[, ]+)?(?:keep track of|monitor|track)\b",
+            raw, re.I,
+        )
+        if not (research_intent or monitoring_intent):
             return None
         recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
@@ -161,6 +173,8 @@ class ConversationalResearch:
         query = re.sub(r"\b(tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
         query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
         query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
+        query = re.sub(r"^\s*overnight\s+on\s+", "", query, flags=re.I)
+        query = re.sub(r"\b(?:and\s+)?show\s+me\s+(?:the\s+)?results?\b", "", query, flags=re.I)
         query = _clean(query).strip(" ,.:;")
         if len(query) < 4:
             return None
@@ -372,7 +386,28 @@ class ConversationalResearch:
     def schedule(self, query: str, timing: str, scheduler, timezone, schedule_at=None):
         now = datetime.now(timezone)
         if timing == "tomorrow":
-            run_at = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+            hour, minute = 9, 0
+            if schedule_at:
+                match = re.search(
+                    r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+                    str(schedule_at), re.I,
+                )
+                if not match:
+                    raise ValueError("Specify a valid time such as 'at 5:00 am'.")
+                hour, minute = int(match.group(1)), int(match.group(2) or 0)
+                suffix = (match.group(3) or "").lower()
+                if suffix:
+                    if not 1 <= hour <= 12:
+                        raise ValueError("12-hour clock values must be between 1 and 12.")
+                    if suffix == "pm" and hour != 12:
+                        hour += 12
+                    elif suffix == "am" and hour == 12:
+                        hour = 0
+                if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+                    raise ValueError("Invalid requested time.")
+            run_at = (now + timedelta(days=1)).replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
         elif timing in {"tonight", "daily"}:
             run_at = now.replace(hour=21, minute=0, second=0, microsecond=0)
             if run_at <= now:
