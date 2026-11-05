@@ -1383,6 +1383,72 @@ STRICT OUTPUT RULES:
 
         return response
 
+    def _parse_automation_datetime(self, value):
+        """Parse an explicit local date/time for deterministic rescheduling."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        raw = " ".join(str(value or "").split()).strip().rstrip(" .")
+        zone = self.automation.timezone
+        zone_name = getattr(self.automation, "timezone_name", "LOCAL")
+
+        zone_match = re.search(r"\s+(IST|UTC|GMT|[A-Za-z_+-]+(?:/[A-Za-z0-9_+.-]+)+)$", raw, re.I)
+        if zone_match:
+            token = zone_match.group(1)
+            raw = raw[:zone_match.start()].strip()
+            if token.upper() == "IST":
+                if zone_name not in {"Asia/Kolkata", "Asia/Calcutta"}:
+                    raise ValueError("IST is ambiguous; configure Asia/Kolkata or specify an IANA timezone.")
+            elif token.upper() in {"UTC", "GMT"}:
+                zone = ZoneInfo("UTC")
+                zone_name = "UTC"
+            else:
+                try:
+                    zone = ZoneInfo(token)
+                except (ZoneInfoNotFoundError, ValueError) as exc:
+                    raise ValueError(f"Unknown IANA timezone: {token}") from exc
+                zone_name = token
+
+        date_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", raw)
+        explicit_date = bool(date_match)
+        if explicit_date:
+            try:
+                target_date = datetime.strptime(date_match.group(1), "%Y-%m-%d").date()
+            except ValueError as exc:
+                raise ValueError("Invalid date; use YYYY-MM-DD.") from exc
+            raw = raw[:date_match.start()] + " " + raw[date_match.end():]
+
+        time_match = re.search(
+            r"\b(?:at\s+)?(?:exactly\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
+            raw, re.I,
+        )
+        if not time_match:
+            raise ValueError("Specify a time, for example 2026-11-06 at 05:00 IST.")
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2) or 0)
+        suffix = (time_match.group(3) or "").lower()
+        if suffix:
+            if not 1 <= hour <= 12:
+                raise ValueError("12-hour clock values must be between 1 and 12.")
+            if suffix == "pm" and hour != 12:
+                hour += 12
+            elif suffix == "am" and hour == 12:
+                hour = 0
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            raise ValueError("Invalid time; use HH:MM or a valid AM/PM time.")
+
+        now = datetime.now(zone)
+        if not explicit_date:
+            target_date = now.date()
+        scheduled = datetime(
+            target_date.year, target_date.month, target_date.day,
+            hour, minute, tzinfo=zone,
+        )
+        if scheduled <= now:
+            if explicit_date:
+                raise ValueError("The requested date and time is in the past.")
+            scheduled += timedelta(days=1)
+        return scheduled, zone_name
+
     def _automation_route(self, text):
         """
         Deterministic natural-language automation commands.
@@ -1392,6 +1458,46 @@ STRICT OUTPUT RULES:
 
         raw = str(text).strip()
         lower = raw.lower()
+
+        # --------------------------------------------------
+        # RESCHEDULE AUTOMATION — deterministic scheduler operation.
+        # --------------------------------------------------
+        reschedule_match = re.fullmatch(
+            r"(?:please\s+)?(?:reschedule|move)\s+"
+            r"(?:automation\s+|scheduled\s+task\s+|job\s+)?"
+            r"(auto-[a-f0-9]+)\s+(?:to|for|at)\s+(.+)",
+            raw, re.IGNORECASE,
+        )
+        if reschedule_match:
+            automation_id = reschedule_match.group(1)
+            current = self.automation.get(automation_id)
+            if not current:
+                return f"[ERROR] Unknown automation: {automation_id}"
+            if current.get("status") != "SCHEDULED":
+                return (
+                    f"[ERROR] Automation {automation_id} is "
+                    f"{current.get('status', 'UNKNOWN')}; only pending scheduled tasks can be moved."
+                )
+            try:
+                scheduled, zone_name = self._parse_automation_datetime(reschedule_match.group(2))
+            except ValueError as exc:
+                return f"[ERROR] {exc}"
+            previous = current.get("next_run")
+            updated = self.automation.reschedule(automation_id, scheduled.timestamp())
+            if not isinstance(updated, dict) or updated.get("error"):
+                detail = updated.get("error", "scheduler did not confirm the update") if isinstance(updated, dict) else "scheduler did not confirm the update"
+                return f"[ERROR] Could not reschedule {automation_id}: {detail}"
+            old_display = (
+                datetime.fromtimestamp(float(previous), self.automation.timezone).strftime("%Y-%m-%d %H:%M:%S %Z")
+                if previous is not None else "not set"
+            )
+            new_display = scheduled.strftime("%Y-%m-%d %H:%M:%S %Z")
+            return (
+                f"Automation {automation_id} rescheduled, sir. "
+                f"Previous: {old_display} ({self.automation.timezone_name}). "
+                f"New: {new_display} ({zone_name}). "
+                "The existing command and task ID were preserved."
+            )
 
         # --------------------------------------------------
         # LIST AUTOMATIONS
@@ -1887,6 +1993,14 @@ Rules:
             return self.execute_one("doctor", "")
 
         # ======================================================
+        # DETERMINISTIC AUTOMATION ROUTE
+        # Resolve scheduler management before any research-intent parsing.
+        # ======================================================
+        automation_result = self._automation_route(text)
+        if automation_result is not None:
+            return automation_result
+
+        # ======================================================
         # CONVERSATIONAL RESEARCH — shared voice/text intake.
         # Scheduled jobs re-enter this route through the scheduler.
         # ======================================================
@@ -1925,16 +2039,6 @@ Rules:
                 self.automation, self.automation.timezone,
                 schedule_at=research_request.get("schedule_at"),
             )
-
-        # ======================================================
-        # DETERMINISTIC AUTOMATION ROUTE
-        # Timers, reminders, and scheduled commands must never
-        # be sent through Groq/OmniRoute for interpretation.
-        # ======================================================
-        automation_result = self._automation_route(text)
-
-        if automation_result is not None:
-            return automation_result
 
         # ======================================================
         # DETERMINISTIC ABILITIES ROUTE
