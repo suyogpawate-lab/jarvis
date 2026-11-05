@@ -25,7 +25,10 @@ _workspace_events = os.path.join(HOME, "data", "workspace_events.jsonl")
 
 def _watch_workspace_events():
     """Consume workspace intents in the main JARVIS web process."""
-    position = 0
+    try:
+        position = os.path.getsize(_workspace_events)
+    except OSError:
+        position = 0
     while True:
         try:
             with open(_workspace_events, encoding="utf-8") as stream:
