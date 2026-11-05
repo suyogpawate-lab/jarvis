@@ -143,7 +143,19 @@ class ConversationalResearch:
     def parse_request(text: str) -> dict[str, Any] | None:
         raw = _clean(text)
         lower = raw.lower()
-        if not re.search(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", lower):
+        # Only treat an explicit research/monitoring verb at the start as
+        # research intent. Merely mentioning "research" in a scheduler,
+        # status, or administrative request must never launch a research run.
+        research_intent = re.match(
+            r"^(?:please\s+)?(?:jarvis[, ]+)?(?:can you\s+|could you\s+|would you\s+)?"
+            r"(?:research|investigate|look into|study)\b",
+            raw, re.I,
+        )
+        monitoring_intent = re.match(
+            r"^(?:please\s+)?(?:jarvis[, ]+)?(?:keep track of|monitor|track)\b",
+            raw, re.I,
+        )
+        if not (research_intent or monitoring_intent):
             return None
         recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
