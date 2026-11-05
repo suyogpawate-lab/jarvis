@@ -47,11 +47,16 @@ class ConversationalResearchTests(unittest.TestCase):
             scheduler = Mock()
             scheduler.schedule.return_value = {"id": "auto-1234abcd", "next_run": 1790000000}
             zone = ZoneInfo("Asia/Kolkata")
+            topic = (
+                "How can JARVIS become a more reliable autonomous AI assistant "
+                "on Android 10 without consuming significantly more RAM?"
+            )
             parsed = ConversationalResearch.parse_request(
-                "Research robotics tomorrow at 5 AM"
+                "Research overnight on " + topic + " and show me the results tomorrow at 5 AM"
             )
             self.assertEqual(parsed["timing"], "tomorrow")
             self.assertEqual(parsed["schedule_at"], "at 5 am")
+            self.assertEqual(parsed["query"], topic)
             manager.schedule(parsed["query"], parsed["timing"], scheduler, zone,
                              schedule_at=parsed["schedule_at"])
             run_at = datetime.fromtimestamp(scheduler.schedule.call_args.kwargs["run_at"], zone)
