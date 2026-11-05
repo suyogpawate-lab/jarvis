@@ -17,6 +17,16 @@ class WorkspaceIntentTests(unittest.TestCase):
         self.assertEqual(intent["action"], "open")
         self.assertEqual(intent["kind"], "youtube")
 
+    def test_overlay_domain_and_named_site_intents(self):
+        from workspace.bridge import _classify_window_intent
+        google = _classify_window_intent("overlay google.com window")
+        self.assertEqual(google["url"], "https://google.com")
+        youtube = _classify_window_intent("overlay youtube")
+        self.assertEqual(youtube["kind"], "youtube")
+        browser = _classify_window_intent("overlay chrome-like browser")
+        self.assertEqual(browser["kind"], "browser")
+        self.assertEqual(browser["url"], "")
+
     def test_live_screen_and_terminal_window_intents(self):
         from workspace.bridge import _classify_window_intent
         self.assertEqual(
