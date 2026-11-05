@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -55,7 +55,7 @@ class ConversationalResearchTests(unittest.TestCase):
             manager.schedule(parsed["query"], parsed["timing"], scheduler, zone,
                              schedule_at=parsed["schedule_at"])
             run_at = datetime.fromtimestamp(scheduler.schedule.call_args.kwargs["run_at"], zone)
-            expected_date = datetime.now(zone).date().fromordinal(datetime.now(zone).date().toordinal() + 1)
+            expected_date = datetime.now(zone).date() + timedelta(days=1)
             self.assertEqual(run_at.date(), expected_date)
             self.assertEqual((run_at.hour, run_at.minute), (5, 0))
 
