@@ -384,7 +384,28 @@ class ConversationalResearch:
     def schedule(self, query: str, timing: str, scheduler, timezone, schedule_at=None):
         now = datetime.now(timezone)
         if timing == "tomorrow":
-            run_at = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+            hour, minute = 9, 0
+            if schedule_at:
+                match = re.search(
+                    r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+                    str(schedule_at), re.I,
+                )
+                if not match:
+                    raise ValueError("Specify a valid time such as 'at 5:00 am'.")
+                hour, minute = int(match.group(1)), int(match.group(2) or 0)
+                suffix = (match.group(3) or "").lower()
+                if suffix:
+                    if not 1 <= hour <= 12:
+                        raise ValueError("12-hour clock values must be between 1 and 12.")
+                    if suffix == "pm" and hour != 12:
+                        hour += 12
+                    elif suffix == "am" and hour == 12:
+                        hour = 0
+                if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+                    raise ValueError("Invalid requested time.")
+            run_at = (now + timedelta(days=1)).replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
         elif timing in {"tonight", "daily"}:
             run_at = now.replace(hour=21, minute=0, second=0, microsecond=0)
             if run_at <= now:
