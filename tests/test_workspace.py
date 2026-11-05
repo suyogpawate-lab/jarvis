@@ -42,6 +42,8 @@ class WorkspaceIntentTests(unittest.TestCase):
             _classify_window_intent("Close all windows")["title"],
             "",
         )
+        self.assertEqual(_classify_window_intent("Maximize all windows")["command"], "maximize")
+        self.assertEqual(_classify_window_intent("Focus all windows")["command"], "focus")
         self.assertIsNone(_classify_window_intent("close Chrome"))
 
 
