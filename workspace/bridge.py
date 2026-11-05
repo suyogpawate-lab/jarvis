@@ -63,7 +63,7 @@ def _classify_window_intent(prompt):
         return {"action": "control", "command": action, "title": ""}
 
     explicit_window = bool(re.search(
-        r"\b(?:floating\s+window|window|panel|workspace|on the orb|inside the orb)\b",
+        r"\b(?:overlay|floating\s+window|window|panel|workspace|on the orb|inside the orb)\b",
         low,
     ))
     if not explicit_window:
@@ -71,6 +71,10 @@ def _classify_window_intent(prompt):
 
     url_match = re.search(r"https?://[^\s<>]+", text, re.I)
     url = url_match.group(0).rstrip(".,);]") if url_match else ""
+    if not url:
+        host_match = re.search(r"(?<![\w@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d{1,5})?(?:/[^\s<>]*)?", low)
+        if host_match:
+            url = "https://" + host_match.group(0).rstrip(".,);]")
     if url:
         parsed = urlsplit(url)
         host, path = (parsed.hostname or "").lower(), parsed.path.lower()
@@ -90,6 +94,12 @@ def _classify_window_intent(prompt):
                  "pdf": "Document", "audio": "Audio", "web": "Browser"}[kind]
         return {"action": "open", "kind": kind, "title": title, "url": url}
 
+    if re.search(r"\b(?:youtube|you\s*tube)\b", low):
+        return {"action": "open", "kind": "youtube", "title": "YouTube", "url": "https://www.youtube.com"}
+    if re.search(r"\bgoogle(?:\s+search)?\b", low):
+        return {"action": "open", "kind": "web", "title": "Google", "url": "https://www.google.com"}
+    if re.search(r"\b(?:browser|chrome(?:-like)?(?:\s+browser)?)\b", low):
+        return {"action": "open", "kind": "browser", "title": "Browser", "url": ""}
     if re.search(r"\b(?:live\s+screen|screen\s+feed|current\s+screen|screen\s+cast)\b", low):
         return {"action": "open", "kind": "live_screen", "title": "Live Perception", "url": ""}
     if re.search(r"\b(?:terminal|command\s+output|execution\s+log)\b", low):

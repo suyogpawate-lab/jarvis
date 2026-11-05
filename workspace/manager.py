@@ -65,7 +65,9 @@ class WorkspaceManager:
         if kind not in KINDS:
             raise ValueError("Unsupported surface type")
         title = _clean_text(title) or kind.replace("_", " ").title()
-        if kind in {"web", "browser", "youtube", "video", "image", "pdf", "audio", "document"}:
+        if kind in {"web", "browser"} and not str(url or "").strip():
+            url = ""
+        elif kind in {"web", "browser", "youtube", "video", "image", "pdf", "audio", "document"}:
             url = _safe_url(url)
         else:
             url = ""
@@ -99,6 +101,10 @@ class WorkspaceManager:
                 item["status"] = status
             if "title" in changes:
                 item["title"] = _clean_text(changes["title"])
+            if "url" in changes:
+                if item["kind"] not in {"web", "browser", "youtube", "video", "image", "pdf", "audio", "document"}:
+                    raise ValueError("This surface type cannot navigate to a URL")
+                item["url"] = _safe_url(changes["url"])
             self._emit("surface.update", item.copy())
             return item.copy()
 

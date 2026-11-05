@@ -14,6 +14,7 @@ SERVER = ROOT / "voice" / "jarvis_voice" / "server.py"
 SAY = ROOT / "voice" / "jarvis_voice" / "say"
 PREFIX = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
 SOCKET_FILE = PREFIX / "tmp" / "jarvis_tts.sock"
+_server_process = None
 
 
 def _link(source: Path, target: Path) -> None:
@@ -21,11 +22,8 @@ def _link(source: Path, target: Path) -> None:
     if target.is_symlink() and target.resolve() == source.resolve():
         return
     if target.exists() and not target.is_symlink():
-        # Preserve any voice assets already installed in ~/jarvis_voice.
         return
     if target.is_symlink():
-        if target.resolve() == source.resolve():
-            return
         target.unlink()
     target.symlink_to(source, target_is_directory=source.is_dir())
 
@@ -51,10 +49,15 @@ def prepare_layout() -> None:
         for filename in (model_file, "tokens.txt"):
             src = source / filename
             if not src.is_file():
-                raise FileNotFoundError(f"Missing Sherpa voice asset: {src}. Run python scripts/prepare_sherpa_assets.py")
+                raise FileNotFoundError(
+                    f"Missing Sherpa voice asset: {src}. "
+                    "Run python scripts/prepare_sherpa_assets.py"
+                )
             _link(src, target / filename)
         if espeak is None:
-            raise FileNotFoundError("eSpeak NG data is missing. Install it with: pkg install espeak-ng")
+            raise FileNotFoundError(
+                "eSpeak NG data is missing. Install it with: pkg install espeak-ng"
+            )
         _link(espeak, target / "espeak-ng-data")
     (VOICE_ROOT / "fx").mkdir(parents=True, exist_ok=True)
 
@@ -64,36 +67,53 @@ def server_running() -> bool:
         return False
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(0.5)
+            client.settimeout(1.0)
             client.connect(str(SOCKET_FILE))
-        return True
+            client.shutdown(socket.SHUT_WR)
+            return client.recv(16) == b"OK"
     except OSError:
         return False
 
 
-def ensure_server(timeout: float = 60.0) -> bool:
-    """Start the exact ZIP server detached, waiting for its model warmup/socket."""
+def ensure_server(timeout: float = 30.0) -> bool:
+    """Start the ZIP server and detect early process exits instead of waiting blindly."""
+    global _server_process
     if server_running():
         return True
     prepare_layout()
     cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "jarvis"
     cache.mkdir(parents=True, exist_ok=True)
-    with (cache / "zip_voice_server.log").open("a", encoding="utf-8") as log:
-        subprocess.Popen(
-            [sys.executable, str(SERVER)],
-            cwd=str(ROOT),
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=log,
-            start_new_session=True,
-            close_fds=True,
-        )
+    log_path = cache / "zip_voice_server.log"
+    log = log_path.open("a", encoding="utf-8")
+    _server_process = subprocess.Popen(
+        [sys.executable, str(SERVER)],
+        cwd=str(ROOT),
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+        close_fds=True,
+    )
+    log.close()
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if server_running():
             return True
+        if _server_process.poll() is not None:
+            try:
+                details = log_path.read_text(encoding="utf-8", errors="replace")[-5000:]
+            except OSError:
+                details = "Unable to read the ZIP voice server log."
+            raise RuntimeError(
+                f"ZIP voice server exited with code {_server_process.returncode}. "
+                f"Log: {log_path}\n{details}"
+            )
         time.sleep(0.25)
-    raise RuntimeError(f"ZIP voice server did not start; inspect {cache / 'zip_voice_server.log'}")
+    raise RuntimeError(
+        f"ZIP voice server did not open its socket within {timeout:.0f}s. "
+        f"Log: {log_path}"
+    )
 
 
 def speak(text: str, voice: str | None = None) -> bool:
@@ -109,12 +129,13 @@ def speak(text: str, voice: str | None = None) -> bool:
         [sys.executable, str(SAY), selected, text],
         cwd=str(ROOT),
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        timeout=15,
+        timeout=240,
         check=False,
     )
     if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "The ZIP say client failed.")
+        detail = (result.stderr or result.stdout or "The ZIP say client failed.").strip()
+        raise RuntimeError(detail[-2000:])
     return True

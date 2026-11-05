@@ -17,6 +17,16 @@ class WorkspaceIntentTests(unittest.TestCase):
         self.assertEqual(intent["action"], "open")
         self.assertEqual(intent["kind"], "youtube")
 
+    def test_overlay_domain_and_named_site_intents(self):
+        from workspace.bridge import _classify_window_intent
+        google = _classify_window_intent("overlay google.com window")
+        self.assertEqual(google["url"], "https://google.com")
+        youtube = _classify_window_intent("overlay youtube")
+        self.assertEqual(youtube["kind"], "youtube")
+        browser = _classify_window_intent("overlay chrome-like browser")
+        self.assertEqual(browser["kind"], "browser")
+        self.assertEqual(browser["url"], "")
+
     def test_live_screen_and_terminal_window_intents(self):
         from workspace.bridge import _classify_window_intent
         self.assertEqual(
@@ -100,6 +110,14 @@ class WorkspaceTests(unittest.TestCase):
     def test_presence_is_exposed_in_snapshot(self):
         self.manager.presence("thinking")
         self.assertEqual(self.manager.snapshot()["jarvis_state"], "thinking")
+
+    def test_blank_browser_surface_and_safe_navigation(self):
+        item = self.manager.open_surface("browser", "Chrome")
+        self.assertEqual(item["url"], "")
+        changed = self.manager.update_surface(item["id"], {"url": "https://example.com"})
+        self.assertEqual(changed["url"], "https://example.com")
+        with self.assertRaises(ValueError):
+            self.manager.update_surface(item["id"], {"url": "http://127.0.0.1/"})
 
     def test_supports_document_and_audio_surfaces(self):
         self.manager.open_surface("pdf", "Manual", "https://example.com/manual.pdf")
