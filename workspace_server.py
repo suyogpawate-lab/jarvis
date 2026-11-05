@@ -91,7 +91,15 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length).decode("utf-8"))
             path = urlparse(self.path).path
             if path == "/api/surfaces/open":
-                item = manager.open_surface(data.get("kind"), data.get("title"), data.get("url", ""), data.get("metadata"))
+                kind = data.get("kind")
+                metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+                if kind == "app":
+                    package = str(data.get("url", "")).strip()
+                    import re
+                    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+", package):
+                        return self.send(400, '{"ok":false,"error":"enter a valid Android package name"}')
+                    metadata = {"package": package}
+                item = manager.open_surface(kind, data.get("title"), data.get("url", ""), metadata)
                 return self.send(201, json.dumps({"ok": True, "surface": item}))
             if path == "/api/surfaces/close":
                 ok = manager.close_surface(data.get("id", ""))

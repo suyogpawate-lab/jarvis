@@ -62,7 +62,7 @@ function render(s){
    else {media=el("iframe");media.src=item.kind==="youtube"?youtubeEmbed(item.url):item.url;media.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";media.referrerPolicy="no-referrer"}
    body.append(media);
   }else if(item.kind==="live_screen"){body.append(el("p","muted","Live Android screen is supplied by the existing screen-cast service. Connect its authenticated frame endpoint to this surface to display pixels."))}
-  else if(item.kind==="app"){body.append(el("p","muted","Android app control uses the device accessibility bridge. Native apps remain foreground-controlled; six independent native app windows are not provided by Android's web embedding model."))}
+  else if(item.kind==="app"){body.append(el("p","muted","Android app · "+(item.metadata?.package||"package not set")));const launch=el("button","primary","Launch on device");launch.onclick=()=>post("/api/apps/launch",{package:item.metadata?.package||""}).then(refresh).catch(e=>alert(e.message));body.append(launch);body.append(el("p","muted","This switches the device foreground app. It does not create an isolated embedded Android window."))}
   else if(item.kind==="task"){body.append(el("p","muted","Task events and side quests appear in the live task feed below."))}
   else if(item.kind==="tools"){body.append(el("p","muted","Tool and MCP activity is populated by JARVIS telemetry events."))}
   else if(item.kind==="telemetry"){body.append(el("p","muted","Model: "+(t.model||"not reported")+" · Tools: "+((t.tools||[]).join(", ")||"not reported")))}
