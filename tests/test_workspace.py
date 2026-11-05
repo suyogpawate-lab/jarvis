@@ -76,6 +76,16 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(item["status"], "active")
         self.assertTrue(self.manager.events_after(0))
 
+    def test_maximize_and_focus_emit_window_actions(self):
+        item = self.manager.open_surface("web", "Research", "https://example.com")
+        self.manager.control_surfaces("maximize", "research")
+        self.manager.control_surfaces("focus", "research")
+        actions = [event for event in self.manager.events_after(0)
+                   if event["event"] == "surface.action"]
+        self.assertEqual([event["data"]["action"] for event in actions],
+                         ["maximize", "focus"])
+        self.assertEqual(actions[0]["data"]["id"], item["id"])
+
     def test_minimize_restore_and_close_by_title(self):
         first = self.manager.open_surface("web", "Research", "https://example.com")
         second = self.manager.open_surface("image", "Diagram", "https://example.com/a.png")
