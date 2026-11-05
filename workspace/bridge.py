@@ -49,7 +49,7 @@ def _classify_window_intent(prompt):
 
     # Window-management language must explicitly refer to a workspace window.
     control = re.match(
-        r"^(?:please\\s+)?(minimize|restore|close)\\s+(?:(?:the|all|my)\\s+)?(.+?)\\s+(?:windows?|panels?|surfaces?)\\s*[.!?]*$",
+        r"^(?:please\s+)?(minimize|restore|close)\s+(?:(?:the|all|my)\s+)?(.+?)\s+(?:windows?|panels?|surfaces?)\s*[.!?]*$",
         low,
     )
     if control:
@@ -58,18 +58,18 @@ def _classify_window_intent(prompt):
             target = ""
         return {"action": "control", "command": action, "title": target}
 
-    if re.fullmatch(r"(?:please\\s+)?(?:close|minimize|restore)\\s+all\\s+(?:the\\s+)?windows?[.!?]*", low):
-        action = re.match(r"(?:please\\s+)?(close|minimize|restore)", low).group(1)
+    if re.fullmatch(r"(?:please\s+)?(?:close|minimize|restore)\s+all\s+(?:the\s+)?windows?[.!?]*", low):
+        action = re.match(r"(?:please\s+)?(close|minimize|restore)", low).group(1)
         return {"action": "control", "command": action, "title": ""}
 
     explicit_window = bool(re.search(
-        r"\\b(?:floating\\s+window|window|panel|workspace|on the orb|inside the orb)\\b",
+        r"\b(?:floating\s+window|window|panel|workspace|on the orb|inside the orb)\b",
         low,
     ))
     if not explicit_window:
         return None
 
-    url_match = re.search(r"https?://[^\\s<>]+", text, re.I)
+    url_match = re.search(r"https?://[^\s<>]+", text, re.I)
     url = url_match.group(0).rstrip(".,);]") if url_match else ""
     if url:
         parsed = urlsplit(url)
@@ -90,15 +90,15 @@ def _classify_window_intent(prompt):
                  "pdf": "Document", "audio": "Audio", "web": "Browser"}[kind]
         return {"action": "open", "kind": kind, "title": title, "url": url}
 
-    if re.search(r"\\b(?:live\\s+screen|screen\\s+feed|current\\s+screen|screen\\s+cast)\\b", low):
+    if re.search(r"\b(?:live\s+screen|screen\s+feed|current\s+screen|screen\s+cast)\b", low):
         return {"action": "open", "kind": "live_screen", "title": "Live Perception", "url": ""}
-    if re.search(r"\\b(?:terminal|command\\s+output|execution\\s+log)\\b", low):
+    if re.search(r"\b(?:terminal|command\s+output|execution\s+log)\b", low):
         return {"action": "open", "kind": "terminal", "title": "Live Execution", "url": ""}
-    if re.search(r"\\b(?:task|tasks|activity|progress)\\b", low):
+    if re.search(r"\b(?:task|tasks|activity|progress)\b", low):
         return {"action": "open", "kind": "task", "title": "JARVIS Activity", "url": ""}
-    if re.search(r"\\b(?:tools|connectors)\\b", low):
+    if re.search(r"\b(?:tools|connectors)\b", low):
         return {"action": "open", "kind": "tools", "title": "Tools & Connectors", "url": ""}
-    if re.search(r"\\b(?:telemetry|token usage|confidence)\\b", low):
+    if re.search(r"\b(?:telemetry|token usage|confidence)\b", low):
         return {"action": "open", "kind": "telemetry", "title": "Live Telemetry", "url": ""}
     return None
 
