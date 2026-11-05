@@ -56,9 +56,29 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 #ap button{border:0;border-radius:10px;padding:9px 22px;font:inherit;font-weight:700;cursor:pointer}
 #ap .y{background:#3fbf6f;color:#04140a}#ap .n{background:#d64545;color:#fff}#ap button:disabled{opacity:.4}
 #chat.sp{border-color:var(--acc)}#chat.al{border-color:#d64545}
+
+#ws-toggle{flex:none;border:1px solid var(--edge);border-radius:8px;background:#111c17;color:var(--acc);padding:4px 10px;font:inherit;font-size:11px;cursor:pointer}
+#ws-layer{position:absolute;inset:0;z-index:500;pointer-events:none;overflow:hidden}
+#ws-desk{position:absolute;inset:48px 8px 54px;pointer-events:none}
+.ws-win{position:absolute;display:flex;flex-direction:column;min-width:230px;min-height:155px;width:min(460px,42vw);height:min(340px,42vh);resize:both;overflow:hidden;pointer-events:auto;background:rgba(8,18,27,.94);border:1px solid #78eaff66;border-radius:11px;box-shadow:0 14px 48px #000b,0 0 22px #67dcff20;backdrop-filter:blur(16px)}
+.ws-win.focus{border-color:#b9f5ff;box-shadow:0 14px 52px #000c,0 0 26px #67dcff55}
+.ws-win.min{display:none}.ws-win.max{inset:56px 12px 66px!important;width:auto!important;height:auto!important;resize:none}
+.ws-bar{height:36px;flex:0 0 36px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;background:linear-gradient(90deg,#143141,#101c2b);border-bottom:1px solid #9beaff33;cursor:grab;touch-action:none;user-select:none}
+.ws-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5faff;font-size:12px}
+.ws-kind{color:#78eaff;font-size:9px;text-transform:uppercase}
+.ws-bar button{width:24px;height:24px;padding:0;border:1px solid #83dff533;border-radius:6px;background:#0a1822;color:#d8f6ff;cursor:pointer}
+.ws-body{flex:1;min-height:0;padding:7px;overflow:auto}.ws-body iframe,.ws-body img,.ws-body video{width:100%;height:100%;min-height:130px;border:0;border-radius:5px;background:#02060a;object-fit:contain}
+.ws-placeholder{height:100%;min-height:120px;display:grid;place-content:center;text-align:center;color:#a9c2cf;padding:16px;gap:8px}
+#ws-dock{position:absolute;bottom:58px;left:50%;transform:translateX(-50%);display:flex;gap:6px;max-width:90vw;overflow:auto;pointer-events:auto}
+#ws-dock button{white-space:nowrap;border:1px solid #78eaff55;border-radius:8px;background:#0b1b27;color:#d8f6ff;padding:6px 10px;font:inherit;font-size:11px}
+#ws-tools{position:absolute;right:12px;top:54px;display:none;gap:5px;pointer-events:auto}
+#ws-tools input{width:min(34vw,260px);background:#0b1b27;color:#fff;border:1px solid #345466;border-radius:8px;padding:7px;font:inherit}
+#ws-tools button{background:#102431;border:1px solid #78eaff55;color:#d8f6ff;border-radius:8px;padding:6px 10px}
+#ws-layer.enabled #ws-tools{display:flex}
+@media(max-width:700px){.ws-win{width:88vw;height:270px}.ws-win.max{inset:56px 5px 66px!important}#ws-tools input{width:42vw}}
 </style></head><body>
 <div id="app">
-<div id="top"><div id="brand">J.A.R.V.I.S.</div><div id="themes"></div></div>
+<div id="top"><div id="brand">J.A.R.V.I.S.</div><div id="themes"></div><button id="ws-toggle" type="button">WORKSPACE</button></div>
 <div id="main">
 <div id="left"><div id="stage"><canvas id="cv"></canvas><div id="sub"></div><div id="chip"></div></div><div id="tabs" class="p"></div></div>
 <div id="chat" class="p">
@@ -68,6 +88,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 <div class="r"><button class="y" id="apy">Approve</button><button class="n" id="apn">Deny</button><em id="apt"></em></div></div>
 <div id="in" class="p"><textarea id="q" rows="1" autocomplete="off" placeholder="Ask Jarvis anything"></textarea><button id="go" title="Send">↑</button></div>
 </div></div></div>
+<div id="ws-layer"><div id="ws-desk"></div><div id="ws-dock"></div><div id="ws-tools"><input id="ws-url" placeholder="Open URL in a window"><button id="ws-open">OPEN</button></div></div>
 <script>
 const TH=__THEMES__,ORDER=__ORDER__,TOKEN="__TOKEN__";
 const PI2=Math.PI*2,sin=Math.sin,cos=Math.cos,exp=Math.exp,abs=Math.abs,hyp=Math.hypot,mn=Math.min,mx=Math.max;
@@ -316,4 +337,55 @@ function connect(){const es=new EventSource('/events');
  es.onmessage=m=>{const d=JSON.parse(m.data);S=d;if(d.theme!==TN)setTheme(d.theme);if(d.hn!==hn)loadHist();syncMsgs()};
  es.onerror=()=>{es.close();setTimeout(connect,1500)}}
 setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
+
+/* Integrated floating workspace: served by the same 8765 process as the JARVIS UI. */
+(()=>{
+ const layer=document.getElementById("ws-layer"),desk=document.getElementById("ws-desk"),dock=document.getElementById("ws-dock");
+ const token=TOKEN;let z=700,enabled=false;
+ const api=async(path,data)=>{const r=await fetch(path,{method:data?"POST":"GET",headers:data?{"Content-Type":"application/json","X-Token":token}:{},body:data?JSON.stringify(data):undefined,cache:"no-store"});const j=await r.json();if(!r.ok)throw Error(j.error||("HTTP "+r.status));return j};
+ const el=(tag,cls,txt)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=txt;return n};
+ const focus=w=>{document.querySelectorAll(".ws-win").forEach(x=>x.classList.remove("focus"));w.classList.add("focus");w.style.zIndex=++z};
+ const restore=id=>{const w=desk.querySelector('[data-id="'+CSS.escape(id)+'"]');if(!w)return;w.classList.remove("min","max");dock.querySelectorAll("[data-id]").forEach(b=>{if(b.dataset.id===id)b.remove()});focus(w);api("/api/workspace/update",{id,status:"active"}).catch(()=>{})};
+ const minimize=(id,w)=>{w.classList.add("min");if(!dock.querySelector('[data-id="'+CSS.escape(id)+'"]')){const b=el("button","",w.dataset.title);b.dataset.id=id;b.onclick=()=>restore(id);dock.append(b)}api("/api/workspace/update",{id,status:"minimized"}).catch(()=>{})};
+ const close=id=>api("/api/workspace/close",{id}).catch(e=>console.warn("[JARVIS workspace]",e));
+ const media=(item,body)=>{
+   const url=item.url||"",kind=item.kind;
+   if(url&&["web","browser","youtube","document","pdf","audio","video","image"].includes(kind)){
+     let n;
+     if(kind==="image"||/\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(url)){n=el("img");n.src=url;n.alt=item.title}
+     else if(kind==="video"||/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)){n=el("video");n.src=url;n.controls=true;n.playsInline=true}
+     else if(kind==="audio"||/\.(mp3|m4a|ogg|wav)(\?|#|$)/i.test(url)){n=el("audio");n.src=url;n.controls=true;n.style.width="100%"}
+     else {n=el("iframe");if(kind==="youtube"){try{const u=new URL(url),id=u.hostname==="youtu.be"?u.pathname.slice(1):u.searchParams.get("v");n.src="https://www.youtube-nocookie.com/embed/"+encodeURIComponent(id||"")}catch{n.src=url}}else n.src=url;n.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";n.referrerPolicy="strict-origin-when-cross-origin"}
+     body.append(n);return;
+   }
+   const p=el("div","ws-placeholder");p.append(el("strong","",item.title||kind.toUpperCase()),el("span","",kind==="live_screen"?"Live screen stream is not connected to this surface yet.":kind==="terminal"?"Execution output will appear when a redacted task stream is connected.":kind==="task"?"JARVIS task activity surface.":kind==="telemetry"?"Live telemetry values are shown when reported by the runtime.":"Workspace surface ready."));body.append(p);
+ };
+ function makeWindow(item,i){
+   let w=desk.querySelector('[data-id="'+CSS.escape(item.id)+'"]');if(w){if(item.status!=="minimized"&&w.classList.contains("min"))restore(item.id);return w}
+   w=el("section","ws-win");w.dataset.id=item.id;w.dataset.title=item.title||"JARVIS window";w.style.zIndex=++z;
+   const width=Math.min(460,Math.max(270,desk.clientWidth*.38)),height=Math.min(340,Math.max(210,desk.clientHeight*.45));
+   w.style.width=width+"px";w.style.height=height+"px";w.style.left=Math.max(8,Math.min(desk.clientWidth-width-8,desk.clientWidth*.08+(i%3)*65))+"px";w.style.top=Math.max(8,Math.min(desk.clientHeight-height-8,desk.clientHeight*.08+(i%3)*48))+"px";
+   const bar=el("div","ws-bar"),title=el("span","ws-title",item.title),kind=el("span","ws-kind",String(item.kind).replace("_"," "));
+   const mini=el("button","","−"),max=el("button","","□"),x=el("button","","×");mini.title="Minimize";max.title="Maximize / restore";x.title="Close";
+   mini.onclick=e=>{e.stopPropagation();minimize(item.id,w)};max.onclick=e=>{e.stopPropagation();const next=w.classList.contains("max")?"active":"maximized";w.classList.toggle("max",next==="maximized");focus(w);api("/api/workspace/update",{id:item.id,status:next}).catch(()=>{})};x.onclick=e=>{e.stopPropagation();close(item.id)};
+   bar.append(title,kind,mini,max,x);const body=el("div","ws-body");media(item,body);w.append(bar,body);desk.append(w);
+   w.addEventListener("pointerdown",()=>focus(w));
+   let drag=null;bar.addEventListener("pointerdown",e=>{if(e.target.closest("button")||w.classList.contains("max"))return;focus(w);const r=w.getBoundingClientRect();drag={x:e.clientX-r.left,y:e.clientY-r.top};bar.setPointerCapture(e.pointerId)});
+   bar.addEventListener("pointermove",e=>{if(!drag)return;const r=desk.getBoundingClientRect();w.style.left=Math.max(0,Math.min(r.width-w.offsetWidth,e.clientX-r.left-drag.x))+"px";w.style.top=Math.max(0,Math.min(r.height-w.offsetHeight,e.clientY-r.top-drag.y))+"px"});
+   const stop=()=>{drag=null};bar.addEventListener("pointerup",stop);bar.addEventListener("pointercancel",stop);
+   if(item.status==="minimized")minimize(item.id,w);return w;
+ }
+ function render(s){
+   const incoming=new Set((s.surfaces||[]).map(x=>x.id));
+   desk.querySelectorAll(".ws-win").forEach(w=>{if(!incoming.has(w.dataset.id))w.remove()});
+   dock.replaceChildren();(s.surfaces||[]).forEach((item,i)=>{const w=makeWindow(item,i);w.classList.toggle("max",item.status==="maximized");if(item.status==="minimized"){w.classList.add("min");const b=el("button","",item.title);b.dataset.id=item.id;b.onclick=()=>restore(item.id);dock.append(b)}else w.classList.remove("min")});
+   if(incoming.size&&!enabled){enabled=true;layer.classList.add("enabled")}
+ }
+ const refresh=async()=>{try{render(await api("/api/workspace/snapshot"))}catch(e){console.warn("[JARVIS workspace]",e)}};
+ document.getElementById("ws-toggle").onclick=()=>{enabled=!enabled;layer.classList.toggle("enabled",enabled)};
+ document.getElementById("ws-open").onclick=async()=>{const input=document.getElementById("ws-url"),v=input.value.trim();if(!v)return;try{const url=/^https?:\/\//i.test(v)?v:"https://"+v,u=new URL(url),host=u.hostname.toLowerCase(),path=u.pathname.toLowerCase();let kind="web";if(host==="youtu.be"||host.endsWith("youtube.com"))kind="youtube";else if(/\.(png|jpe?g|gif|webp|svg)$/.test(path))kind="image";else if(/\.(mp4|webm|mov|m4v)$/.test(path))kind="video";else if(/\.pdf$/.test(path))kind="pdf";else if(/\.(mp3|m4a|ogg|wav)$/.test(path))kind="audio";await api("/api/workspace/open",{kind,title:host,url});input.value="";enabled=true;layer.classList.add("enabled");await refresh()}catch(e){console.warn(e)}};
+ document.getElementById("ws-url").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("ws-open").click()});
+ refresh();setInterval(refresh,900);
+})();
+
 </script></body></html>

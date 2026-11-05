@@ -15,7 +15,7 @@ import ipaddress
 
 MAX_SURFACES = 6
 KINDS = {"web", "browser", "youtube", "video", "image", "pdf", "audio", "document", "live_screen", "terminal", "task", "tools", "telemetry"}
-STATUSES = {"active", "minimized", "paused", "waiting", "complete", "error"}
+STATUSES = {"active", "minimized", "maximized", "paused", "waiting", "complete", "error"}
 _LABEL = re.compile(r"[^\w .()\-:/]{1,}", re.UNICODE)
 
 
@@ -118,9 +118,8 @@ class WorkspaceManager:
                     self._surfaces.pop(sid, None)
                     self._emit("surface.close", {"id": sid})
                 elif action in {"maximize", "focus", "restore"}:
-                    if action == "restore":
-                        item["status"] = "active"
-                        self._emit("surface.update", item.copy())
+                    item["status"] = "maximized" if action == "maximize" else "active"
+                    self._emit("surface.update", item.copy())
                     self._emit("surface.action", {"id": sid, "action": action})
                 else:
                     item["status"] = "minimized" if action == "minimize" else "active"

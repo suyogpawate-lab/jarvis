@@ -8,6 +8,7 @@ Env: JARVIS_WEB=0 disables it, JARVIS_WEB_PORT changes the port.
 Security: loopback only, Host/Origin checks, and POSTs need the per-run token embedded in the page.
 """
 import json, os, re, secrets, threading, time
+from workspace.manager import WorkspaceManager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOME = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +19,44 @@ _srv = {"url": None, "ui": None, "token": secrets.token_urlsafe(24), "headless":
 HIST_FILE = os.path.join(HOME, "data", "web_chat.json")
 HIST_MAX = 300
 _hist = {"msgs": [], "n": 0, "lock": threading.Lock(), "watch": False}
+_workspace = WorkspaceManager()
+_workspace_events = os.path.join(HOME, "data", "workspace_events.jsonl")
+
+
+def _watch_workspace_events():
+    """Consume workspace intents in the main JARVIS web process."""
+    try:
+        position = os.path.getsize(_workspace_events)
+    except OSError:
+        position = 0
+    while True:
+        try:
+            with open(_workspace_events, encoding="utf-8") as stream:
+                stream.seek(position)
+                while True:
+                    line = stream.readline()
+                    if not line:
+                        break
+                    position = stream.tell()
+                    try:
+                        record = json.loads(line)
+                        data = record.get("data") or {}
+                        event = record.get("event")
+                        if event == "surface.open":
+                            _workspace.open_surface(data.get("kind"), data.get("title"),
+                                                     data.get("url", ""), data.get("metadata"))
+                        elif event == "surface.command":
+                            _workspace.control_surfaces(data.get("action"), data.get("title"))
+                        elif event == "task.update":
+                            _workspace.task_event(data.get("id"), data.get("name"),
+                                                  data.get("status", "active"), data.get("detail", ""))
+                        elif event == "presence.update":
+                            _workspace.presence(data.get("state"))
+                    except (ValueError, TypeError, OverflowError):
+                        continue
+        except OSError:
+            pass
+        time.sleep(0.2)
 
 
 def _hist_load():
@@ -116,6 +155,8 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/api/history":
             with _hist["lock"]:
                 return self._send(200, json.dumps({"msgs": list(_hist["msgs"]), "n": _hist["n"]}))
+        if self.path == "/api/workspace/snapshot":
+            return self._send(200, json.dumps(_workspace.snapshot()))
         if self.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -157,6 +198,28 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/api/clear":
             _hist_clear()
             return self._send(200, '{"ok":true}')
+        if self.path == "/api/workspace/open":
+            try:
+                item = _workspace.open_surface(data.get("kind"), data.get("title"),
+                                                data.get("url", ""), data.get("metadata"))
+                return self._send(201, json.dumps({"ok": True, "surface": item}))
+            except (ValueError, TypeError, OverflowError) as exc:
+                return self._send(400, json.dumps({"ok": False, "error": str(exc)}))
+        if self.path == "/api/workspace/control":
+            try:
+                changed = _workspace.control_surfaces(data.get("action"), data.get("title"))
+                return self._send(200, json.dumps({"ok": True, "changed": changed}))
+            except ValueError as exc:
+                return self._send(400, json.dumps({"ok": False, "error": str(exc)}))
+        if self.path == "/api/workspace/close":
+            ok = _workspace.close_surface(data.get("id", ""))
+            return self._send(200 if ok else 404, json.dumps({"ok": ok}))
+        if self.path == "/api/workspace/update":
+            try:
+                item = _workspace.update_surface(data.get("id", ""), data)
+                return self._send(200 if item else 404, json.dumps({"ok": bool(item), "surface": item}))
+            except ValueError as exc:
+                return self._send(400, json.dumps({"ok": False, "error": str(exc)}))
         if self.path == "/api/theme":
             return self._send(200, json.dumps({"ok": bool(ui.set_theme(str(data.get("name", ""))))}))
         if self.path == "/api/decide":
@@ -195,6 +258,7 @@ def start(ui, brain=None):
         return None
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=_watch_workspace_events, daemon=True).start()
     _srv["url"] = f"http://127.0.0.1:{port}"
     ui.WEB_URL = f":{port}"
     return _srv["url"]

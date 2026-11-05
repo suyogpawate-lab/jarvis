@@ -145,7 +145,7 @@ def list_surfaces():
     import json
     from urllib.request import urlopen
     try:
-        with urlopen("http://127.0.0.1:8767/api/snapshot", timeout=2) as response:
+        with urlopen("http://127.0.0.1:8765/api/workspace/snapshot", timeout=2) as response:
             data = json.loads(response.read().decode("utf-8"))
         return {"ok": True, "surfaces": data.get("surfaces", [])}
     except Exception as exc:
