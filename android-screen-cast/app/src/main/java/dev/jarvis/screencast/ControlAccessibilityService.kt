@@ -54,7 +54,7 @@ class ControlAccessibilityService : AccessibilityService() {
         if (action == "snapshot") return buildSnapshot()
         if (action == "launch_app") {
             val packageName = req.optString("package", "")
-            if (!packageName.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\\\.[A-Za-z][A-Za-z0-9_]*)+")))
+            if (!packageName.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))
                 return JSONObject().put("ok", false).put("error", "invalid package name")
             val launch = packageManager.getLaunchIntentForPackage(packageName)
                 ?: return JSONObject().put("ok", false).put("error", "application not installed or launchable")

@@ -96,7 +96,7 @@ class Handler(BaseHTTPRequestHandler):
                 if kind == "app":
                     package = str(data.get("url", "")).strip()
                     import re
-                    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+", package):
+                    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
                         return self.send(400, '{"ok":false,"error":"enter a valid Android package name"}')
                     metadata = {"package": package}
                 item = manager.open_surface(kind, data.get("title"), data.get("url", ""), metadata)
