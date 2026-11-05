@@ -1,7 +1,27 @@
-# JARVIS Multi-Surface Workspace (development)
+# JARVIS Floating Workspace (development)
 
-This is a separate, opt-in workspace prototype. It does not replace the existing
-terminal UI or production web UI.
+A JARVIS-controlled desktop-like visual workspace for the existing Termux UI.
+It is a separate, opt-in development surface and does not replace the production
+terminal or web UI.
+
+## Interaction model
+
+- Up to six independent floating windows on a shared workspace.
+- Drag a title bar to move a window; use the resize grip to resize it.
+- Minimize a window to the bottom dock, restore it from the dock, maximize it,
+  focus it, or close it independently.
+- Window placement is remembered locally by the browser.
+- JARVIS can open visual URLs and issue minimize/restore/close commands through
+  its event bridge. The authenticated HTTP API can also open, update and close
+  surfaces directly.
+
+## Content types
+
+Browser/web pages, YouTube, direct video, images, PDF documents, audio, live
+screen, task activity, tools/MCP activity, terminal and telemetry surfaces.
+The server accepts only HTTP(S) URLs for remote embeds and rejects loopback and
+.local destinations. Embedded sites may block iframe playback or embedding;
+in those cases, open the original URL in a browser.
 
 ## Run
 
@@ -9,46 +29,37 @@ terminal UI or production web UI.
 python workspace_server.py
 ```
 
-Open `http://127.0.0.1:8767` on the same device. The startup log prints a
-per-process token. The server binds to loopback only and requires that token for
-state-changing requests.
-
-## Current capabilities
-
-- Six bounded, independently managed workspace surfaces.
-- Web, YouTube, direct video, image, live-screen placeholder, terminal,
-  Android-app, task, tools/MCP, and telemetry surface types.
-- SSE event stream and snapshot API.
-- Task/side-quest event API and bounded telemetry fields.
-- URL scheme and local-host checks for embedded content.
-- Responsive JARVIS-themed interface.
+Open `http://127.0.0.1:8767`. The startup log prints the per-process token.
+The server binds to loopback and requires that token for state-changing API
+requests.
 
 ## API
 
 - `POST /api/surfaces/open`: `{kind,title,url?,metadata?}`
 - `POST /api/surfaces/close`: `{id}`
-- `POST /api/surfaces/update`: `{id,status?,title?}`
+- `POST /api/surfaces/update`: `{id,status?,title?}` (status includes active/minimized)
 - `POST /api/tasks/event`: `{id,name,status,detail?}`
-- `POST /api/telemetry`: bounded token/model/confidence/tool metadata
-- `POST /api/intent`: deterministic convenience intents; complex natural
-  language must be classified by the JARVIS brain before calling the typed API.
+- `POST /api/telemetry`: measured token/model/confidence/tool metadata
+- `GET /api/snapshot` and `GET /events`: state and SSE updates
 
-## Platform boundary
+## JARVIS integration
 
-The workspace can show six simultaneous web/native-status surfaces, but Android
-10 does not expose a general API for embedding six arbitrary installed apps as
-independent interactive windows inside a web page. The existing accessibility
-service controls the currently active Android window; it is not six isolated
-app sessions. Native app launch/switching, multi-window behavior, and a true
-floating overlay require a separately tested Android companion implementation.
+The terminal UI publishes presence state and task lifecycle metadata. The
+bridge routes explicit URL display requests and explicit window commands such
+as "minimize all windows", "restore all windows", "close all windows", or
+"minimize the browser window". Prompts and replies are not persisted.
 
-Terminal output is not streamed by default. Add only a redacted, explicitly
-authorized read-only output adapter; never mirror secrets or raw environment
-variables. Confidence is optional metadata, not a calibrated probability unless
-the underlying model supplies a meaningful score.
+The task activity window is created when the first task event arrives. Tool,
+token and confidence values remain blank until actual instrumentation supplies
+them; confidence is not fabricated.
 
-## Tests
+## Known integration boundaries
 
-```sh
-python -m unittest tests.test_workspace
-```
+- Live screen pixels still need an authenticated frame adapter from the
+  existing screen-cast service.
+- Terminal output still needs a redacted, read-only stream. Raw shell output,
+  environment variables, credentials and private data must not be mirrored.
+- Generic sites can deny iframe embedding. YouTube playback can be restricted
+  by browser autoplay policy, video privacy, or embed permissions.
+- This is not a production release. Test on the target Android browser before
+  merging or packaging.
