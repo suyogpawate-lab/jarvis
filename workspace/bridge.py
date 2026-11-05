@@ -58,7 +58,7 @@ def _classify_window_intent(prompt):
             target = ""
         return {"action": "control", "command": action, "title": target}
 
-    if re.fullmatch(r"(?:please\s+)?(?:close|minimize|restore)\s+all\s+(?:the\s+)?windows?[.!?]*", low):
+    if re.fullmatch(r"(?:please\s+)?(?:close|minimize|restore|maximize|focus)\s+all\s+(?:the\s+)?windows?[.!?]*", low):
         action = re.match(r"(?:please\s+)?(close|minimize|restore)", low).group(1)
         return {"action": "control", "command": action, "title": ""}
 
