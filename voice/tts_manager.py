@@ -71,7 +71,7 @@ class TTSManager:
         try:
             from voice.jarvis_voice_runtime import ensure_server
             ensure_server()
-            print("[TTS] ZIP say server ready; Alan/Bryce model cached.", flush=True)
+            print("[TTS] ZIP say socket ready; Sherpa model loads on first speech.", flush=True)
         except Exception as exc:
             self.last_error = str(exc)
             print(f"[TTS ERROR] ZIP say server startup failed: {exc}", flush=True)
