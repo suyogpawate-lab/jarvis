@@ -49,7 +49,7 @@ def _classify_window_intent(prompt):
 
     # Window-management language must explicitly refer to a workspace window.
     control = re.match(
-        r"^(?:please\s+)?(minimize|restore|close)\s+(?:(?:the|all|my)\s+)?(.+?)\s+(?:windows?|panels?|surfaces?)\s*[.!?]*$",
+        r"^(?:please\s+)?(minimize|restore|close|maximize|focus)\s+(?:(?:the|all|my)\s+)?(.+?)\s+(?:windows?|panels?|surfaces?)\s*[.!?]*$",
         low,
     )
     if control:
@@ -134,8 +134,8 @@ def open_surface(kind, title, url=""):
 def control_surface(action, title=""):
     """Queue a window-management request; never controls Android applications."""
     action = str(action or "").lower()
-    if action not in {"minimize", "restore", "close"}:
-        return {"ok": False, "error": "Supported window actions: minimize, restore, close."}
+    if action not in {"minimize", "restore", "close", "maximize", "focus"}:
+        return {"ok": False, "error": "Supported window actions: minimize, restore, maximize, focus, close."}
     _emit("surface.command", {"action": action, "title": str(title or "")[:120]})
     return {"ok": True, "queued": True, "action": action, "title": str(title or "")[:120]}
 
