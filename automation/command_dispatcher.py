@@ -1974,6 +1974,17 @@ Rules:
         text = str(text).strip()
         original_text = text
 
+        # Explicit JARVIS floating-window requests are routed before AIE/Agent
+        # planning. The bridge only claims requests that explicitly say window,
+        # panel, workspace, or orb; ordinary app launches and browser navigation
+        # continue through their existing routes.
+        try:
+            from workspace.bridge import route_prompt as _route_workspace_prompt
+            if _route_workspace_prompt(text):
+                return "Workspace request queued. I will open or manage the requested JARVIS window."
+        except Exception as exc:
+            print(f"[WORKSPACE ROUTE] {type(exc).__name__}: {exc}", flush=True)
+
         # AIE has a natural-language goal interface shared by voice and text.
         aie_nl = getattr(self, "aie_nl", None)
         if re.match(r"^/aie(?:\s|$)", text, re.IGNORECASE):
