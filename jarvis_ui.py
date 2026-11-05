@@ -55,6 +55,11 @@ _fps = {"t": time.time(), "v": 0.0}
 
 def set_local(state):
     S["state"] = state
+    try:
+        from workspace.bridge import presence_update
+        presence_update(state)
+    except Exception:
+        pass
 
 
 def pump_events():
@@ -194,10 +199,22 @@ def settle():
 def work(text, gen=None, source="typed"):
     gen = S["gen"] if gen is None else gen
     set_local("thinking")
+    workspace_task_id = f"ui-{gen}-{int(time.time())}"
+    try:
+        from workspace.bridge import task_started as _ws_task_started, route_prompt as _ws_route_prompt
+        _ws_task_started(workspace_task_id, text, source)
+        _ws_route_prompt(text)
+    except Exception:
+        pass
     try:
         if BRAIN is None:
             raise RuntimeError(BRAIN_ERR or "jarvis.py not loaded")
         answer, speak_it = BRAIN.handle_prompt(text)
+        try:
+            from workspace.bridge import task_finished as _ws_task_finished
+            _ws_task_finished(workspace_task_id, "complete", "JARVIS response ready")
+        except Exception:
+            pass
         S["thinking"] = False                   # reply is ready: a new prompt may now interrupt the speech
         answer = str(answer or "").strip()
         display_answer = (
@@ -225,6 +242,11 @@ def work(text, gen=None, source="typed"):
             while time.time() < end and not _superseded(gen):
                 time.sleep(0.1)
     except Exception as e:
+        try:
+            from workspace.bridge import task_finished as _ws_task_failed
+            _ws_task_failed(workspace_task_id, "error", type(e).__name__)
+        except Exception:
+            pass
         S["thinking"] = False
         if not _superseded(gen):
             S["reply"], S["reply_t"] = f"Error: {e}", time.time()

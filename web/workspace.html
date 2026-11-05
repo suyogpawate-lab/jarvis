@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05090e"><title>J.A.R.V.I.S. Workspace</title>
+<style>
+:root{color-scheme:dark;--bg:#05090e;--glass:rgba(9,18,27,.88);--line:rgba(131,207,225,.34);--cyan:#78eaff;--muted:#8ba4b3;--text:#e9faff;--violet:#bba4ff}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:13px system-ui,sans-serif}
+body{background:radial-gradient(ellipse at 48% 45%,#142b39 0,transparent 34%),radial-gradient(ellipse at 50% 110%,#10202d 0,transparent 55%),#04080d}
+#top{height:48px;position:absolute;inset:0 0 auto;z-index:1000;display:flex;align-items:center;gap:18px;padding:0 16px;background:linear-gradient(#05090eeF,#05090e99);border-bottom:1px solid #8adfff24;backdrop-filter:blur(12px);overflow-x:auto;white-space:nowrap}
+.brand{font-weight:800;letter-spacing:.28em;color:#c9f6ff}.themes{display:flex;gap:15px;color:#91a9b8;font-size:11px;letter-spacing:.09em}.theme{cursor:pointer}.theme.active{color:#fff;background:#5c4f91;border-radius:6px;padding:5px 9px}.topright{margin-left:auto;color:var(--muted);font-size:11px}
+#desk{position:absolute;inset:48px 0 62px;overflow:hidden;isolation:isolate}
+#orb{position:absolute;width:min(48vw,510px);height:min(48vw,510px);min-width:260px;min-height:260px;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;z-index:0;opacity:.86;
+background:radial-gradient(circle at 50% 50%,#07111b 0 37%,transparent 38%),conic-gradient(from 10deg,transparent,#57e6ff44,#b49aff44,#ff9aaf44,#d9ff9a44,transparent);filter:blur(1px);box-shadow:0 0 90px #3ad9ff18,inset 0 0 50px #8beeff20;animation:orb 24s linear infinite}
+#orb:before,#orb:after{content:"";position:absolute;inset:5%;border-radius:50%;border:1px solid #83eaff20;box-shadow:inset 0 0 45px #73dfff15,0 0 35px #73dfff15}
+#orb:after{inset:15%;border-style:dashed;animation:orb 38s linear infinite reverse}
+@keyframes orb{to{transform:translate(-50%,-50%) rotate(360deg)}}
+#orbcore{position:absolute;inset:34%;border-radius:50%;background:radial-gradient(circle,#a7f4ff30,transparent 68%);box-shadow:0 0 55px #69ddff22}
+#orbstate{position:absolute;left:50%;top:calc(50% + min(25vw,270px));transform:translateX(-50%);color:#9ebbc8;font-size:10px;letter-spacing:.18em;white-space:nowrap}
+.win{position:absolute;z-index:2;min-width:230px;min-height:150px;width:clamp(280px,34vw,490px);height:clamp(210px,34vh,360px);background:var(--glass);border:1px solid var(--line);border-radius:11px;box-shadow:0 15px 55px #0009,0 0 20px #67dcff0b;backdrop-filter:blur(17px);overflow:hidden;display:flex;flex-direction:column;resize:both}
+.win.focus{border-color:#9aefff;box-shadow:0 15px 55px #000b,0 0 24px #67dcff25}
+.win.minimized{display:none}.win.maximized{left:8px!important;top:8px!important;width:calc(100% - 16px)!important;height:calc(100% - 16px)!important;resize:none}
+.wbar{height:37px;flex:0 0 37px;display:flex;align-items:center;gap:9px;padding:0 9px 0 12px;background:linear-gradient(90deg,#143141d9,#101c2bd9);border-bottom:1px solid #9beaff2b;cursor:grab;touch-action:none;user-select:none}
+.wbar:active{cursor:grabbing}.led{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}.wtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;letter-spacing:.04em}
+.wkind{font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:.1em}.wbtn{width:23px;height:23px;padding:0;border-radius:6px;border:1px solid #83dff52e;background:#0a1822;color:#c8e8f2;cursor:pointer;font-size:14px}.wbtn:hover{background:#214355}.wbody{flex:1;min-height:0;position:relative;padding:8px;overflow:auto}.wbody iframe,.wbody video,.wbody img,.wbody object{width:100%;height:100%;min-height:130px;border:0;border-radius:5px;object-fit:contain;background:#02060a}.wbody iframe{background:#fff}.placeholder{height:100%;min-height:130px;display:grid;place-content:center;text-align:center;color:#a9c2cf;padding:18px;gap:9px}.placeholder strong{color:#dffaff;font-size:14px}.placeholder small{color:#7894a4}
+#dock{position:absolute;z-index:1100;bottom:8px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 16px);display:flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid #8adfff3a;border-radius:13px;background:#07121ddf;backdrop-filter:blur(16px);overflow-x:auto}
+.dockitem{white-space:nowrap;padding:7px 11px;border-radius:8px;border:1px solid #305064;background:#102431;color:#d8f6ff;font-size:11px;cursor:pointer}.dockitem:hover{border-color:var(--cyan)}
+#statebar{position:absolute;z-index:1001;bottom:0;left:0;right:0;height:62px;display:flex;align-items:center;gap:10px;padding:8px 14px;background:linear-gradient(transparent,#05090ef2 25%);pointer-events:none}
+.statepill{border:1px solid #28414f;background:#0b141e;padding:9px 14px;border-radius:8px;color:#9bb0bc;min-width:110px;text-align:center;font-size:11px;letter-spacing:.08em}.statepill.active{background:#bba4ff;color:#171124;border-color:#d2c4ff}
+#quick{pointer-events:auto;margin-left:auto;display:flex;gap:7px}button,input,select{font:inherit;color:var(--text);background:#0b1b27;border:1px solid #345466;border-radius:8px;padding:9px}button{cursor:pointer}button.primary{background:#26385d;border-color:#a995ed;color:#f5edff}#quick input{width:min(28vw,280px)}
+#notice{position:absolute;z-index:1200;top:56px;left:50%;transform:translateX(-50%);padding:8px 13px;border-radius:8px;background:#182b3a;border:1px solid #5e9bb1;color:#dffaff;display:none}
+@media(max-width:700px){#top{gap:10px}.themes{gap:9px}.theme:nth-child(n+7){display:none}#orb{width:290px;height:290px}.win{width:min(88vw,430px);height:270px}.statepill{min-width:0;padding:8px 9px}.statepill:nth-child(2),.statepill:nth-child(4){display:none}#quick input{width:36vw}}
+</style></head><body>
+<header id="top"><div class="brand">J.A.R.V.I.S.</div><nav class="themes"><span class="theme">emerald</span><span class="theme">arc</span><span class="theme">solar</span><span class="theme">nebula</span><span class="theme">ghost</span><span class="theme">plasma</span><span class="theme">eclipse</span><span class="theme">pearl</span><span class="theme">magma</span><span class="theme">crystal</span><span class="theme active">prism</span><span class="theme">reactor</span><span class="theme">radar</span></nav><div class="topright" id="conn">CONNECTING</div></header>
+<main id="desk"><div id="orb"><div id="orbcore"></div></div><div id="orbstate">J.A.R.V.I.S. · INITIALIZING</div><div id="windows"></div></main>
+<div id="notice"></div>
+<footer id="statebar"><span class="statepill" id="listen">LISTENING</span><span class="statepill" id="think">THINKING</span><span class="statepill active" id="speak">SPEAKING</span><span class="statepill" id="alert">ALERT</span><div id="quick"><input id="url" placeholder="Open a URL or visual task…"><button class="primary" id="open">＋</button></div></footer>
+<div id="dock" aria-label="Minimized windows"></div>
+<script>
+const TOKEN="__TOKEN__",winRoot=document.querySelector("#windows"),dock=document.querySelector("#dock");
+let zTop=10,localLayout={};
+const el=(tag,cls,txt)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=txt;return n};
+async function post(path,data){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Token":TOKEN},body:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw Error(j.error||"Request failed");return j}
+function notice(msg){const n=document.querySelector("#notice");n.textContent=msg;n.style.display="block";clearTimeout(notice.t);notice.t=setTimeout(()=>n.style.display="none",2600)}
+function focus(w){document.querySelectorAll(".win").forEach(x=>x.classList.remove("focus"));w.classList.add("focus");w.style.zIndex=++zTop}
+function saveLayout(id,w){localLayout[id]={left:w.style.left,top:w.style.top,width:w.style.width,height:w.style.height};try{localStorage.setItem("jarvis.workspace.layout",JSON.stringify(localLayout))}catch{}}
+try{localLayout=JSON.parse(localStorage.getItem("jarvis.workspace.layout")||"{}")||{}}catch{}
+function mediaFor(item,body,snapshot){
+ const url=item.url||"",kind=item.kind;
+ if(["web","youtube","browser","document","pdf","audio","video","image"].includes(kind)&&url){
+  let node;
+  if(kind==="image"||/\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(url)){node=el("img");node.src=url;node.alt=item.title}
+  else if(kind==="video"||/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)){node=el("video");node.src=url;node.controls=true;node.autoplay=true;node.playsInline=true;node.onended=()=>close(item.id)}
+  else if(kind==="audio"||/\.(mp3|m4a|ogg|wav)(\?|#|$)/i.test(url)){node=el("audio");node.src=url;node.controls=true;node.autoplay=true;node.style.width="100%"}
+  else if(kind==="pdf"||/\.pdf(\?|#|$)/i.test(url)){node=el("iframe");node.src=url}
+  else {node=el("iframe");node.src=kind==="youtube"?youtubeEmbed(url):url;node.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";node.referrerPolicy="strict-origin-when-cross-origin"}
+  body.append(node);return;
+ }
+ if(kind==="task"){
+  const tasks=snapshot.tasks||[],p=el("div","placeholder");p.style.display="block";p.style.textAlign="left";p.append(el("strong","","JARVIS TASK STREAM"));
+  if(!tasks.length)p.append(el("small","","Waiting for task events…"));
+  tasks.slice().reverse().forEach(t=>{const row=el("div","",t.name+" · "+t.status);row.style.padding="8px 2px";row.style.borderBottom="1px solid #24404e";row.append(el("small","",t.detail||""));p.append(row)});
+  body.append(p);return;
+ }
+ if(kind==="tools"||kind==="telemetry"){
+  const t=snapshot.telemetry||{},p=el("div","placeholder");p.style.display="block";p.style.textAlign="left";p.append(el("strong","",kind==="tools"?"TOOLS & CONNECTORS":"LIVE TELEMETRY"));
+  if(kind==="tools")(t.tools||[]).forEach(x=>p.append(el("div","",x)));
+  else ["Model: "+(t.model||"not reported"),"Input tokens: "+(t.input_tokens??"not reported"),"Output tokens: "+(t.output_tokens??"not reported"),"Confidence: "+(t.confidence==null?"not reported":Math.round(t.confidence*100)+"%")].forEach(x=>p.append(el("div","",x)));
+  body.append(p);return;
+ }
+ const descriptions={live_screen:["LIVE PERCEPTION","Waiting for the authenticated screen-cast frame stream."],terminal:["LIVE EXECUTION","A redacted task-output stream will appear here when connected."]};
+ const d=descriptions[kind]||["VISUAL SURFACE","JARVIS can place supported visual content in this window."],p=el("div","placeholder");p.append(el("strong","",d[0]),el("span","",item.detail||d[1]),el("small","",item.status||"CONNECTED"));body.append(p);
+}
+function youtubeEmbed(url){try{const u=new URL(url);const id=u.hostname.includes("youtu.be")?u.pathname.slice(1):u.searchParams.get("v");return "https://www.youtube-nocookie.com/embed/"+encodeURIComponent(id||"")+"?autoplay=1&enablejsapi=1"}catch{return url}}
+function minimize(id,w){w.classList.add("minimized");const b=el("button","dockitem",w.dataset.title);b.dataset.restore=id;b.onclick=()=>restore(id);dock.append(b);post("/api/surfaces/update",{id,status:"minimized"}).catch(()=>{})}
+function restore(id){const w=document.querySelector('[data-id="'+CSS.escape(id)+'"]');if(!w)return;w.classList.remove("minimized","maximized");dock.querySelectorAll("[data-restore]").forEach(x=>{if(x.dataset.restore===id)x.remove()});post("/api/surfaces/update",{id,status:"active"}).catch(()=>{});focus(w)}
+async function close(id){try{await post("/api/surfaces/close",{id})}catch(e){notice(e.message)}}
+function createWindow(item,index){
+ let w=document.querySelector('[data-id="'+CSS.escape(item.id)+'"]');if(w){if(item.status!=="minimized"&&w.classList.contains("minimized"))restore(item.id);return w}
+ w=el("section","win");w.dataset.id=item.id;w.dataset.title=item.title;w.style.zIndex=++zTop;
+ const saved=localLayout[item.id];if(saved){Object.assign(w.style,saved)}else{const desk=document.querySelector("#desk"),width=Math.min(470,Math.max(285,desk.clientWidth*.35)),height=Math.min(350,Math.max(220,desk.clientHeight*.42));w.style.width=width+"px";w.style.height=height+"px";w.style.left=Math.max(8,Math.min(desk.clientWidth-width-8,desk.clientWidth*.12+(index%3)*Math.min(95,desk.clientWidth*.1)))+"px";w.style.top=Math.max(8,Math.min(desk.clientHeight-height-8,desk.clientHeight*.08+(index%3)*54))+"px"}
+ const bar=el("div","wbar"),led=el("span","led"),title=el("span","wtitle",item.title),kind=el("span","wkind",item.kind.replace("_"," "));
+ const mini=el("button","wbtn","−"),max=el("button","wbtn","□"),x=el("button","wbtn","×");mini.title="Minimize";max.title="Maximize / restore";x.title="Close";
+ mini.onclick=e=>{e.stopPropagation();minimize(item.id,w)};max.onclick=e=>{e.stopPropagation();w.classList.toggle("maximized");focus(w)};x.onclick=e=>{e.stopPropagation();close(item.id)};
+ bar.append(led,title,kind,mini,max,x);const body=el("div","wbody");mediaFor(item,body,window.__snapshot||{});w.append(bar,body);winRoot.append(w);w.addEventListener("pointerdown",()=>focus(w));makeDraggable(w,bar);if(item.status==="minimized")minimize(item.id,w);return w;
+}
+function makeDraggable(w,bar){let drag=null;bar.addEventListener("pointerdown",e=>{if(e.target.closest("button"))return;if(w.classList.contains("maximized"))return;focus(w);const r=w.getBoundingClientRect();drag={x:e.clientX-r.left,y:e.clientY-r.top};bar.setPointerCapture(e.pointerId)});bar.addEventListener("pointermove",e=>{if(!drag)return;const d=document.querySelector("#desk").getBoundingClientRect(),x=Math.max(0,Math.min(d.width-w.offsetWidth,e.clientX-d.left-drag.x)),y=Math.max(0,Math.min(d.height-w.offsetHeight,e.clientY-d.top-drag.y));w.style.left=x+"px";w.style.top=y+"px"});bar.addEventListener("pointerup",()=>{if(drag){saveLayout(w.dataset.id,w);drag=null}});bar.addEventListener("pointercancel",()=>drag=null);new ResizeObserver(()=>saveLayout(w.dataset.id,w)).observe(w)}
+function render(s){
+ window.__snapshot=s;
+ const state=s.jarvis_state||"standby";document.querySelector("#orbstate").textContent="J.A.R.V.I.S. · "+state.toUpperCase()+" · "+s.tasks.length+" ACTIVE TASK RECORDS";
+ ["listen","think","speak","alert"].forEach(id=>document.querySelector("#"+id).classList.remove("active"));
+ const target={listening:"listen",thinking:"think",speaking:"speak",alert:"alert"}[state];if(target)document.querySelector("#"+target).classList.add("active");
+ const incoming=new Set(s.surfaces.map(x=>x.id));document.querySelectorAll(".win").forEach(w=>{if(!incoming.has(w.dataset.id))w.remove()});
+ dock.replaceChildren();s.surfaces.forEach((item,i)=>{const w=createWindow(item,i);if(item.status==="minimized"){if(!w.classList.contains("minimized"))minimize(item.id,w);if(!dock.querySelector('[data-restore="'+CSS.escape(item.id)+'"]')){const b=el("button","dockitem",item.title);b.dataset.restore=item.id;b.onclick=()=>restore(item.id);dock.append(b)}}});
+}
+async function refresh(){try{const s=await(await fetch("/api/snapshot")).json();render(s)}catch(e){document.querySelector("#conn").textContent="OFFLINE"}}
+document.querySelector("#open").onclick=async()=>{const input=document.querySelector("#url"),value=input.value.trim();if(!value)return;try{let url=value;if(!/^https?:\/\//i.test(url))url="https://"+url;const host=new URL(url).hostname.toLowerCase(),path=new URL(url).pathname.toLowerCase();let kind="web";if(host==="youtu.be"||host.endsWith("youtube.com"))kind="youtube";else if(/\.(png|jpe?g|gif|webp|svg)$/.test(path))kind="image";else if(/\.(mp4|webm|mov|m4v)$/.test(path))kind="video";else if(/\.pdf$/.test(path))kind="pdf";else if(/\.(mp3|m4a|ogg|wav)$/.test(path))kind="audio";await post("/api/surfaces/open",{kind,title:host,url});input.value="";await refresh()}catch(e){notice(e.message)}};
+document.querySelector("#url").addEventListener("keydown",e=>{if(e.key==="Enter")document.querySelector("#open").click()});
+refresh();const es=new EventSource("/events");es.onopen=()=>document.querySelector("#conn").textContent="JARVIS LINK · LIVE";es.onerror=()=>document.querySelector("#conn").textContent="RECONNECTING";es.onmessage=refresh;es.addEventListener("surface.action",e=>{try{const d=JSON.parse(e.data),w=document.querySelector('[data-id="'+CSS.escape(d.id)+'"]');if(!w)return;if(d.action==="maximize")w.classList.add("maximized");else if(d.action==="restore"){w.classList.remove("minimized","maximized");dock.querySelectorAll("[data-restore]").forEach(x=>{if(x.dataset.restore===d.id)x.remove()});focus(w)}else if(d.action==="focus")focus(w)}catch(_){}});["surface.open","surface.close","surface.update","task.update","telemetry.update"].forEach(type=>es.addEventListener(type,refresh));
+</script></body></html>

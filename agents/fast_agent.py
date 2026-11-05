@@ -135,6 +135,13 @@ class FastAgent:
             "only when clearly asked; group sends need confirmation. Be formal for "
             "official, serious, or apology contexts. Have respect for yourself, you can fight back for your respect\n\n"
             "ALARMS: Use alarm/timer tools, never shell. Use website_ip for IP lookups.\n\n"
+            "APP VS WORKSPACE: An Android app request means launch_android_app (for example, "
+            "'open Chrome' or 'open YouTube app'). Ordinary URL navigation means open_url. "
+            "Use open_workspace_surface only when the user explicitly requests a floating window, "
+            "panel, workspace window, or content around/on the JARVIS orb. Window controls "
+            "(minimize, restore, maximize, focus, close) must use control_workspace_surface and "
+            "must never affect Android apps. If app-versus-window intent is genuinely ambiguous, ask. "
+            "Use list_workspace_surfaces to identify existing windows before acting on a named one.\n\n"
             "LINKS: If the user asks what a URL contains, inspect it with inspect_public_link; "
             "for YouTube use inspect_youtube_link and ground any reaction in returned public captions. "
             "If only metadata is available, say the video content could not be verified and ask the user "
@@ -340,6 +347,12 @@ class FastAgent:
             return f"Sending WhatsApp to {clip(args.get('to'), 40)}"
         if name == "launch_android_app":
             return f"Opening {clip(args.get('package'), 50)}"
+        if name == "open_workspace_surface":
+            return f"Opening JARVIS window: {clip(args.get('title') or args.get('kind'), 50)}"
+        if name == "control_workspace_surface":
+            return f"{clip(args.get('action'), 20).title()}ing JARVIS window: {clip(args.get('title') or 'all', 40)}"
+        if name == "list_workspace_surfaces":
+            return "Checking open JARVIS windows"
         if name == "search_web":
             return f"Searching the web for \u201c{clip(args.get('query'), 50)}\u201d"
         if name == "deep_search_web":
@@ -644,6 +657,61 @@ class FastAgent:
                         "required": ["package"],
                     },
                 },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "open_workspace_surface",
+                    "description": (
+                        "Open content INSIDE a movable JARVIS workspace window around the orb. "
+                        "Use ONLY when the user explicitly asks for a floating window, panel, "
+                        "workspace window, or to show content on/inside the orb. Supported kinds: "
+                        "web, youtube, video, image, pdf, audio, live_screen, terminal, task, tools, telemetry. "
+                        "This is NOT an Android app launcher and NOT normal Chrome navigation. "
+                        "For 'open Chrome', 'open YouTube app', or 'launch <app>', use launch_android_app. "
+                        "For ordinary 'open this website' without a floating-window request, use open_url. "
+                        "If the user does not make the app-versus-window choice clear and context cannot resolve it, ask."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["web", "youtube", "video", "image", "pdf", "audio", "live_screen", "terminal", "task", "tools", "telemetry"]},
+                            "title": {"type": "string"},
+                            "url": {"type": "string", "description": "HTTP(S) URL for URL-backed surfaces; omit for live JARVIS surfaces."}
+                        },
+                        "required": ["kind", "title"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "control_workspace_surface",
+                    "description": (
+                        "Minimize, restore, maximize, focus, or close an existing JARVIS floating workspace window. "
+                        "Use only when the user explicitly refers to a window, panel, or workspace surface. "
+                        "Never use to close, minimize, or control an Android app."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": {"type": "string", "enum": ["minimize", "restore", "maximize", "focus", "close"]},
+                            "title": {"type": "string", "description": "Window title or distinctive part; use empty string for all windows."}
+                        },
+                        "required": ["action"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_workspace_surfaces",
+                    "description": (
+                        "List currently open JARVIS floating workspace windows. "
+                        "This does not list or inspect installed Android applications."
+                    ),
+                    "parameters": {"type": "object", "properties": {}, "required": []}
+                }
             },
             {
                 "type": "function",
@@ -1569,6 +1637,32 @@ class FastAgent:
                 "ok": True,
                 "result": result,
             }
+
+        if name == "open_workspace_surface":
+            kind = str(arguments.get("kind", "")).strip().lower()
+            title = str(arguments.get("title", "")).strip()
+            url = str(arguments.get("url", "")).strip()
+            try:
+                from workspace.bridge import open_surface
+                return open_surface(kind, title, url)
+            except Exception as exc:
+                return {"ok": False, "error": f"Workspace open failed ({type(exc).__name__})."}
+
+        if name == "control_workspace_surface":
+            action = str(arguments.get("action", "")).strip().lower()
+            title = str(arguments.get("title", "")).strip()
+            try:
+                from workspace.bridge import control_surface
+                return control_surface(action, title)
+            except Exception as exc:
+                return {"ok": False, "error": f"Workspace control failed ({type(exc).__name__})."}
+
+        if name == "list_workspace_surfaces":
+            try:
+                from workspace.bridge import list_surfaces
+                return list_surfaces()
+            except Exception as exc:
+                return {"ok": False, "error": f"Workspace listing failed ({type(exc).__name__})."}
 
         if name == "open_url":
             url = str(arguments.get("url", "")).strip()
