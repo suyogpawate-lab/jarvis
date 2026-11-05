@@ -135,6 +135,13 @@ class FastAgent:
             "only when clearly asked; group sends need confirmation. Be formal for "
             "official, serious, or apology contexts. Have respect for yourself, you can fight back for your respect\n\n"
             "ALARMS: Use alarm/timer tools, never shell. Use website_ip for IP lookups.\n\n"
+            "APP VS WORKSPACE: An Android app request means launch_android_app (for example, "
+            "'open Chrome' or 'open YouTube app'). Ordinary URL navigation means open_url. "
+            "Use open_workspace_surface only when the user explicitly requests a floating window, "
+            "panel, workspace window, or content around/on the JARVIS orb. Window controls "
+            "(minimize, restore, maximize, focus, close) must use control_workspace_surface and "
+            "must never affect Android apps. If app-versus-window intent is genuinely ambiguous, ask. "
+            "Use list_workspace_surfaces to identify existing windows before acting on a named one.\n\n"
             "LINKS: If the user asks what a URL contains, inspect it with inspect_public_link; "
             "for YouTube use inspect_youtube_link and ground any reaction in returned public captions. "
             "If only metadata is available, say the video content could not be verified and ask the user "
@@ -681,7 +688,7 @@ class FastAgent:
                 "function": {
                     "name": "control_workspace_surface",
                     "description": (
-                        "Minimize, restore, or close an existing JARVIS floating workspace window. "
+                        "Minimize, restore, maximize, focus, or close an existing JARVIS floating workspace window. "
                         "Use only when the user explicitly refers to a window, panel, or workspace surface. "
                         "Never use to close, minimize, or control an Android app."
                     ),
