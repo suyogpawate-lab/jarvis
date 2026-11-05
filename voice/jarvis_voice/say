@@ -1,18 +1,15 @@
 #!/data/data/com.termux/files/usr/bin/python3
-import sys
-import socket
+"""Synchronous client for the persistent ZIP Sherpa voice server."""
 import os
+import socket
+import sys
 
 SOCKET_FILE = "/data/data/com.termux/files/usr/tmp/jarvis_tts.sock"
 VALID_MODELS = ["alan", "bryce"]
 
-if not os.path.exists(SOCKET_FILE):
-    print("Error: Voice server is not running. Start with: python ~/jarvis_voice/server.py &")
-    sys.exit(1)
-
 args = sys.argv[1:]
 if not args:
-    print("Usage: say [optional_model] \"Text to speak\"")
+    print("Usage: say [alan|bryce] \"Text to speak\"")
     print(f"Models: {', '.join(VALID_MODELS)} (Default: alan)")
     sys.exit(0)
 
@@ -26,9 +23,24 @@ else:
 if not text.strip():
     text = "Standing by, sir."
 
-payload = f"{selected_model}:::{text}"
-
+payload = f"{selected_model}:::{text}".encode("utf-8")
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-client.connect(SOCKET_FILE)
-client.sendall(payload.encode("utf-8"))
-client.close()
+client.settimeout(240)
+try:
+    client.connect(SOCKET_FILE)
+    client.sendall(payload)
+    client.shutdown(socket.SHUT_WR)
+    response = bytearray()
+    while True:
+        chunk = client.recv(4096)
+        if not chunk:
+            break
+        response.extend(chunk)
+    result = response.decode("utf-8", errors="replace").strip()
+    if result != "OK":
+        raise RuntimeError(result or "ZIP voice server closed without a response.")
+except (OSError, RuntimeError) as exc:
+    print(f"ZIP voice error: {exc}", file=sys.stderr)
+    sys.exit(1)
+finally:
+    client.close()
