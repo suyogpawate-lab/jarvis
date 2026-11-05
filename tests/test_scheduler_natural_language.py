@@ -65,6 +65,32 @@ class SchedulerNaturalLanguageTests(unittest.TestCase):
         dispatcher.research.parse_request.assert_not_called()
         dispatcher.research.research_now.assert_not_called()
 
+    def test_multi_sentence_scheduler_management_prompt_is_deterministic(self):
+        zone = ZoneInfo("Asia/Kolkata")
+        target = (datetime.now(zone) + timedelta(days=2)).replace(second=0, microsecond=0)
+        dispatcher = self.dispatcher()
+        dispatcher.automation.get.return_value = {
+            "id": "auto-96307a83", "status": "SCHEDULED",
+            "next_run": (datetime.now(zone) + timedelta(hours=3)).timestamp(),
+            "command": "research robotics",
+        }
+        dispatcher.automation.reschedule.return_value = {
+            "id": "auto-96307a83", "status": "SCHEDULED",
+            "next_run": target.timestamp(), "command": "research robotics",
+        }
+        request = (
+            "Do NOT start or execute any research. This is a scheduler-management operation only. "
+            "Find auto-96307a83. Change ONLY its execution time to "
+            + target.strftime("%Y-%m-%d %H:%M:%S Asia/Kolkata.")
+        )
+        response = dispatcher.dispatch(request)
+        self.assertIn("rescheduled", response)
+        dispatcher.automation.reschedule.assert_called_once_with(
+            "auto-96307a83", target.timestamp()
+        )
+        dispatcher.research = Mock()
+        dispatcher.research.research_now.assert_not_called()
+
     def test_reschedule_rejects_non_pending_task(self):
         dispatcher = self.dispatcher()
         dispatcher.automation.get.return_value = {"status": "DONE"}
