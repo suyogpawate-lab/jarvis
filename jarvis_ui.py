@@ -55,6 +55,11 @@ _fps = {"t": time.time(), "v": 0.0}
 
 def set_local(state):
     S["state"] = state
+    try:
+        from workspace.bridge import presence_update
+        presence_update(state)
+    except Exception:
+        pass
 
 
 def pump_events():
