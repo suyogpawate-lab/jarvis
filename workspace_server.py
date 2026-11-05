@@ -8,7 +8,6 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 from workspace.manager import WorkspaceManager
 
@@ -38,22 +37,23 @@ def watch_ui_events():
                         if record.get("event") == "task.update":
                             manager.task_event(data.get("id"), data.get("name"),
                                                data.get("status", "active"), data.get("detail", ""))
+                            if not any(x["kind"] == "task" for x in manager.snapshot()["surfaces"]):
+                                try:
+                                    manager.open_surface("task", "JARVIS Activity")
+                                except OverflowError:
+                                    pass
                         elif record.get("event") == "surface.open":
                             manager.open_surface(data.get("kind"), data.get("title"),
                                                  data.get("url", ""), data.get("metadata"))
+                        elif record.get("event") == "surface.command":
+                            manager.control_surfaces(data.get("action"), data.get("title"))
+                        elif record.get("event") == "presence.update":
+                            manager.presence(data.get("state"))
                     except (ValueError, TypeError, OverflowError):
                         continue
         except OSError:
             pass
         time.sleep(0.35)
-
-
-def android_control(payload):
-    body = json.dumps(payload).encode("utf-8")
-    req = Request("http://127.0.0.1:21339/control", data=body,
-                  headers={"Content-Type": "application/json"}, method="POST")
-    with urlopen(req, timeout=4) as response:
-        return json.loads(response.read(16384).decode("utf-8"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -130,12 +130,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/surfaces/open":
                 kind = data.get("kind")
                 metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-                if kind == "app":
-                    package = str(data.get("url", "")).strip()
-                    import re
-                    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
-                        return self.send(400, '{"ok":false,"error":"enter a valid Android package name"}')
-                    metadata = {"package": package}
                 item = manager.open_surface(kind, data.get("title"), data.get("url", ""), metadata)
                 return self.send(201, json.dumps({"ok": True, "surface": item}))
             if path == "/api/surfaces/close":
@@ -150,25 +144,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/telemetry":
                 item = manager.telemetry(data)
                 return self.send(200, json.dumps({"ok": True, "telemetry": item}))
-            if path == "/api/apps/launch":
-                package = str(data.get("package", "")).strip()
-                import re
-                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+", package):
-                    return self.send(400, '{"ok":false,"error":"invalid Android package name"}')
-                result = android_control({"action": "launch_app", "package": package})
-                return self.send(200 if result.get("ok") else 503, json.dumps(result))
-            if path == "/api/apps/control":
-                action = str(data.get("action", ""))
-                allowed_actions = {"tap", "swipe", "type", "back", "home", "recents",
-                                   "notifications", "click_element"}
-                if action not in allowed_actions:
-                    return self.send(400, '{"ok":false,"error":"unsupported Android action"}')
-                payload = {"action": action}
-                for key in ("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "element_index", "text"):
-                    if key in data:
-                        payload[key] = data[key]
-                result = android_control(payload)
-                return self.send(200 if result.get("ok") else 503, json.dumps(result))
             if path == "/api/intent":
                 text = str(data.get("text", "")).strip()
                 low = text.lower()
@@ -177,12 +152,13 @@ class Handler(BaseHTTPRequestHandler):
                 kinds = (("youtube", "youtube"), ("video", "video"), ("image", "image"),
                          ("website", "web"), ("webpage", "web"), ("browser", "web"),
                          ("terminal", "terminal"), ("tools", "tools"), ("telemetry", "telemetry"),
-                         ("screen", "live_screen"), ("live screen", "live_screen"))
+                         ("screen", "live_screen"), ("live screen", "live_screen"),
+                         ("document", "document"), ("pdf", "pdf"), ("audio", "audio"))
                 kind = next((k for phrase, k in kinds if phrase in low), None)
                 if not kind:
                     return self.send(422, '{"ok":false,"error":"intent needs JARVIS brain classification"}')
                 import re
-                match = re.search(r"https?://[^\\s]+", text)
+                match = re.search(r"https?://[^\s]+", text)
                 item = manager.open_surface(kind, kind.replace("_", " ").title(), match.group(0).rstrip(".,)") if match else "")
                 return self.send(201, json.dumps({"ok": True, "surface": item}))
             return self.send(404, '{"error":"not found"}')
