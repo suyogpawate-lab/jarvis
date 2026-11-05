@@ -117,7 +117,10 @@ class WorkspaceManager:
                 if action == "close":
                     self._surfaces.pop(sid, None)
                     self._emit("surface.close", {"id": sid})
-                elif action in {"maximize", "focus"}:
+                elif action in {"maximize", "focus", "restore"}:
+                    if action == "restore":
+                        item["status"] = "active"
+                        self._emit("surface.update", item.copy())
                     self._emit("surface.action", {"id": sid, "action": action})
                 else:
                     item["status"] = "minimized" if action == "minimize" else "active"
