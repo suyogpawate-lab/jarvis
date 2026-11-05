@@ -2,6 +2,49 @@ import unittest
 from workspace.manager import WorkspaceManager
 
 
+class WorkspaceIntentTests(unittest.TestCase):
+    def test_app_and_normal_browser_requests_are_not_workspace_windows(self):
+        from workspace.bridge import _classify_window_intent
+        for prompt in ("open Chrome", "open YouTube", "launch WhatsApp",
+                       "open https://example.com"):
+            self.assertIsNone(_classify_window_intent(prompt), prompt)
+
+    def test_explicit_floating_url_routes_to_workspace(self):
+        from workspace.bridge import _classify_window_intent
+        intent = _classify_window_intent(
+            "Open https://youtu.be/example in a floating window"
+        )
+        self.assertEqual(intent["action"], "open")
+        self.assertEqual(intent["kind"], "youtube")
+
+    def test_live_screen_and_terminal_window_intents(self):
+        from workspace.bridge import _classify_window_intent
+        self.assertEqual(
+            _classify_window_intent("Show my live screen in a window")["kind"],
+            "live_screen",
+        )
+        self.assertEqual(
+            _classify_window_intent("Show terminal output in a panel")["kind"],
+            "terminal",
+        )
+
+    def test_window_controls_do_not_claim_app_controls(self):
+        from workspace.bridge import _classify_window_intent
+        self.assertEqual(
+            _classify_window_intent("Minimize the browser window")["command"],
+            "minimize",
+        )
+        self.assertEqual(
+            _classify_window_intent("Maximize the research window")["command"],
+            "maximize",
+        )
+        self.assertEqual(
+            _classify_window_intent("Close all windows")["title"],
+            "",
+        )
+        self.assertIsNone(_classify_window_intent("close Chrome"))
+
+
 class WorkspaceTests(unittest.TestCase):
     def setUp(self):
         self.manager = WorkspaceManager()
