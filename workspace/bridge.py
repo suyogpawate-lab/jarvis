@@ -98,7 +98,7 @@ def _classify_window_intent(prompt):
         return {"action": "open", "kind": "youtube", "title": "YouTube", "url": "https://www.youtube.com"}
     if re.search(r"\bgoogle(?:\s+search)?\b", low):
         return {"action": "open", "kind": "web", "title": "Google", "url": "https://www.google.com"}
-    if re.search(r"\b(?:browser|chrome-like|chrome\s+browser)\b", low):
+    if re.search(r"\b(?:browser|chrome(?:-like)?(?:\s+browser)?)\b", low):
         return {"action": "open", "kind": "browser", "title": "Browser", "url": ""}
     if re.search(r"\b(?:live\s+screen|screen\s+feed|current\s+screen|screen\s+cast)\b", low):
         return {"action": "open", "kind": "live_screen", "title": "Live Perception", "url": ""}
