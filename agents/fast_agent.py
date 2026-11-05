@@ -2731,6 +2731,16 @@ class FastAgent:
             timeout=30,
         )
 
+    def _omniroute_answer_fallback(self, prompt):
+        """Answer a non-action request through the configured OmniRoute model."""
+        return self._omniroute_request(
+            [{"role": "user", "content": str(prompt)[:8000]}],
+            system_prompt=self._jarvis_base_system_prompt(),
+            max_tokens=256,
+            temperature=0.1,
+            timeout=30,
+        )
+
     def _omniroute_tool_result_fallback(self, original_prompt, messages):
         """
         Summarize already-executed tool results through OmniRoute.
@@ -2882,6 +2892,16 @@ class FastAgent:
                 return str(response.json()["choices"][0]["message"].get("content") or "").strip()
             except (KeyError, IndexError, TypeError, ValueError):
                 return "[ERROR] Groq returned an invalid simple-answer response."
+        if response.status_code == 429:
+            try:
+                print("[JARVIS ROUTER] Groq rate-limited simple answer -> OMNIROUTE", flush=True)
+                return self._omniroute_answer_fallback(prompt)
+            except Exception as fallback_exc:
+                return (
+                    self._groq_limit_message(response)
+                    + " OmniRoute fallback failed: "
+                    + str(fallback_exc)[:180]
+                )
         return self._groq_limit_message(response)
 
     def ask(self, prompt):
@@ -3045,6 +3065,32 @@ class FastAgent:
 
                 if response.status_code == 413:
                     return self._omniroute_fallback(prompt)
+
+                if response.status_code == 429:
+                    # This initial request has not executed any tools. A plain
+                    # OmniRoute answer is safe only for non-action requests.
+                    action_cues = re.search(
+                        r"\\b(?:open|launch|send|message|execute|run|install|uninstall|"
+                        r"delete|remove|create|edit|modify|fix|debug|inspect|click|tap|"
+                        r"swipe|navigate|submit|purchase|book|set|start|stop|close|"
+                        r"minimi[sz]e|maximi[sz]e|move|control)\\b",
+                        str(prompt),
+                        re.IGNORECASE,
+                    )
+                    if not action_cues:
+                        try:
+                            print("[JARVIS ROUTER] Groq rate-limited -> OMNIROUTE answer fallback", flush=True)
+                            return self._omniroute_answer_fallback(prompt)
+                        except Exception as fallback_exc:
+                            return (
+                                self._groq_limit_message(response)
+                                + " OmniRoute fallback failed: "
+                                + str(fallback_exc)[:180]
+                            )
+                    return (
+                        self._groq_limit_message(response)
+                        + " This request needs an action-capable route; no action was started."
+                    )
 
                 if response.status_code != 200:
                     return self._groq_limit_message(response)
