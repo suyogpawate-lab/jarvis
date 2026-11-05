@@ -35,27 +35,57 @@ def task_finished(task_id, status="complete", detail=""):
     _emit("task.update", {"id": str(task_id), "name": "JARVIS task",
                           "status": status, "detail": str(detail)[:120]})
 
+def presence_update(state):
+    _emit("presence.update", {"state": str(state)[:20]})
+
+
 def route_prompt(prompt):
-    """Route explicit show/open/play URL requests to a typed workspace surface."""
+    """Route explicit visual and window-management commands to the workspace."""
     from urllib.parse import urlsplit
     text = str(prompt or "").strip()
     low = text.lower()
-    if not low.startswith(("show ", "open ", "display ", "play ",
-                           "please show ", "please open ", "please display ", "please play ")):
+
+    for action in ("minimize", "restore", "close"):
+        prefix = action + " "
+        if low.startswith(prefix) and low.endswith(" windows"):
+            target = low[len(prefix):-len(" windows")].strip()
+            if target in ("all", "the", ""):
+                target = ""
+            _emit("surface.command", {"action": action, "title": target})
+            return True
+        if low in (action + " all windows", action + " the windows"):
+            _emit("surface.command", {"action": action, "title": ""})
+            return True
+        if low.startswith(prefix) and low.endswith(" window"):
+            target = text[len(prefix):-len(" window")].strip()
+            if target.startswith("the "):
+                target = target[4:]
+            _emit("surface.command", {"action": action, "title": target})
+            return True
+
+    prefixes = ("show ", "open ", "display ", "play ",
+                "please show ", "please open ", "please display ", "please play ")
+    if not low.startswith(prefixes):
         return False
-    url = next((part.rstrip(".,)") for part in text.split() if part.startswith(("https://", "http://"))), "")
+    url = next((part.rstrip(".,)") for part in text.split()
+                if part.startswith(("https://", "http://"))), "")
     if not url:
         return False
-    host = urlsplit(url).hostname or ""
-    path = urlsplit(url).path.lower()
+    parsed = urlsplit(url)
+    host, path = parsed.hostname or "", parsed.path.lower()
     if "youtube.com" in host or host.endswith("youtu.be"):
         kind = "youtube"
-    elif path.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+    elif path.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
         kind = "image"
     elif path.endswith((".mp4", ".webm", ".mov", ".m4v")):
         kind = "video"
+    elif path.endswith(".pdf"):
+        kind = "pdf"
+    elif path.endswith((".mp3", ".m4a", ".ogg", ".wav")):
+        kind = "audio"
     else:
         kind = "web"
-    title = {"youtube": "YouTube", "image": "Image", "video": "Video", "web": "Web page"}[kind]
+    title = {"youtube": "YouTube", "image": "Image", "video": "Video",
+             "pdf": "Document", "audio": "Audio", "web": "Browser"}[kind]
     _emit("surface.open", {"kind": kind, "title": title, "url": url, "metadata": {}})
     return True
