@@ -3070,10 +3070,10 @@ class FastAgent:
                     # This initial request has not executed any tools. A plain
                     # OmniRoute answer is safe only for non-action requests.
                     action_cues = re.search(
-                        r"\\b(?:open|launch|send|message|execute|run|install|uninstall|"
+                        r"\b(?:open|launch|send|message|execute|run|install|uninstall|"
                         r"delete|remove|create|edit|modify|fix|debug|inspect|click|tap|"
                         r"swipe|navigate|submit|purchase|book|set|start|stop|close|"
-                        r"minimi[sz]e|maximi[sz]e|move|control)\\b",
+                        r"minimi[sz]e|maximi[sz]e|move|control)\b",
                         str(prompt),
                         re.IGNORECASE,
                     )
