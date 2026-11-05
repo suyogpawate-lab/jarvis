@@ -71,7 +71,7 @@ def server_running() -> bool:
         return False
 
 
-def ensure_server(timeout: float = 60.0) -> bool:
+def ensure_server(timeout: float = 180.0) -> bool:
     """Start the exact ZIP server detached, waiting for its model warmup/socket."""
     if server_running():
         return True
