@@ -114,13 +114,21 @@ class TTSManager:
         try:
             with self._active_lock:
                 self._active_playback = True
-            self.last_provider = self._run_provider(text, speed, gen)
-            self.last_error = ""
-            return True
-        except Exception as exc:
-            self.last_provider = ""
-            self.last_error = str(exc)
-            return False
+            try:
+                self.last_provider = self._run_provider(text, speed, gen)
+                self.last_error = ""
+                return True
+            except Exception as exc:
+                primary_error = str(exc)
+                if _provider() == "say" and self._gen == gen:
+                    print(f"[TTS WARN] ZIP voice unavailable; falling back to Edge TTS: {primary_error}", flush=True)
+                    if edge_speak(text, wait=True):
+                        self.last_provider = "edge-fallback"
+                        self.last_error = ""
+                        return True
+                self.last_provider = ""
+                self.last_error = primary_error
+                return False
         finally:
             with self._active_lock:
                 self._active_playback = False
