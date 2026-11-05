@@ -1482,7 +1482,10 @@ STRICT OUTPUT RULES:
                     automation_id_match.group(1), time_clause.group(1).strip()
                 )
         if reschedule_match:
-            automation_id = reschedule_match.group(1)
+            if isinstance(reschedule_match, tuple):
+                automation_id, schedule_text = reschedule_match
+            else:
+                automation_id, schedule_text = reschedule_match.group(1), reschedule_match.group(2)
             current = self.automation.get(automation_id)
             if not current:
                 return f"[ERROR] Unknown automation: {automation_id}"
@@ -1492,7 +1495,7 @@ STRICT OUTPUT RULES:
                     f"{current.get('status', 'UNKNOWN')}; only pending scheduled tasks can be moved."
                 )
             try:
-                scheduled, zone_name = self._parse_automation_datetime(reschedule_match.group(2))
+                scheduled, zone_name = self._parse_automation_datetime(schedule_text)
             except ValueError as exc:
                 return f"[ERROR] {exc}"
             previous = current.get("next_run")
