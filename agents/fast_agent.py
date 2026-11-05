@@ -2851,14 +2851,14 @@ class FastAgent:
         return self._groq_limit_message(response)
 
     def ask(self, prompt):
-        """Return a concise, plain-prose answer capped at 99 words."""
+        """Return a concise, plain-prose answer capped at 120 words."""
         answer = self._ask_unbounded(prompt)
         answer = str(answer or "").strip()
         if not answer:
             return answer
         is_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer))
         is_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", answer))
-        if len(answer.split()) <= 99 and not is_list and not is_heading:
+        if len(answer.split()) <= 120 and not is_list and not is_heading:
             return answer
 
         # Compact only the already-produced answer. Never rerun tools or repeat
@@ -2872,11 +2872,11 @@ class FastAgent:
                         "role": "system",
                         "content": (
                             "Rewrite the supplied answer as one plain-prose paragraph of "
-                            "at most 99 words. Preserve every fact needed for correctness, "
+                            "at most 120 words. Preserve every fact needed for correctness, "
                             "all critical caveats, and uncertainty. Do not add facts. Do not "
                             "use lists, bullets, numbering, or headings. If it cannot be "
                             "accurately compressed, reply exactly: "
-                            "'I cannot fit the complete accurate answer into 99 words. "
+                            "'I cannot fit the complete accurate answer into 120 words. "
                             "Which part should I focus on?'"
                         ),
                     },
@@ -2891,13 +2891,13 @@ class FastAgent:
                 ).strip()
                 compact_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", compact))
                 compact_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", compact))
-                if compact and len(compact.split()) <= 99 and not compact_list and not compact_heading:
+                if compact and len(compact.split()) <= 120 and not compact_list and not compact_heading:
                     return compact
         except Exception as exc:
             print(f"[JARVIS OUTPUT] Concision pass unavailable: {type(exc).__name__}", flush=True)
 
         return (
-            "I cannot fit the complete accurate answer into 99 words. "
+            "I cannot fit the complete accurate answer into 120 words. "
             "Which part should I focus on?"
         )
 
