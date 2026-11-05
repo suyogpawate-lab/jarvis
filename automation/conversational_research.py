@@ -173,6 +173,8 @@ class ConversationalResearch:
         query = re.sub(r"\b(tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
         query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
         query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
+        query = re.sub(r"^\s*overnight\s+on\s+", "", query, flags=re.I)
+        query = re.sub(r"\b(?:and\s+)?show\s+me\s+(?:the\s+)?results?\b", "", query, flags=re.I)
         query = _clean(query).strip(" ,.:;")
         if len(query) < 4:
             return None
