@@ -101,6 +101,14 @@ class WorkspaceTests(unittest.TestCase):
         self.manager.presence("thinking")
         self.assertEqual(self.manager.snapshot()["jarvis_state"], "thinking")
 
+    def test_blank_browser_surface_and_safe_navigation(self):
+        item = self.manager.open_surface("browser", "Chrome")
+        self.assertEqual(item["url"], "")
+        changed = self.manager.update_surface(item["id"], {"url": "https://example.com"})
+        self.assertEqual(changed["url"], "https://example.com")
+        with self.assertRaises(ValueError):
+            self.manager.update_surface(item["id"], {"url": "http://127.0.0.1/"})
+
     def test_supports_document_and_audio_surfaces(self):
         self.manager.open_surface("pdf", "Manual", "https://example.com/manual.pdf")
         self.manager.open_surface("audio", "Audio", "https://example.com/audio.mp3")
