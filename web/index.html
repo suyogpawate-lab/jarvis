@@ -367,7 +367,7 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
    w.style.width=width+"px";w.style.height=height+"px";w.style.left=Math.max(8,Math.min(desk.clientWidth-width-8,desk.clientWidth*.08+(i%3)*65))+"px";w.style.top=Math.max(8,Math.min(desk.clientHeight-height-8,desk.clientHeight*.08+(i%3)*48))+"px";
    const bar=el("div","ws-bar"),title=el("span","ws-title",item.title),kind=el("span","ws-kind",String(item.kind).replace("_"," "));
    const mini=el("button","","−"),max=el("button","","□"),x=el("button","","×");mini.title="Minimize";max.title="Maximize / restore";x.title="Close";
-   mini.onclick=e=>{e.stopPropagation();minimize(item.id,w)};max.onclick=e=>{e.stopPropagation();w.classList.toggle("max");focus(w)};x.onclick=e=>{e.stopPropagation();close(item.id)};
+   mini.onclick=e=>{e.stopPropagation();minimize(item.id,w)};max.onclick=e=>{e.stopPropagation();const next=w.classList.contains("max")?"active":"maximized";w.classList.toggle("max",next==="maximized");focus(w);api("/api/workspace/update",{id:item.id,status:next}).catch(()=>{})};x.onclick=e=>{e.stopPropagation();close(item.id)};
    bar.append(title,kind,mini,max,x);const body=el("div","ws-body");media(item,body);w.append(bar,body);desk.append(w);
    w.addEventListener("pointerdown",()=>focus(w));
    let drag=null;bar.addEventListener("pointerdown",e=>{if(e.target.closest("button")||w.classList.contains("max"))return;focus(w);const r=w.getBoundingClientRect();drag={x:e.clientX-r.left,y:e.clientY-r.top};bar.setPointerCapture(e.pointerId)});
@@ -378,7 +378,7 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
  function render(s){
    const incoming=new Set((s.surfaces||[]).map(x=>x.id));
    desk.querySelectorAll(".ws-win").forEach(w=>{if(!incoming.has(w.dataset.id))w.remove()});
-   dock.replaceChildren();(s.surfaces||[]).forEach((item,i)=>{const w=makeWindow(item,i);if(item.status==="minimized"){w.classList.add("min");const b=el("button","",item.title);b.dataset.id=item.id;b.onclick=()=>restore(item.id);dock.append(b)}});
+   dock.replaceChildren();(s.surfaces||[]).forEach((item,i)=>{const w=makeWindow(item,i);w.classList.toggle("max",item.status==="maximized");if(item.status==="minimized"){w.classList.add("min");const b=el("button","",item.title);b.dataset.id=item.id;b.onclick=()=>restore(item.id);dock.append(b)}else w.classList.remove("min")});
    if(incoming.size&&!enabled){enabled=true;layer.classList.add("enabled")}
  }
  const refresh=async()=>{try{render(await api("/api/workspace/snapshot"))}catch(e){console.warn("[JARVIS workspace]",e)}};
