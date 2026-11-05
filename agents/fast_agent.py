@@ -688,7 +688,7 @@ class FastAgent:
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["minimize", "restore", "close"]},
+                            "action": {"type": "string", "enum": ["minimize", "restore", "maximize", "focus", "close"]},
                             "title": {"type": "string", "description": "Window title or distinctive part; use empty string for all windows."}
                         },
                         "required": ["action"]
