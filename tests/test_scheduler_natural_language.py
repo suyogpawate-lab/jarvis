@@ -78,6 +78,7 @@ class SchedulerNaturalLanguageTests(unittest.TestCase):
             "id": "auto-96307a83", "status": "SCHEDULED",
             "next_run": target.timestamp(), "command": "research robotics",
         }
+        dispatcher.research = Mock()
         request = (
             "Do NOT start or execute any research. This is a scheduler-management operation only. "
             "Find auto-96307a83. Change ONLY its execution time to "
@@ -88,7 +89,7 @@ class SchedulerNaturalLanguageTests(unittest.TestCase):
         dispatcher.automation.reschedule.assert_called_once_with(
             "auto-96307a83", target.timestamp()
         )
-        dispatcher.research = Mock()
+        dispatcher.research.parse_request.assert_not_called()
         dispatcher.research.research_now.assert_not_called()
 
     def test_reschedule_rejects_non_pending_task(self):
