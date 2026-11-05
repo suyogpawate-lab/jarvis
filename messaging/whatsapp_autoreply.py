@@ -117,11 +117,14 @@ class WhatsAppAutoReplyWorker:
                 "type": "GROUP_CONFIRMATION",
                 **pending,
             })
+        # Keep reviews pending until decided, but notify the owner only once
+        # across process restarts.
         for pending in self.pending_reply_reviews.values():
-            self._events.put({
-                "type": "REPLY_REVIEW",
-                **pending,
-            })
+            if not pending.get("owner_notified"):
+                self._events.put({
+                    "type": "REPLY_REVIEW",
+                    **pending,
+                })
 
     @staticmethod
     def _load_json(path, default):
@@ -243,9 +246,10 @@ class WhatsAppAutoReplyWorker:
         return "\n".join(lines) if lines else "(No previous conversation context.)"
 
     def drain_events(self, event_type=None):
-        """Return queued UI events, optionally preserving events of other types."""
+        """Return queued UI events and persist one-time owner notifications."""
         events = []
         preserved = []
+        reviews_changed = False
 
         while True:
             try:
@@ -254,11 +258,19 @@ class WhatsAppAutoReplyWorker:
                 break
             if event_type is None or event.get("type") == event_type:
                 events.append(event)
+                if event.get("type") == "REPLY_REVIEW":
+                    review_id = str(event.get("review_id") or "")
+                    pending = getattr(self, "pending_reply_reviews", {}).get(review_id)
+                    if pending is not None and not pending.get("owner_notified"):
+                        pending["owner_notified"] = True
+                        reviews_changed = True
             else:
                 preserved.append(event)
 
         for event in preserved:
             self._events.put(event)
+        if reviews_changed:
+            self._save_state()
         return events
 
     def prepare_explicit_group_message(self, recipient, message):
@@ -1121,6 +1133,7 @@ class WhatsAppAutoReplyWorker:
                     "reason": decision.get("reason", "Insufficient reliable context."),
                     "evidence": decision.get("evidence", ""),
                     "created_at": int(time.time()),
+                    "owner_notified": False,
                 }
                 # ask_owner means owner attention is genuinely required.
                 # Acknowledge the contact, then queue a separate owner review.
