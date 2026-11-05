@@ -19,6 +19,16 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(parsed["timing"], "now")
         self.assertIn("robotics", parsed["query"])
 
+    def test_scheduler_management_text_is_not_research_intent(self):
+        requests = (
+            "Reschedule auto-96307a83 to 2026-11-06 at 05:00 IST",
+            "Do NOT start research; find the existing task and preserve its research prompt",
+            "Change only the execution time of my scheduled research task",
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                self.assertIsNone(ConversationalResearch.parse_request(request))
+
     def test_parses_tonight_and_explicit_time(self):
         tonight = ConversationalResearch.parse_request(
             "Research semiconductor advances tonight and brief me"
