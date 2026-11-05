@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07131b"><title>JARVIS Workspace</title>
+<style>
+:root{color-scheme:dark;--bg:#061018;--panel:#0c1c27;--line:#174354;--cyan:#5ce7ee;--muted:#8daab6;--text:#e4f7fa}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -15%,#123747 0,transparent 55%),var(--bg);color:var(--text);font:14px system-ui,sans-serif;min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#061018eF;backdrop-filter:blur(14px);z-index:5}
+.brand{letter-spacing:.2em;color:var(--cyan);font-weight:800}.status{color:var(--muted);font-size:12px}
+main{max-width:1400px;margin:auto;padding:18px}.hero{display:flex;align-items:center;gap:14px;margin:6px 0 18px}
+.orb{width:56px;height:56px;border-radius:50%;border:1px solid var(--cyan);box-shadow:0 0 25px #36dbe655,inset 0 0 18px #36dbe644;display:grid;place-items:center;color:var(--cyan);font-weight:800;animation:pulse 3s infinite}
+@keyframes pulse{50%{box-shadow:0 0 38px #36dbe988,inset 0 0 24px #36dbe666}}
+h1{font-size:20px;margin:0}.sub{color:var(--muted);margin-top:3px}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.metric,.surface,.toolbar{background:linear-gradient(145deg,#102431,#091721);border:1px solid var(--line);border-radius:14px}
+.metric{padding:12px}.metric small{display:block;color:var(--muted)}.metric strong{font-size:18px;color:var(--cyan)}
+.toolbar{padding:12px;display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+input,select,button{background:#0b202c;color:var(--text);border:1px solid #245163;border-radius:9px;padding:10px;font:inherit}
+input{flex:1;min-width:170px}button{cursor:pointer}button.primary{background:#0b4551;border-color:#3bc9d1;color:#eaffff}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.surface{min-height:190px;overflow:hidden;display:flex;flex-direction:column;transition:transform .18s,border-color .18s}.surface:hover{transform:translateY(-2px);border-color:var(--cyan)}
+.surface-head{padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+.surface-head b{font-size:13px}.surface-body{padding:12px;flex:1;min-height:130px}.surface iframe,.surface video,.surface img{width:100%;height:220px;border:0;object-fit:contain;background:#02080d;border-radius:8px}
+.surface-actions{display:flex;gap:6px}.surface-actions button{padding:5px 8px;font-size:12px}.pill{font-size:10px;color:var(--cyan);border:1px solid #245163;border-radius:99px;padding:3px 7px}
+.task{padding:8px 0;border-bottom:1px solid #163644}.task:last-child{border:0}.muted{color:var(--muted)}.empty{color:var(--muted);padding:25px;text-align:center;border:1px dashed #245163;border-radius:12px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:580px){main{padding:12px}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{align-items:flex-start}}
+</style></head><body>
+<header><div class="brand">J.A.R.V.I.S. / WORKSPACE</div><div class="status" id="connection">CONNECTING</div></header>
+<main><section class="hero"><div class="orb">J</div><div><h1>Multi-surface command workspace</h1><div class="sub">Six live surfaces · task telemetry · connected controls</div></div></section>
+<section class="metrics">
+<div class="metric"><small>ACTIVE SURFACES</small><strong id="count">0 / 6</strong></div>
+<div class="metric"><small>WORKSPACE UPTIME</small><strong id="uptime">0s</strong></div>
+<div class="metric"><small>INPUT / OUTPUT TOKENS</small><strong id="tokens">— / —</strong></div>
+<div class="metric"><small>CONFIDENCE</small><strong id="confidence">—</strong></div>
+</section>
+<section class="toolbar">
+<select id="kind"><option value="web">Web page</option><option value="youtube">YouTube</option><option value="video">Video</option><option value="image">Image</option><option value="live_screen">Live screen</option><option value="terminal">Terminal view</option><option value="app">Android app</option><option value="task">Task monitor</option><option value="tools">Tools / MCP</option><option value="telemetry">Telemetry</option></select>
+<input id="url" placeholder="URL or app package (where applicable)">
+<input id="title" placeholder="Surface title">
+<button class="primary" id="open">Open surface</button>
+</section>
+<section id="surfaces" class="grid"><div class="empty">Waiting for JARVIS surfaces…</div></section>
+<h2 style="font-size:15px;margin:22px 0 8px">LIVE TASKS & SIDE QUESTS</h2><section id="tasks" class="surface" style="padding:12px"><span class="muted">No task events yet.</span></section>
+</main>
+<script>
+const TOKEN="__TOKEN__", surfaces=document.querySelector("#surfaces");
+async function post(path,data){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Token":TOKEN},body:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw Error(j.error||"Request failed");return j}
+function el(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
+function render(s){
+ document.querySelector("#count").textContent=s.surfaces.length+" / 6";
+ document.querySelector("#uptime").textContent=Math.round(s.uptime_seconds)+"s";
+ const t=s.telemetry||{};document.querySelector("#tokens").textContent=(t.input_tokens??"—")+" / "+(t.output_tokens??"—");
+ document.querySelector("#confidence").textContent=t.confidence==null?"—":Math.round(t.confidence*100)+"%";
+ surfaces.replaceChildren();
+ if(!s.surfaces.length)surfaces.append(el("div","empty","No active surfaces. Open one or let JARVIS create it."));
+ for(const item of s.surfaces){
+  const card=el("article","surface"),head=el("div","surface-head"),name=el("b","",item.title),pill=el("span","pill",item.kind);
+  const actions=el("div","surface-actions"),close=el("button","","×");close.title="Close surface";close.onclick=()=>post("/api/surfaces/close",{id:item.id}).catch(alert);
+  actions.append(pill,close);head.append(name,actions);const body=el("div","surface-body");
+  if(["web","youtube","video","image"].includes(item.kind)&&item.url){
+   let media;if(item.kind==="image"){media=el("img");media.src=item.url;media.alt=item.title}
+   else if(item.kind==="video"){media=el("video");media.src=item.url;media.controls=true;media.autoplay=true;media.onended=()=>post("/api/surfaces/close",{id:item.id}).catch(()=>{})}
+   else {media=el("iframe");media.src=item.kind==="youtube"?youtubeEmbed(item.url):item.url;media.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";media.referrerPolicy="no-referrer"}
+   body.append(media);
+  }else if(item.kind==="live_screen"){body.append(el("p","muted","Live Android screen is supplied by the existing screen-cast service. Connect its authenticated frame endpoint to this surface to display pixels."))}
+  else if(item.kind==="app"){body.append(el("p","muted","Android app control uses the device accessibility bridge. Native apps remain foreground-controlled; six independent native app windows are not provided by Android's web embedding model."))}
+  else if(item.kind==="task"){body.append(el("p","muted","Task events and side quests appear in the live task feed below."))}
+  else if(item.kind==="tools"){body.append(el("p","muted","Tool and MCP activity is populated by JARVIS telemetry events."))}
+  else if(item.kind==="telemetry"){body.append(el("p","muted","Model: "+(t.model||"not reported")+" · Tools: "+((t.tools||[]).join(", ")||"not reported")))}
+  else body.append(el("p","muted",item.kind==="terminal"?"Terminal output is intentionally not mirrored until a redacted, read-only stream is connected.":"Surface ready."));
+  card.append(head,body);surfaces.append(card);
+ }
+ const tasks=document.querySelector("#tasks");tasks.replaceChildren();
+ if(!s.tasks.length)tasks.append(el("span","muted","No task events yet."));
+ for(const task of s.tasks){const row=el("div","task");row.append(el("b","",task.name||task.id),el("span","pill",task.status),el("div","muted",task.detail||""));tasks.append(row)}
+}
+function youtubeEmbed(url){try{const u=new URL(url);let id=u.hostname.includes("youtu.be")?u.pathname.slice(1):u.searchParams.get("v");return "https://www.youtube-nocookie.com/embed/"+encodeURIComponent(id||"")+"?autoplay=1&enablejsapi=1"}catch{return url}}
+async function refresh(){const s=await (await fetch("/api/snapshot")).json();render(s)}
+document.querySelector("#open").onclick=async()=>{try{const kind=document.querySelector("#kind").value,url=document.querySelector("#url").value,title=document.querySelector("#title").value||kind;await post("/api/surfaces/open",{kind,url,title});document.querySelector("#url").value="";await refresh()}catch(e){alert(e.message)}};
+refresh();const es=new EventSource("/events");es.onopen=()=>document.querySelector("#connection").textContent="LIVE";es.onerror=()=>document.querySelector("#connection").textContent="RECONNECTING";es.onmessage=refresh;
+for(const type of ["surface.open","surface.close","surface.update","task.update","telemetry.update"])es.addEventListener(type,refresh);
+</script></body></html>
