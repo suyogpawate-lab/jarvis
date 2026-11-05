@@ -34,3 +34,28 @@ def task_finished(task_id, status="complete", detail=""):
         status = "complete"
     _emit("task.update", {"id": str(task_id), "name": "JARVIS task",
                           "status": status, "detail": str(detail)[:120]})
+
+def route_prompt(prompt):
+    """Route explicit show/open/play URL requests to a typed workspace surface."""
+    from urllib.parse import urlsplit
+    text = str(prompt or "").strip()
+    low = text.lower()
+    if not low.startswith(("show ", "open ", "display ", "play ",
+                           "please show ", "please open ", "please display ", "please play ")):
+        return False
+    url = next((part.rstrip(".,)") for part in text.split() if part.startswith(("https://", "http://"))), "")
+    if not url:
+        return False
+    host = urlsplit(url).hostname or ""
+    path = urlsplit(url).path.lower()
+    if "youtube.com" in host or host.endswith("youtu.be"):
+        kind = "youtube"
+    elif path.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+        kind = "image"
+    elif path.endswith((".mp4", ".webm", ".mov", ".m4v")):
+        kind = "video"
+    else:
+        kind = "web"
+    title = {"youtube": "YouTube", "image": "Image", "video": "Video", "web": "Web page"}[kind]
+    _emit("surface.open", {"kind": kind, "title": title, "url": url, "metadata": {}})
+    return True

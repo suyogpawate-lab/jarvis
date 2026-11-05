@@ -8,6 +8,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from workspace.manager import WorkspaceManager
 
@@ -17,6 +18,42 @@ TOKEN = secrets.token_urlsafe(24)
 ROOT = Path(__file__).resolve().parent
 PAGE = ROOT / "web" / "workspace.html"
 manager = WorkspaceManager()
+_EVENT_FILE = ROOT / "data" / "workspace_events.jsonl"
+
+
+def watch_ui_events():
+    position = 0
+    while True:
+        try:
+            with _EVENT_FILE.open("r", encoding="utf-8") as stream:
+                stream.seek(position)
+                while True:
+                    line = stream.readline()
+                    if not line:
+                        break
+                    position = stream.tell()
+                    try:
+                        record = json.loads(line)
+                        data = record.get("data") or {}
+                        if record.get("event") == "task.update":
+                            manager.task_event(data.get("id"), data.get("name"),
+                                               data.get("status", "active"), data.get("detail", ""))
+                        elif record.get("event") == "surface.open":
+                            manager.open_surface(data.get("kind"), data.get("title"),
+                                                 data.get("url", ""), data.get("metadata"))
+                    except (ValueError, TypeError, OverflowError):
+                        continue
+        except OSError:
+            pass
+        time.sleep(0.35)
+
+
+def android_control(payload):
+    body = json.dumps(payload).encode("utf-8")
+    req = Request("http://127.0.0.1:21339/control", data=body,
+                  headers={"Content-Type": "application/json"}, method="POST")
+    with urlopen(req, timeout=4) as response:
+        return json.loads(response.read(16384).decode("utf-8"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -113,6 +150,25 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/telemetry":
                 item = manager.telemetry(data)
                 return self.send(200, json.dumps({"ok": True, "telemetry": item}))
+            if path == "/api/apps/launch":
+                package = str(data.get("package", "")).strip()
+                import re
+                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+", package):
+                    return self.send(400, '{"ok":false,"error":"invalid Android package name"}')
+                result = android_control({"action": "launch_app", "package": package})
+                return self.send(200 if result.get("ok") else 503, json.dumps(result))
+            if path == "/api/apps/control":
+                action = str(data.get("action", ""))
+                allowed_actions = {"tap", "swipe", "type", "back", "home", "recents",
+                                   "notifications", "click_element"}
+                if action not in allowed_actions:
+                    return self.send(400, '{"ok":false,"error":"unsupported Android action"}')
+                payload = {"action": action}
+                for key in ("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "element_index", "text"):
+                    if key in data:
+                        payload[key] = data[key]
+                result = android_control(payload)
+                return self.send(200 if result.get("ok") else 503, json.dumps(result))
             if path == "/api/intent":
                 text = str(data.get("text", "")).strip()
                 low = text.lower()
@@ -137,6 +193,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    threading.Thread(target=watch_ui_events, daemon=True).start()
     print(f"[JARVIS WORKSPACE] http://{HOST}:{PORT}", flush=True)
     print(f"[JARVIS WORKSPACE] Token: {TOKEN}", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

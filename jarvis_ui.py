@@ -196,8 +196,9 @@ def work(text, gen=None, source="typed"):
     set_local("thinking")
     workspace_task_id = f"ui-{gen}-{int(time.time())}"
     try:
-        from workspace.bridge import task_started as _ws_task_started
+        from workspace.bridge import task_started as _ws_task_started, route_prompt as _ws_route_prompt
         _ws_task_started(workspace_task_id, text, source)
+        _ws_route_prompt(text)
     except Exception:
         pass
     try:
