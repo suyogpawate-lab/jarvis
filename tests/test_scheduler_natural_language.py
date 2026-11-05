@@ -16,8 +16,8 @@ class SchedulerNaturalLanguageTests(unittest.TestCase):
 
     def test_reschedule_command_updates_only_existing_scheduled_task(self):
         zone = ZoneInfo("Asia/Kolkata")
-        old_run = datetime.now(zone) + timedelta(hours=3)
-        new_run = datetime.now(zone) + timedelta(days=2)
+        old_run = (datetime.now(zone) + timedelta(hours=3)).replace(second=0, microsecond=0)
+        new_run = (datetime.now(zone) + timedelta(days=2)).replace(second=0, microsecond=0)
         dispatcher = self.dispatcher()
         dispatcher.automation.get.return_value = {
             "id": "auto-96307a83",
@@ -44,7 +44,7 @@ class SchedulerNaturalLanguageTests(unittest.TestCase):
 
     def test_dispatch_routes_scheduler_command_before_research_parser(self):
         zone = ZoneInfo("Asia/Kolkata")
-        target = datetime.now(zone) + timedelta(days=2)
+        target = (datetime.now(zone) + timedelta(days=2)).replace(second=0, microsecond=0)
         dispatcher = self.dispatcher()
         dispatcher.automation.get.return_value = {
             "id": "auto-96307a83",
