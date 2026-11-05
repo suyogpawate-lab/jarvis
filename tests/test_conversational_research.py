@@ -41,6 +41,24 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(at_time["schedule_at"], "at 7:30 pm")
         self.assertNotIn("7:30", at_time["query"])
 
+    def test_tomorrow_research_preserves_explicit_requested_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ConversationalResearch(Mock(), Mock(), Path(directory) / "missions.json")
+            scheduler = Mock()
+            scheduler.schedule.return_value = {"id": "auto-1234abcd", "next_run": 1790000000}
+            zone = ZoneInfo("Asia/Kolkata")
+            parsed = ConversationalResearch.parse_request(
+                "Research robotics tomorrow at 5 AM"
+            )
+            self.assertEqual(parsed["timing"], "tomorrow")
+            self.assertEqual(parsed["schedule_at"], "at 5 am")
+            manager.schedule(parsed["query"], parsed["timing"], scheduler, zone,
+                             schedule_at=parsed["schedule_at"])
+            run_at = datetime.fromtimestamp(scheduler.schedule.call_args.kwargs["run_at"], zone)
+            expected_date = datetime.now(zone).date().fromordinal(datetime.now(zone).date().toordinal() + 1)
+            self.assertEqual(run_at.date(), expected_date)
+            self.assertEqual((run_at.hour, run_at.minute), (5, 0))
+
     def test_monitoring_request_becomes_daily_recurrence(self):
         parsed = ConversationalResearch.parse_request(
             "Keep track of semiconductor developments and notify me when something significant happens"
