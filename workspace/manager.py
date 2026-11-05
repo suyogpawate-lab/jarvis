@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from urllib.parse import urlsplit
+import ipaddress
 
 MAX_SURFACES = 6
 KINDS = {"web", "youtube", "video", "image", "live_screen", "terminal", "app", "task", "tools", "telemetry"}
@@ -27,9 +28,18 @@ def _safe_url(value):
     parsed = urlsplit(value)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ValueError("Only http(s) URLs are supported")
-    host = parsed.hostname.lower()
-    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local"):
+    host = parsed.hostname.lower().rstrip(".")
+    if parsed.username or parsed.password:
+        raise ValueError("URLs containing embedded credentials are not allowed")
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
         raise ValueError("Local network URLs are not allowed in embedded surfaces")
+    try:
+        address = ipaddress.ip_address(host)
+        if not address.is_global:
+            raise ValueError("Private and reserved IP addresses are not allowed in embedded surfaces")
+    except ValueError as exc:
+        if "not allowed" in str(exc):
+            raise
     return value[:2048]
 
 
@@ -54,7 +64,7 @@ class WorkspaceManager:
         if kind not in KINDS:
             raise ValueError("Unsupported surface type")
         title = _clean_text(title) or kind.replace("_", " ").title()
-        if kind in {"web", "youtube", "video", "image"}:
+        if kind in {"web", "browser", "youtube", "video", "image", "pdf", "audio", "document"}:
             url = _safe_url(url)
         else:
             url = ""
