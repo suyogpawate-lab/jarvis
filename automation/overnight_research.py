@@ -165,7 +165,7 @@ class OvernightResearch:
         self._threads = {}
         self._state = self._load()
         for item in self._state.get("missions", []):
-            if item.get("status") in {"COLLECTING", "ANALYZING"}:
+            if item.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}:
                 item["status"] = "PAUSED_RECOVERY"
                 item["updated_at"] = time.time()
                 item["recovery_note"] = "JARVIS restarted. Resume explicitly to continue from saved evidence."
@@ -272,7 +272,7 @@ class OvernightResearch:
                 return f"[RESEARCH] Mission {mission_id} is already active."
             if mission.get("status") == "COMPLETED":
                 return f"[RESEARCH] Mission {mission_id} is already complete: {mission.get('report_file')}"
-            if mission.get("status") not in {"PAUSED_RECOVERY", "CANCELLED", "FAILED", "ANALYSIS_FAILED"}:
+            if mission.get("status") not in {"PAUSED_RECOVERY", "CANCELLED", "CANCEL_REQUESTED", "FAILED", "ANALYSIS_FAILED"}:
                 return f"[ERROR] Mission cannot be resumed from {mission.get('status')}."
             resume_analysis = str(mission.get("phase", "")).startswith("analysis")
             mission["status"] = "ANALYZING" if resume_analysis else "COLLECTING"
@@ -502,14 +502,15 @@ class OvernightResearch:
         if configured:
             roots = configured
         else:
-            roots = [Path.home(), Path.cwd(),
+            repository_root = Path(__file__).resolve().parents[1]
+            roots = [repository_root,
                      Path.home() / "storage" / "shared" / "Documents",
                      Path.home() / "storage" / "shared" / "Download"]
         unique = []
         for root in roots:
             try:
                 resolved = root.resolve(strict=True)
-                if resolved.is_dir() and resolved not in unique and not any(
+                if resolved != Path("/") and resolved.is_dir() and resolved not in unique and not any(
                     parent == resolved or parent in resolved.parents for parent in unique
                 ):
                     unique.append(resolved)
@@ -533,7 +534,10 @@ class OvernightResearch:
                     if scanned >= MAX_LOCAL_FILES:
                         return
                     path = Path(current) / filename
-                    if filename.lower() in SKIP_NAMES or path.suffix.lower() not in TEXT_SUFFIXES:
+                    lowered_name = filename.lower()
+                    if (lowered_name in SKIP_NAMES
+                            or any(term in lowered_name for term in ("credential", "secret", "password", "token", "private_key"))
+                            or path.suffix.lower() not in TEXT_SUFFIXES):
                         continue
                     try:
                         if path.is_symlink() or path.stat().st_size > MAX_LOCAL_FILE_BYTES:
@@ -563,6 +567,7 @@ class OvernightResearch:
                         self._update(mission["id"], local_files_scanned=scanned,
                                      progress=f"Scanned {scanned} local text files.")
         self._update(mission["id"], local_files_scanned=scanned,
+                     source_count=mission.get("source_count", 0),
                      progress=f"Local scan complete: {scanned} text files inspected across {len(roots)} roots.")
 
     def _knowledge_hub(self, mission, seen):
