@@ -33,7 +33,7 @@ class OvernightResearchTests(unittest.TestCase):
             text = (
                 "JARVIS architecture and Android compatibility findings. "
                 "The memory manager has a bounded cache and deterministic startup. "
-                "api_key=super-secret-value must never leave this device."
+                "\\napi_key=super-secret-value must never leave this device."
             )
             self.assertTrue(manager._append_evidence(mission, {
                 "provider": "local_file", "title": "notes.md",
@@ -53,22 +53,24 @@ class OvernightResearchTests(unittest.TestCase):
     def test_model_analysis_uses_only_omniroute_transport(self):
         agent = Mock()
         agent._omniroute_request.return_value = "Analysis complete."
-        manager = OvernightResearch(Mock(), agent)
-        answer = manager._omni(
-            [{"role": "user", "content": "Analyze this evidence."}],
-            "Research analyst",
-        )
-        self.assertEqual(answer, "Analysis complete.")
-        agent._omniroute_request.assert_called_once()
-        self.assertEqual(agent._omniroute_request.call_args.kwargs["timeout"], 90)
+        with tempfile.TemporaryDirectory() as directory:
+            manager = OvernightResearch(Mock(), agent, Path(directory) / "state.json")
+            answer = manager._omni(
+                [{"role": "user", "content": "Analyze this evidence."}],
+                "Research analyst",
+            )
+            self.assertEqual(answer, "Analysis complete.")
+            agent._omniroute_request.assert_called_once()
+            self.assertEqual(agent._omniroute_request.call_args.kwargs["timeout"], 90)
 
     def test_deterministic_query_expansion_does_not_call_a_model(self):
         agent = Mock()
-        manager = OvernightResearch(Mock(), agent)
-        queries = manager._queries("JARVIS Android 10 1GB RAM")
-        self.assertEqual(len(queries), 6)
-        self.assertIn("JARVIS Android 10 1GB RAM research papers studies", queries)
-        agent._omniroute_request.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            manager = OvernightResearch(Mock(), agent, Path(directory) / "state.json")
+            queries = manager._queries("JARVIS Android 10 1GB RAM")
+            self.assertEqual(len(queries), 6)
+            self.assertIn("JARVIS Android 10 1GB RAM research papers studies", queries)
+            agent._omniroute_request.assert_not_called()
 
     def test_search_result_is_persisted_without_model_synthesis(self):
         provider = Mock()
@@ -85,8 +87,8 @@ class OvernightResearchTests(unittest.TestCase):
         hub = Mock()
         hub.providers = [provider]
         agent = Mock()
-        manager = OvernightResearch(hub, agent)
         with tempfile.TemporaryDirectory() as directory:
+            manager = OvernightResearch(hub, agent, Path(directory) / "state.json")
             mission_dir = Path(directory)
             mission = {
                 "id": "overnight-test",
