@@ -222,7 +222,7 @@ class OvernightResearch:
         hours = max(1.0, min(hours, 16.0))
         with self._lock:
             active = next((m for m in reversed(self._state["missions"])
-                           if m.get("status") in {"COLLECTING", "ANALYZING"}), None)
+                           if m.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}), None)
             if active:
                 return (f"[RESEARCH] Mission {active['id']} is already active. "
                         "Use research status or cancel it before starting another.")
@@ -268,7 +268,7 @@ class OvernightResearch:
             mission = self._mission(mission_id)
             if not mission:
                 return f"[ERROR] Overnight research mission not found: {mission_id}"
-            if mission.get("status") in {"COLLECTING", "ANALYZING"}:
+            if mission.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}:
                 return f"[RESEARCH] Mission {mission_id} is already active."
             if mission.get("status") == "COMPLETED":
                 return f"[RESEARCH] Mission {mission_id} is already complete: {mission.get('report_file')}"
