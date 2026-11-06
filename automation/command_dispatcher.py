@@ -81,6 +81,9 @@ class CommandDispatcher:
         self.deep_search = DeepSearch(self.search_hub, self.fast_agent)
         self.fast_agent.deep_search = self.deep_search
 
+        # Initialize research before scheduler/autonomy workers can dispatch callbacks.
+        self.research = ConversationalResearch(self.search_hub, self.deep_search)
+
         # Groq calls WhatsApp through a tool; the dispatcher owns the
         # actual send (group confirmation gate, contact/group resolution).
         self.fast_agent.whatsapp_send_handler = self._whatsapp_tool_send
@@ -149,8 +152,6 @@ class CommandDispatcher:
             self.overnight_planner.start()
 
         # Voice and text share dispatch(), so research uses one intake path.
-        self.research = ConversationalResearch(self.search_hub, self.deep_search)
-
     def _aie_plan_provider(self, goal):
         capabilities = {
             "research.search": {"purpose": "Search public research sources.", "arguments": {"topic": "string 5-240 chars", "limit": "integer 1-5"}},
