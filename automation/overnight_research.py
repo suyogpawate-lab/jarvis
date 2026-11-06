@@ -574,10 +574,9 @@ class OvernightResearch:
                            and not (Path(current) / d).is_symlink()]
                 for filename in files:
                     if (self._cancel[mission["id"]].is_set()
-                            or mission.get("corpus_limit_reached")):
-                        return
-                    if scanned >= MAX_LOCAL_FILES:
-                        return
+                            or mission.get("corpus_limit_reached")
+                            or scanned >= MAX_LOCAL_FILES):
+                        break
                     path = Path(current) / filename
                     lowered_name = filename.lower()
                     if (lowered_name in SKIP_NAMES
@@ -611,6 +610,10 @@ class OvernightResearch:
                     if scanned % 500 == 0:
                         self._update(mission["id"], local_files_scanned=scanned,
                                      progress=f"Scanned {scanned} local text files.")
+                if (self._cancel[mission["id"]].is_set()
+                        or mission.get("corpus_limit_reached")
+                        or scanned >= MAX_LOCAL_FILES):
+                    break
         mission["local_scan_warnings"].extend(walk_errors[-50:])
         self._update(mission["id"], local_files_scanned=scanned,
                      source_count=mission.get("source_count", 0),
