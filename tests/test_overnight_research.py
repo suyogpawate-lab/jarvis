@@ -84,7 +84,7 @@ class OvernightResearchTests(unittest.TestCase):
                         "id": f"S{index:04d}",
                         "kind": "web_page",
                         "content": ("technical evidence " + str(index) + " ") * 500,
-                    }) + "\\n")
+                    }) + "\n")
             mission = {"evidence_file": str(evidence)}
             batches = list(manager._iter_batches(mission))
             collected = [item["id"] for batch in batches for item in batch]
