@@ -2,8 +2,9 @@
 """Prepare Piper VITS assets for sherpa-onnx.
 
 Downloads the upstream Piper model/config, preserves the versioned JARVIS token
-maps, and embeds the metadata sherpa-onnx requires in the ONNX graph. Existing
-models are processed too; this makes the operation safe to rerun.
+maps, and writes the metadata sherpa-onnx requires directly into the ONNX
+protobuf wire format. This avoids compiling the optional onnx Python package
+on constrained platforms such as Android/Termux.
 """
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ import sys
 import tempfile
 import urllib.request
 from pathlib import Path
-from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
@@ -28,6 +28,10 @@ VOICES = {
         "remote": "en/en_US/bryce/medium",
     },
 }
+
+# ONNX ModelProto.metadata_props is repeated StringStringEntryProto field 14.
+# StringStringEntryProto stores key in field 1 and value in field 2.
+_METADATA_FIELD_NUMBER = 14
 
 
 def download(url: str, destination: Path, minimum: int = 100) -> None:
@@ -77,8 +81,7 @@ def _metadata_from_piper_config(config_path: Path) -> dict[str, str]:
             f"Invalid Piper model configuration {config_path}: {exc}"
         ) from exc
 
-    # sherpa-onnx's Piper conversion recipe maps legacy 22500 Hz metadata to
-    # 22050 Hz, which is the supported VITS output rate for these voice files.
+    # Sherpa's Piper conversion recipe maps legacy 22500 Hz metadata to 22050 Hz.
     if sample_rate == 22500:
         sample_rate = 22050
     if not language or not voice or speakers < 1 or sample_rate <= 0:
@@ -95,30 +98,115 @@ def _metadata_from_piper_config(config_path: Path) -> dict[str, str]:
     }
 
 
-def add_sherpa_metadata(model_path: Path, config_path: Path) -> None:
-    """Atomically add/repair sherpa-onnx metadata, retaining a backup."""
-    try:
-        import onnx
-    except ImportError as exc:
-        raise RuntimeError(
-            "The ONNX editing package is required to prepare Sherpa voices. "
-            "Install it with: python -m pip install onnx"
-        ) from exc
+def _read_varint(data: bytes, offset: int) -> tuple[int, int]:
+    value = 0
+    shift = 0
+    while offset < len(data) and shift < 70:
+        byte = data[offset]
+        offset += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, offset
+        shift += 7
+    raise RuntimeError("Malformed ONNX protobuf: invalid varint")
 
-    metadata = _metadata_from_piper_config(config_path)
-    model = onnx.load(str(model_path), load_external_data=True)
-    current = {item.key: item.value for item in model.metadata_props}
-    if all(current.get(key) == value for key, value in metadata.items()):
-        print(f"[SHERPA] Metadata already valid: {model_path.name}")
+
+def _encode_varint(value: int) -> bytes:
+    if value < 0:
+        raise ValueError("protobuf varints must be non-negative")
+    result = bytearray()
+    while value > 0x7F:
+        result.append((value & 0x7F) | 0x80)
+        value >>= 7
+    result.append(value)
+    return bytes(result)
+
+
+def _encode_metadata_entry(key: str, value: str) -> bytes:
+    key_bytes = key.encode("utf-8")
+    value_bytes = value.encode("utf-8")
+    entry = (
+        b"\x0a" + _encode_varint(len(key_bytes)) + key_bytes
+        + b"\x12" + _encode_varint(len(value_bytes)) + value_bytes
+    )
+    tag = (_METADATA_FIELD_NUMBER << 3) | 2
+    return _encode_varint(tag) + _encode_varint(len(entry)) + entry
+
+
+def _replace_model_metadata(model_data: bytes, metadata: dict[str, str]) -> bytes:
+    """Replace ModelProto field 14 while preserving every other wire field."""
+    offset = 0
+    preserved = bytearray()
+    found_fields = 0
+
+    while offset < len(model_data):
+        field_start = offset
+        tag, offset = _read_varint(model_data, offset)
+        field_number, wire_type = tag >> 3, tag & 7
+        if field_number == 0:
+            raise RuntimeError("Malformed ONNX protobuf: field number zero")
+
+        if wire_type == 0:
+            _, offset = _read_varint(model_data, offset)
+        elif wire_type == 1:
+            offset += 8
+        elif wire_type == 2:
+            length, offset = _read_varint(model_data, offset)
+            offset += length
+        elif wire_type == 5:
+            offset += 4
+        else:
+            raise RuntimeError(
+                f"Unsupported protobuf wire type {wire_type} in ONNX ModelProto"
+            )
+
+        if offset > len(model_data):
+            raise RuntimeError("Malformed ONNX protobuf: field exceeds file size")
+
+        if field_number == _METADATA_FIELD_NUMBER:
+            if wire_type != 2:
+                raise RuntimeError("Malformed ONNX metadata_props field")
+            found_fields += 1
+        else:
+            preserved.extend(model_data[field_start:offset])
+
+    if offset != len(model_data):
+        raise RuntimeError("Malformed ONNX protobuf: trailing bytes")
+
+    for key, value in metadata.items():
+        preserved.extend(_encode_metadata_entry(key, value))
+    print(f"[SHERPA] Replaced {found_fields} existing metadata field(s)")
+    return bytes(preserved)
+
+
+def _validate_with_onnxruntime(model_path: Path) -> None:
+    """Use the already-installed inference runtime when available."""
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        print("[SHERPA] onnxruntime not installed; protobuf structure checked only")
         return
 
-    # Replace the metadata set rather than appending duplicate keys. Sherpa
-    # reads these keys from the ONNX ModelProto metadata_props field.
-    del model.metadata_props[:]
-    for key, value in metadata.items():
-        entry = model.metadata_props.add()
-        entry.key = key
-        entry.value = value
+    session = ort.InferenceSession(
+        str(model_path), providers=["CPUExecutionProvider"]
+    )
+    if not session.get_inputs() or not session.get_outputs():
+        raise RuntimeError("ONNX Runtime loaded the model but found no inputs/outputs")
+    print(
+        "[SHERPA] ONNX Runtime validation passed "
+        f"({len(session.get_inputs())} input(s), {len(session.get_outputs())} output(s))"
+    )
+    del session
+
+
+def add_sherpa_metadata(model_path: Path, config_path: Path) -> None:
+    """Atomically add/repair sherpa-onnx metadata, retaining a backup."""
+    metadata = _metadata_from_piper_config(config_path)
+    original = model_path.read_bytes()
+    updated = _replace_model_metadata(original, metadata)
+    if updated == original:
+        print(f"[SHERPA] Metadata unchanged: {model_path.name}")
+        return
 
     fd, temp_name = tempfile.mkstemp(
         prefix=model_path.name + ".", suffix=".metadata.tmp", dir=model_path.parent
@@ -126,9 +214,8 @@ def add_sherpa_metadata(model_path: Path, config_path: Path) -> None:
     os.close(fd)
     temp = Path(temp_name)
     try:
-        onnx.save(model, str(temp))
-        # Validate the temporary graph before touching the working model.
-        onnx.checker.check_model(str(temp))
+        temp.write_bytes(updated)
+        _validate_with_onnxruntime(temp)
 
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         backup = model_path.with_name(model_path.name + f".pre-sherpa-{stamp}.bak")
@@ -157,11 +244,7 @@ def main() -> int:
         config_path = model_dir / (model_name + ".json")
 
         download(f"{BASE}/{item['remote']}/{model_name}", model_path, 50_000_000)
-        download(
-            f"{BASE}/{item['remote']}/{model_name}.json",
-            config_path,
-            100,
-        )
+        download(f"{BASE}/{item['remote']}/{model_name}.json", config_path, 100)
         add_sherpa_metadata(model_path, config_path)
 
         token_source = ROOT / "voice" / "assets" / "sherpa" / name / "tokens.txt"
