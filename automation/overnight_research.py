@@ -34,8 +34,11 @@ MAX_EVIDENCE_CHARS = 18_000
 MAX_EVIDENCE_PER_BATCH = 8
 SKIP_DIRS = {
     ".git", ".cache", ".npm", ".ollama", ".termux", ".config", ".ssh",
-    ".gnupg", "__pycache__", "node_modules", ".venv", "venv", "site-packages",
-    "models", "phonon-model", "proc", "sys", "dev",
+    ".gnupg", ".local", ".mozilla", "__pycache__", "node_modules", ".venv",
+    "venv", "site-packages", "models", "phonon-model", "proc", "sys", "dev",
+    "memory", "sessions", "whatsapp", "contacts", "auth", "keys", "secrets",
+    "credentials", "private", "personal", "backups", "logs", "DCIM",
+    "Pictures", "Movies", "Music",
 }
 SKIP_NAMES = {
     ".env", ".env.local", ".env.production", "credentials", "secrets",
