@@ -271,12 +271,14 @@ class OvernightResearch:
                 return f"[RESEARCH] Mission {mission_id} is already complete: {mission.get('report_file')}"
             if mission.get("status") not in {"PAUSED_RECOVERY", "CANCELLED", "FAILED", "ANALYSIS_FAILED"}:
                 return f"[ERROR] Mission cannot be resumed from {mission.get('status')}."
-            mission["status"] = "COLLECTING"
-            mission["phase"] = "collection"
-            mission["collection_deadline"] = max(
-                float(mission.get("collection_deadline", time.time())),
-                time.time() + 3600,
-            )
+            resume_analysis = str(mission.get("phase", "")).startswith("analysis")
+            mission["status"] = "ANALYZING" if resume_analysis else "COLLECTING"
+            mission["phase"] = "analysis" if resume_analysis else "collection"
+            if not resume_analysis:
+                mission["collection_deadline"] = max(
+                    float(mission.get("collection_deadline", time.time())),
+                    time.time() + 3600,
+                )
             mission["progress"] = "Resuming from persisted evidence."
             mission["updated_at"] = time.time()
             self._save()
