@@ -2033,13 +2033,19 @@ Rules:
         # ======================================================
         cancel_match = re.fullmatch(r"cancel\s+research\s+([A-Za-z0-9_-]+)", text, re.I)
         if cancel_match:
-            return self.research.cancel_mission(cancel_match.group(1), self.automation)
+            mission_id = cancel_match.group(1)
+            if mission_id.startswith("overnight-"):
+                return self.research.cancel_overnight(mission_id)
+            return self.research.cancel_mission(mission_id, self.automation)
 
         if re.fullmatch(r"(?:research\s+status|status\s+of\s+research|monitoring\s+status)", text, re.I):
             return json.dumps(self.research.status(self.automation), indent=2)
         resume_match = re.fullmatch(r"resume\s+research\s+([A-Za-z0-9_-]+)", text, re.I)
         if resume_match:
-            return self.research.resume_mission(resume_match.group(1), self.automation)
+            mission_id = resume_match.group(1)
+            if mission_id.startswith("overnight-"):
+                return self.research.resume_overnight(mission_id)
+            return self.research.resume_mission(mission_id, self.automation)
         if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
             self.research.status(self.automation)
             missions = self.research.list_missions()
@@ -2059,6 +2065,8 @@ Rules:
 
         research_request = self.research.parse_request(text)
         if research_request:
+            if research_request["timing"] == "overnight":
+                return self.research.start_overnight(research_request["query"])
             if research_request["timing"] == "now":
                 return self.research.research_now(research_request["query"], notify=(source == "scheduler"))
             return self.research.schedule(
