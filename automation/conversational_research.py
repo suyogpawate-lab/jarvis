@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 from typing import Any
 from automation.research_monitor import ResearchMonitor
+from automation.overnight_research import OvernightResearch
 
 MAX_QUERY = 500
 MAX_SUMMARY = 5000
@@ -31,6 +32,10 @@ class ConversationalResearch:
                  knowledge_hub_url="http://127.0.0.1:8766/api/search"):
         self.search_hub = search_hub
         self.deep_search = deep_search
+        self.overnight = OvernightResearch(
+            search_hub, getattr(deep_search, "fast_agent", None),
+            state_path=str(self.state_path.parent / "overnight.json"),
+        )
         # Deliberately loopback-only: research must not turn this into an SSRF proxy.
         self.knowledge_hub_url = "http://127.0.0.1:8766/api/search"
         self.state_path = Path(state_path)
@@ -161,7 +166,9 @@ class ConversationalResearch:
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
             recurring = re.search(r"\b(daily)\b", "daily")
         timing = "now"
-        if recurring:
+        if re.search(r"\\bovernight\\b", lower):
+            timing = "overnight"
+        elif recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
         elif re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "tomorrow"
@@ -175,6 +182,7 @@ class ConversationalResearch:
         query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
         query = re.sub(r"^\s*overnight\s+on\s+", "", query, flags=re.I)
         query = re.sub(r"\b(?:and\s+)?show\s+me\s+(?:the\s+)?results?\b", "", query, flags=re.I)
+        query = re.sub(r"^\\s*on\\s+", "", query, flags=re.I)
         query = _clean(query).strip(" ,.:;")
         if len(query) < 4:
             return None
@@ -228,8 +236,21 @@ class ConversationalResearch:
                 if job.get("last_run") is not None:
                     item["last_run"] = job["last_run"]
             counts[state] = counts.get(state, 0) + 1
+        overnight = self.overnight.status()
+        for item in overnight.get("missions", []):
+            state = str(item.get("status", "UNKNOWN"))
+            counts[state] = counts.get(state, 0) + 1
         return {"mission_counts": counts, "recent_missions": missions[-10:],
-                "monitor": self.monitor.status()}
+                "overnight": overnight, "monitor": self.monitor.status()}
+
+    def start_overnight(self, query: str) -> str:
+        return self.overnight.start(query)
+
+    def cancel_overnight(self, mission_id: str) -> str:
+        return self.overnight.cancel(mission_id)
+
+    def resume_overnight(self, mission_id: str) -> str:
+        return self.overnight.resume(mission_id)
 
     def resume_mission(self, mission_or_job_id, scheduler):
         target = _clean(mission_or_job_id, 100)
