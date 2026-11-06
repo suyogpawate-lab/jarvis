@@ -25,7 +25,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 DEFAULT_HOURS = 8.0
 MAX_QUERY = 500
-MAX_PAGE_BYTES = 1_000_000
+MAX_PAGE_BYTES = 512_000
+MAX_CORPUS_BYTES = 512_000_000
 MAX_LOCAL_FILE_BYTES = 1_000_000
 MAX_LOCAL_FILES = 20_000
 MAX_SEARCH_RESULTS = 20
@@ -239,7 +240,8 @@ class OvernightResearch:
                 "duration_hours": hours, "collection_deadline": now + hours * 3600,
                 "directory": str(directory), "evidence_file": str(directory / "evidence.jsonl"),
                 "report_file": str(directory / "FINAL_REPORT.md"),
-                "source_count": 0, "pages_crawled": 0, "local_files_scanned": 0,
+                "source_count": 0, "evidence_bytes": 0, "pages_crawled": 0,
+                "local_files_scanned": 0,
                 "search_rounds": 0, "provider_failures": [], "crawl_failures": [],
                 "progress": "Mission queued.",
             }
@@ -381,7 +383,13 @@ class OvernightResearch:
         url = str(item.get("url") or "").strip()
         kind = _clean(item.get("kind") or "web", 30)
         content = _redact(str(item.get("content") or ""))[:MAX_PAGE_BYTES]
+        content_bytes = len(content.encode("utf-8"))
         if len(content) < 80:
+            return False
+        if int(mission.get("evidence_bytes", 0)) + content_bytes > MAX_CORPUS_BYTES:
+            mission["corpus_limit_reached"] = True
+            self._update(mission["id"], corpus_limit_reached=True,
+                         progress="Evidence storage cap reached; collection is ending and analysis will begin.")
             return False
         key = ((url.lower().rstrip("/") + "|" + kind) if url else
                (str(item.get("provider")) + "|" + str(item.get("title")) + "|" + kind))
@@ -405,8 +413,10 @@ class OvernightResearch:
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
             stream.flush()
         mission["source_count"] = int(mission.get("source_count", 0)) + 1
+        mission["evidence_bytes"] = int(mission.get("evidence_bytes", 0)) + content_bytes
         if mission["source_count"] % 10 == 0:
             self._update(mission["id"], source_count=mission["source_count"],
+                         evidence_bytes=mission["evidence_bytes"],
                          progress=f"Collected {mission['source_count']} evidence records.")
         return True
 
@@ -415,7 +425,7 @@ class OvernightResearch:
         failures = []
         frontier_seen = {str(item[0]).lower().rstrip("/") for item in frontier}
         for variant in self._queries(query):
-            if self._cancel[mission["id"]].is_set():
+            if self._cancel[mission["id"]].is_set() or mission.get("corpus_limit_reached"):
                 break
             for provider in list(getattr(self.search_hub, "providers", []) or []):
                 name = str(getattr(provider, "name", type(provider).__name__))[:80]
@@ -453,7 +463,9 @@ class OvernightResearch:
         queued = {x[0] for x in frontier}
         crawled = 0
         attempted = 0
-        while queue and attempted < max_pages and not self._cancel[mission["id"]].is_set():
+        while (queue and attempted < max_pages
+               and not self._cancel[mission["id"]].is_set()
+               and not mission.get("corpus_limit_reached")):
             if time.time() >= float(mission.get("collection_deadline", 0)):
                 break
             url, depth, provider, seed_title, snippet = queue.popleft()
@@ -498,6 +510,7 @@ class OvernightResearch:
             time.sleep(0.25)
         self._update(mission["id"], pages_crawled=mission.get("pages_crawled", 0),
                      source_count=mission.get("source_count", 0),
+                     evidence_bytes=mission.get("evidence_bytes", 0),
                      crawl_failures=mission.get("crawl_failures", [])[-100:],
                      progress=f"Crawl batch finished; {mission.get('source_count', 0)} evidence records.")
 
@@ -775,8 +788,10 @@ class OvernightResearch:
         seen = set()
         crawled_urls = set()
         mission["source_count"] = 0
+        mission["evidence_bytes"] = 0
         for item in self._iter_evidence(mission):
             mission["source_count"] += 1
+            mission["evidence_bytes"] += len(str(item.get("content") or "").encode("utf-8"))
             url = (item.get("url") or "").lower().rstrip("/")
             kind = str(item.get("kind") or "web")
             key = (url + "|" + kind) if url else (
@@ -793,7 +808,9 @@ class OvernightResearch:
                 self._update(mission_id, local_scan_complete=True)
             resume_analysis = str(mission.get("phase", "")).startswith("analysis")
             deadline = float(mission.get("collection_deadline", time.time()))
-            while not resume_analysis and not cancel.is_set() and time.time() < deadline:
+            while (not resume_analysis and not cancel.is_set()
+                   and not mission.get("corpus_limit_reached")
+                   and time.time() < deadline):
                 frontier = deque()
                 self._search_round(mission, seen, frontier)
                 self._crawl_frontier(mission, list(frontier), seen, crawled_urls, max_pages=50)
@@ -810,6 +827,7 @@ class OvernightResearch:
             count = self._analyze(mission, cancel)
             self._update(mission_id, status="COMPLETED", phase="complete",
                          completed_at=time.time(), source_count=count,
+                         evidence_bytes=mission.get("evidence_bytes", 0),
                          progress=f"Report ready: {mission['report_file']}")
         except InterruptedError:
             current = self._mission(mission_id) or {}
