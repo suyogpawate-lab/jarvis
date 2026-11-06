@@ -514,8 +514,7 @@ class OvernightResearch:
         if configured:
             roots = configured
         else:
-            repository_root = Path(__file__).resolve().parents[1]
-            roots = [repository_root,
+            roots = [Path.home(),
                      Path.home() / "storage" / "shared" / "Documents",
                      Path.home() / "storage" / "shared" / "Download"]
         unique = []
