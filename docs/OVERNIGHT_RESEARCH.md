@@ -35,7 +35,7 @@ exports, credentials, or unrelated personal material to the configured roots.
 ## Resource and reliability behavior
 
 - Collection is incremental and disk-backed; the complete corpus is never loaded
-  into RAM for analysis.
+  into RAM for analysis. Evidence storage is capped at 512 MB per mission.
 - Search-provider failures are isolated and recorded.
 - Only public HTTPS pages on the standard port are fetched. Non-public addresses
   and redirects are rejected.
