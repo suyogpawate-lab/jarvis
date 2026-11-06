@@ -659,16 +659,16 @@ class OvernightResearch:
                 blocks = []
                 for item in batch:
                     blocks.append(
-                        f"ID: [{item['id']}]\\nTYPE: {item.get('kind')}\\n"
-                        f"PROVIDER: {item.get('provider')}\\nTITLE: {item.get('title')}\\n"
-                        f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\\n"
-                        f"CONTENT:\\n{item['content'][:6000]}\\n"
+                        f"ID: [{item['id']}]\nTYPE: {item.get('kind')}\n"
+                        f"PROVIDER: {item.get('provider')}\nTITLE: {item.get('title')}\n"
+                        f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\n"
+                        f"CONTENT:\n{item['content'][:6000]}\n"
                     )
                 summary = self._omni(
                     [{"role": "user", "content": (
-                        f"Research question: {mission['query']}\\n"
-                        f"Evidence batch {batch_no}/{total_batches}:\\n\\n" + "\\n---\\n".join(blocks)
-                        + "\\n\\nProduce a structured evidence analysis with source-ID citations. "
+                        f"Research question: {mission['query']}\n"
+                        f"Evidence batch {batch_no}/{total_batches}:\n\n" + "\n---\n".join(blocks)
+                        + "\n\nProduce a structured evidence analysis with source-ID citations. "
                           "Record findings, supporting evidence, contradictions, uncertainty, and unanswered questions."
                     )}],
                     system, max_tokens=1500, timeout=120,
