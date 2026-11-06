@@ -169,7 +169,7 @@ class ConversationalResearch:
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
             recurring = re.search(r"\b(daily)\b", "daily")
         timing = "now"
-        if re.search(r"\bovernight\b", lower):
+        if re.search(r"\bovernight\b", lower) and not re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "overnight"
         elif recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
