@@ -198,6 +198,22 @@ class OvernightResearch:
             pass
         os.replace(tmp, self.state_path)
 
+    @staticmethod
+    def _write_atomic(path, content):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + ".tmp")
+        fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(str(content))
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            pass
+        os.replace(temporary, path)
+
     def _mission(self, mission_id):
         return next((m for m in self._state["missions"] if m.get("id") == mission_id), None)
 
@@ -721,7 +737,7 @@ class OvernightResearch:
             if cancel.is_set():
                 raise InterruptedError("Research cancelled during analysis.")
             output = analysis_dir / f"batch-{batch_no:04d}.md"
-            if output.exists():
+            if output.exists() and output.stat().st_size > 0:
                 summary = output.read_text(encoding="utf-8", errors="replace")
             else:
                 blocks = []
@@ -742,7 +758,7 @@ class OvernightResearch:
                     )}],
                     system, max_tokens=1500, timeout=120,
                 )
-                output.write_text(summary, encoding="utf-8")
+                self._write_atomic(output, summary)
             summaries.append(summary)
             self._update(mission["id"], phase="analysis",
                          progress=f"OmniRoute analyzed batch {batch_no}/{total_batches}.")
@@ -777,23 +793,24 @@ class OvernightResearch:
             system, max_tokens=5000, timeout=180,
         )
         report_path = Path(mission["report_file"])
-        with report_path.open("w", encoding="utf-8") as report:
-            report.write(
-                f"# Overnight Research: {mission['query']}\n\n"
-                f"> Mission: {mission['id']} | Evidence records: "
-                f"{sum(1 for _ in self._iter_evidence(mission))} | "
-                f"Web pages: {mission.get('pages_crawled', 0)} | "
-                f"Local files scanned: {mission.get('local_files_scanned', 0)} | "
-                f"Evidence stored: {mission.get('evidence_bytes', 0)} bytes\n"
-                f"Local scan warnings: {len(mission.get('local_scan_warnings', []))} | "
-                f"Crawl failures: {len(mission.get('crawl_failures', []))}\n\n"
-                + final + "\n\n## Source Register\n\n"
-            )
-            for item in self._iter_evidence(mission):
-                report.write(
-                    f"- [{item['id']}] {item.get('title') or 'Untitled'} — "
-                    f"{item.get('url') or item.get('path') or item.get('provider')}\n"
-                )
+        report_lines = [
+            f"# Overnight Research: {mission['query']}\n\n",
+            f"> Mission: {mission['id']} | Evidence records: "
+            f"{sum(1 for _ in self._iter_evidence(mission))} | "
+            f"Web pages: {mission.get('pages_crawled', 0)} | "
+            f"Local files scanned: {mission.get('local_files_scanned', 0)} | "
+            f"Evidence stored: {mission.get('evidence_bytes', 0)} bytes\n"
+            f"Local scan warnings: {len(mission.get('local_scan_warnings', []))} | "
+            f"Crawl failures: {len(mission.get('crawl_failures', []))}\n\n",
+            final,
+            "\n\n## Source Register\n\n",
+        ]
+        report_lines.extend(
+            f"- [{item['id']}] {item.get('title') or 'Untitled'} — "
+            f"{item.get('url') or item.get('path') or item.get('provider')}\n"
+            for item in self._iter_evidence(mission)
+        )
+        self._write_atomic(report_path, "".join(report_lines))
         return sum(1 for _ in self._iter_evidence(mission))
 
     def _run(self, mission_id):
