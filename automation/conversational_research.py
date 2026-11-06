@@ -152,8 +152,11 @@ class ConversationalResearch:
         # research intent. Merely mentioning "research" in a scheduler,
         # status, or administrative request must never launch a research run.
         research_intent = re.match(
-            r"^(?:please\s+)?(?:jarvis[, ]+)?(?:can you\s+|could you\s+|would you\s+)?"
+            r"^(?:please\s+)?(?:overnight\s+)?(?:jarvis[, ]+)?(?:can you\s+|could you\s+|would you\s+)?"
             r"(?:research|investigate|look into|study)\b",
+            raw, re.I,
+        ) or re.match(
+            r"^(?:please\s+)?(?:research|investigate|look into|study)\s+overnight\b",
             raw, re.I,
         )
         monitoring_intent = re.match(
@@ -166,7 +169,7 @@ class ConversationalResearch:
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
             recurring = re.search(r"\b(daily)\b", "daily")
         timing = "now"
-        if re.search(r"\\bovernight\\b", lower):
+        if re.search(r"\bovernight\b", lower):
             timing = "overnight"
         elif recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
@@ -177,12 +180,12 @@ class ConversationalResearch:
         elif re.search(r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b", lower):
             timing = "at"
         query = re.sub(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", "", raw, flags=re.I)
-        query = re.sub(r"\b(tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
+        query = re.sub(r"\b(overnight|tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
         query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
         query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
         query = re.sub(r"^\s*overnight\s+on\s+", "", query, flags=re.I)
         query = re.sub(r"\b(?:and\s+)?show\s+me\s+(?:the\s+)?results?\b", "", query, flags=re.I)
-        query = re.sub(r"^\\s*on\\s+", "", query, flags=re.I)
+        query = re.sub(r"^\s*on\s+", "", query, flags=re.I)
         query = _clean(query).strip(" ,.:;")
         if len(query) < 4:
             return None
