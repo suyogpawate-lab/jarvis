@@ -657,17 +657,17 @@ class OvernightResearch:
                 blocks = []
                 for item in batch:
                     blocks.append(
-                        f"ID: [{item['id']}]\\nTYPE: {item.get('kind')}\\n"
-                        f"PROVIDER: {item.get('provider')}\\nTITLE: {item.get('title')}\\n"
-                        f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\\n"
-                        f"CONTENT:\\n{item['content'][:6000]}\\n"
+                        f"ID: [{item['id']}]\nTYPE: {item.get('kind')}\n"
+                        f"PROVIDER: {item.get('provider')}\nTITLE: {item.get('title')}\n"
+                        f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\n"
+                        f"CONTENT:\n{item['content'][:6000]}\n"
                     )
                 summary = self._omni(
                     [{"role": "user", "content": (
-                        f"Research question: {mission['query']}\\n"
-                        f"Evidence batch {batch_no}/{total_batches}:\\n\\n"
-                        + "\\n---\\n".join(blocks)
-                        + "\\n\\nProduce a structured evidence analysis with source-ID citations. "
+                        f"Research question: {mission['query']}\n"
+                        f"Evidence batch {batch_no}/{total_batches}:\n\n"
+                        + "\n---\n".join(blocks)
+                        + "\n\nProduce a structured evidence analysis with source-ID citations. "
                           "Record findings, supporting evidence, contradictions, uncertainty, and unanswered questions."
                     )}],
                     system, max_tokens=1500, timeout=120,
@@ -684,12 +684,12 @@ class OvernightResearch:
             for start in range(0, len(level), 8):
                 if cancel.is_set():
                     raise InterruptedError("Research cancelled during final synthesis.")
-                text = "\\n\\n".join(level[start:start + 8])
+                text = "\n\n".join(level[start:start + 8])
                 next_level.append(self._omni(
                     [{"role": "user", "content": (
-                        f"Consolidate these evidence analyses for: {mission['query']}\\n"
+                        f"Consolidate these evidence analyses for: {mission['query']}\n"
                         + text[:MAX_EVIDENCE_CHARS]
-                        + "\\nPreserve all important findings, source IDs, conflicts and caveats."
+                        + "\nPreserve all important findings, source IDs, conflicts and caveats."
                     )}], system, max_tokens=1800, timeout=120,
                 ))
             level = next_level
@@ -697,9 +697,9 @@ class OvernightResearch:
         final = self._omni(
             [{"role": "user", "content": (
                 "Write the comprehensive final research report for this question: "
-                + mission["query"] + "\\n\\nEvidence analyses:\\n"
-                + "\\n\\n".join(level)[:MAX_EVIDENCE_CHARS * 4]
-                + "\\n\\nUse clear sections: Executive Summary; Scope and Method; "
+                + mission["query"] + "\n\nEvidence analyses:\n"
+                + "\n\n".join(level)[:MAX_EVIDENCE_CHARS * 4]
+                + "\n\nUse clear sections: Executive Summary; Scope and Method; "
                   "Detailed Findings; Technical Analysis; Conflicting Evidence; "
                   "Limitations and Unknowns; Conclusions; Practical Recommendations. "
                   "Cite claims using exact source IDs. Do not claim exhaustive internet coverage."
@@ -709,17 +709,17 @@ class OvernightResearch:
         report_path = Path(mission["report_file"])
         with report_path.open("w", encoding="utf-8") as report:
             report.write(
-                f"# Overnight Research: {mission['query']}\\n\\n"
+                f"# Overnight Research: {mission['query']}\n\n"
                 f"> Mission: {mission['id']} | Evidence records: "
                 f"{sum(1 for _ in self._iter_evidence(mission))} | "
                 f"Web pages: {mission.get('pages_crawled', 0)} | "
-                f"Local files scanned: {mission.get('local_files_scanned', 0)}\\n\\n"
-                + final + "\\n\\n## Source Register\\n\\n"
+                f"Local files scanned: {mission.get('local_files_scanned', 0)}\n\n"
+                + final + "\n\n## Source Register\n\n"
             )
             for item in self._iter_evidence(mission):
                 report.write(
                     f"- [{item['id']}] {item.get('title') or 'Untitled'} — "
-                    f"{item.get('url') or item.get('path') or item.get('provider')}\\n"
+                    f"{item.get('url') or item.get('path') or item.get('provider')}\n"
                 )
         return sum(1 for _ in self._iter_evidence(mission))
 
