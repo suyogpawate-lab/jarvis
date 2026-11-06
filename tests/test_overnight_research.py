@@ -33,7 +33,7 @@ class OvernightResearchTests(unittest.TestCase):
             text = (
                 "JARVIS architecture and Android compatibility findings. "
                 "The memory manager has a bounded cache and deterministic startup. "
-                "\\napi_key=super-secret-value must never leave this device."
+                "\napi_key=super-secret-value must never leave this device."
             )
             self.assertTrue(manager._append_evidence(mission, {
                 "provider": "local_file", "title": "notes.md",
