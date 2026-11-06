@@ -179,7 +179,7 @@ def _replace_model_metadata(model_data: bytes, metadata: dict[str, str]) -> byte
     return bytes(preserved)
 
 
-def _validate_with_onnxruntime(model_path: Path) -> None:
+def _validate_with_onnxruntime(model_path: Path, expected_metadata: dict[str, str]) -> None:
     """Use the already-installed inference runtime when available."""
     try:
         import onnxruntime as ort
@@ -192,6 +192,14 @@ def _validate_with_onnxruntime(model_path: Path) -> None:
     )
     if not session.get_inputs() or not session.get_outputs():
         raise RuntimeError("ONNX Runtime loaded the model but found no inputs/outputs")
+    actual_metadata = session.get_modelmeta().custom_metadata_map
+    mismatches = {
+        key: (actual_metadata.get(key), value)
+        for key, value in expected_metadata.items()
+        if actual_metadata.get(key) != value
+    }
+    if mismatches:
+        raise RuntimeError(f"ONNX Runtime metadata validation failed: {mismatches}")
     print(
         "[SHERPA] ONNX Runtime validation passed "
         f"({len(session.get_inputs())} input(s), {len(session.get_outputs())} output(s))"
@@ -215,7 +223,7 @@ def add_sherpa_metadata(model_path: Path, config_path: Path) -> None:
     temp = Path(temp_name)
     try:
         temp.write_bytes(updated)
-        _validate_with_onnxruntime(temp)
+        _validate_with_onnxruntime(temp, metadata)
 
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         backup = model_path.with_name(model_path.name + f".pre-sherpa-{stamp}.bak")
