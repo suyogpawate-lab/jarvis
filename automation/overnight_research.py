@@ -736,7 +736,8 @@ class OvernightResearch:
                 f"> Mission: {mission['id']} | Evidence records: "
                 f"{sum(1 for _ in self._iter_evidence(mission))} | "
                 f"Web pages: {mission.get('pages_crawled', 0)} | "
-                f"Local files scanned: {mission.get('local_files_scanned', 0)}\n\n"
+                f"Local files scanned: {mission.get('local_files_scanned', 0)}\n"
+                f"Local scan warnings: {len(mission.get('local_scan_warnings', []))}\n\n"
                 + final + "\n\n## Source Register\n\n"
             )
             for item in self._iter_evidence(mission):
