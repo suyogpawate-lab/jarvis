@@ -281,6 +281,13 @@ class OvernightResearch:
             mission = self._mission(mission_id)
             if not mission:
                 return f"[ERROR] Overnight research mission not found: {mission_id}"
+            other_active = next((
+                item for item in self._state["missions"]
+                if item.get("id") != mission_id
+                and item.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}
+            ), None)
+            if other_active:
+                return f"[RESEARCH] Mission {other_active['id']} is active; only one overnight worker runs at a time."
             if mission.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}:
                 return f"[RESEARCH] Mission {mission_id} is already active."
             if mission.get("status") == "COMPLETED":
@@ -626,8 +633,12 @@ class OvernightResearch:
         payload = json.dumps({"query": mission["query"][:MAX_QUERY]}).encode("utf-8")
         request = Request(self.knowledge_hub_url, data=payload,
                           headers={"Content-Type": "application/json"}, method="POST")
+        class NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                raise ValueError("Knowledge Hub redirects are not followed")
+
         try:
-            with build_opener().open(request, timeout=5) as response:
+            with build_opener(NoRedirect).open(request, timeout=5) as response:
                 data = json.loads(response.read(1_000_000).decode("utf-8", errors="replace"))
             rows = data.get("results", []) if isinstance(data, dict) else []
             for row in rows:
