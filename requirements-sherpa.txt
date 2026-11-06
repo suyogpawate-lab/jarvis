@@ -1,6 +1,6 @@
 # Optional local Sherpa-ONNX TTS backend and Piper-to-Sherpa asset preparation.
+# The asset preparer edits ONNX protobuf metadata without the onnx package.
 # Android/Termux wheel availability varies; use a Termux-compatible build where needed.
 sherpa-onnx
 soundfile
 numpy
-onnx
