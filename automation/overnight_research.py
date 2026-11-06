@@ -35,7 +35,7 @@ MAX_EVIDENCE_PER_BATCH = 8
 SKIP_DIRS = {
     ".git", ".cache", ".npm", ".ollama", ".termux", ".config", ".ssh",
     ".gnupg", "__pycache__", "node_modules", ".venv", "venv", "site-packages",
-    "models", "phonon-model", "android", "proc", "sys", "dev",
+    "models", "phonon-model", "proc", "sys", "dev",
 }
 SKIP_NAMES = {
     ".env", ".env.local", ".env.production", "credentials", "secrets",
@@ -387,8 +387,10 @@ class OvernightResearch:
         with path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
             stream.flush()
-        self._update(mission["id"], source_count=int(mission.get("source_count", 0)) + 1)
         mission["source_count"] = int(mission.get("source_count", 0)) + 1
+        if mission["source_count"] % 10 == 0:
+            self._update(mission["id"], source_count=mission["source_count"],
+                         progress=f"Collected {mission['source_count']} evidence records.")
         return True
 
     def _search_round(self, mission, seen, frontier):
@@ -427,7 +429,8 @@ class OvernightResearch:
         queue = deque(frontier)
         queued = {x[0] for x in frontier}
         crawled = 0
-        while queue and crawled < max_pages and not self._cancel[mission["id"]].is_set():
+        attempted = 0
+        while queue and attempted < max_pages and not self._cancel[mission["id"]].is_set():
             if time.time() >= float(mission.get("collection_deadline", 0)):
                 break
             url, depth, provider, seed_title, snippet = queue.popleft()
@@ -438,6 +441,7 @@ class OvernightResearch:
             if key in crawled_urls or depth > MAX_CRAWL_DEPTH:
                 continue
             crawled_urls.add(key)
+            attempted += 1
             try:
                 html = self._fetch(normalized)
                 title, content, links = self._parse_page(html, normalized)
@@ -705,7 +709,9 @@ class OvernightResearch:
             mission = dict(mission)
         seen = set()
         crawled_urls = set()
-        for item in self._load_evidence(mission):
+        existing_evidence = self._load_evidence(mission)
+        mission["source_count"] = len(existing_evidence)
+        for item in existing_evidence:
             url = (item.get("url") or "").lower().rstrip("/")
             kind = str(item.get("kind") or "web")
             key = (url + "|" + kind) if url else (
@@ -720,8 +726,9 @@ class OvernightResearch:
                 self._scan_local_files(mission, seen)
                 self._knowledge_hub(mission, seen)
                 self._update(mission_id, local_scan_complete=True)
+            resume_analysis = str(mission.get("phase", "")).startswith("analysis")
             deadline = float(mission.get("collection_deadline", time.time()))
-            while not cancel.is_set() and time.time() < deadline:
+            while not resume_analysis and not cancel.is_set() and time.time() < deadline:
                 frontier = deque()
                 self._search_round(mission, seen, frontier)
                 self._crawl_frontier(mission, list(frontier), seen, crawled_urls, max_pages=50)
@@ -740,8 +747,10 @@ class OvernightResearch:
                          completed_at=time.time(), source_count=count,
                          progress=f"Report ready: {mission['report_file']}")
         except InterruptedError:
-            self._update(mission_id, status="CANCELLED", phase="paused",
-                         progress="Analysis cancelled; evidence and completed batches preserved.")
+            current = self._mission(mission_id) or {}
+            paused_phase = "analysis_paused" if str(current.get("phase", "")).startswith("analysis") else "paused"
+            self._update(mission_id, status="CANCELLED", phase=paused_phase,
+                         progress="Mission cancelled; evidence and completed batches preserved.")
         except Exception as exc:
             self._update(mission_id, status="ANALYSIS_FAILED" if
                          self._mission(mission_id).get("phase") == "analysis" else "FAILED",
