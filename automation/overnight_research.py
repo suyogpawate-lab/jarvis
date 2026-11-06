@@ -398,6 +398,7 @@ class OvernightResearch:
     def _search_round(self, mission, seen, frontier):
         query = mission["query"]
         failures = []
+        frontier_seen = {str(item[0]).lower().rstrip("/") for item in frontier}
         for variant in self._queries(query):
             if self._cancel[mission["id"]].is_set():
                 break
@@ -415,7 +416,10 @@ class OvernightResearch:
                             "provider": name, "title": title, "url": url,
                             "content": snippet, "kind": "search_result",
                         }, seen)
-                        frontier.append((url, 0, name, title, snippet))
+                        frontier_key = url.lower().rstrip("/")
+                        if frontier_key not in frontier_seen:
+                            frontier.append((url, 0, name, title, snippet))
+                            frontier_seen.add(frontier_key)
                 except Exception as exc:
                     failures.append({"provider": name, "error": type(exc).__name__,
                                      "query": variant[:120]})
