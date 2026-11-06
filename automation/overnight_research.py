@@ -456,6 +456,7 @@ class OvernightResearch:
         mission["search_rounds"] = int(mission.get("search_rounds", 0)) + 1
         self._update(mission["id"], search_rounds=mission["search_rounds"],
                      source_count=mission.get("source_count", 0),
+                     evidence_bytes=mission.get("evidence_bytes", 0),
                      progress=f"Search round {mission['search_rounds']} complete; {mission.get('source_count', 0)} evidence records.")
 
     def _crawl_frontier(self, mission, frontier, seen, crawled_urls, max_pages=40):
@@ -572,7 +573,8 @@ class OvernightResearch:
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")
                            and not (Path(current) / d).is_symlink()]
                 for filename in files:
-                    if self._cancel[mission["id"]].is_set():
+                    if (self._cancel[mission["id"]].is_set()
+                            or mission.get("corpus_limit_reached")):
                         return
                     if scanned >= MAX_LOCAL_FILES:
                         return
@@ -612,6 +614,7 @@ class OvernightResearch:
         mission["local_scan_warnings"].extend(walk_errors[-50:])
         self._update(mission["id"], local_files_scanned=scanned,
                      source_count=mission.get("source_count", 0),
+                     evidence_bytes=mission.get("evidence_bytes", 0),
                      local_roots=mission["local_roots"],
                      local_scan_warnings=mission["local_scan_warnings"],
                      progress=f"Local scan complete: {scanned} text files inspected across {len(roots)} accessible roots; {len(mission['local_scan_warnings'])} access warnings.")
@@ -766,7 +769,8 @@ class OvernightResearch:
                 f"> Mission: {mission['id']} | Evidence records: "
                 f"{sum(1 for _ in self._iter_evidence(mission))} | "
                 f"Web pages: {mission.get('pages_crawled', 0)} | "
-                f"Local files scanned: {mission.get('local_files_scanned', 0)}\n"
+                f"Local files scanned: {mission.get('local_files_scanned', 0)} | "
+                f"Evidence stored: {mission.get('evidence_bytes', 0)} bytes\n"
                 f"Local scan warnings: {len(mission.get('local_scan_warnings', []))} | "
                 f"Crawl failures: {len(mission.get('crawl_failures', []))}\n\n"
                 + final + "\n\n## Source Register\n\n"
