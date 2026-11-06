@@ -240,7 +240,8 @@ class OvernightResearch:
                 "directory": str(directory), "evidence_file": str(directory / "evidence.jsonl"),
                 "report_file": str(directory / "FINAL_REPORT.md"),
                 "source_count": 0, "pages_crawled": 0, "local_files_scanned": 0,
-                "search_rounds": 0, "provider_failures": [], "progress": "Mission queued.",
+                "search_rounds": 0, "provider_failures": [], "crawl_failures": [],
+                "progress": "Mission queued.",
             }
             self._state["missions"].append(mission)
             self._state["missions"] = self._state["missions"][-50:]
@@ -396,6 +397,7 @@ class OvernightResearch:
             "path": _clean(item.get("path"), 1000),
             "depth": int(item.get("depth", 0) or 0),
             "collected_at": time.time(),
+            "published_at": _clean(item.get("published_at"), 80),
             "content": content,
         }
         path = Path(mission["evidence_file"])
@@ -428,6 +430,7 @@ class OvernightResearch:
                         self._append_evidence(mission, {
                             "provider": name, "title": title, "url": url,
                             "content": snippet, "kind": "search_result",
+                            "published_at": getattr(result, "published_at", ""),
                         }, seen)
                         frontier_key = url.lower().rstrip("/")
                         if frontier_key not in frontier_seen:
@@ -484,14 +487,18 @@ class OvernightResearch:
                         if link_key not in seen and link_key not in queued:
                             queue.append((link, depth + 1, provider, "", ""))
                             queued.add(link_key)
-            except Exception:
-                pass
+            except Exception as exc:
+                mission.setdefault("crawl_failures", []).append({
+                    "url": normalized[:500], "error": type(exc).__name__,
+                })
+                mission["crawl_failures"] = mission["crawl_failures"][-100:]
             if crawled and crawled % 10 == 0:
                 self._update(mission["id"], pages_crawled=mission["pages_crawled"],
                              progress=f"Crawled {mission['pages_crawled']} pages; {mission.get('source_count', 0)} evidence records.")
             time.sleep(0.25)
         self._update(mission["id"], pages_crawled=mission.get("pages_crawled", 0),
                      source_count=mission.get("source_count", 0),
+                     crawl_failures=mission.get("crawl_failures", [])[-100:],
                      progress=f"Crawl batch finished; {mission.get('source_count', 0)} evidence records.")
 
     @staticmethod
@@ -669,6 +676,8 @@ class OvernightResearch:
         analysis_dir.mkdir(parents=True, exist_ok=True)
         total_batches = sum(1 for _ in self._iter_batches(mission))
         if total_batches == 0:
+            self._update(mission["id"], phase="collection",
+                         progress="No usable evidence yet; collection can be resumed.")
             raise RuntimeError("No usable evidence was collected; report not generated.")
         summaries = []
         system = (
@@ -745,7 +754,8 @@ class OvernightResearch:
                 f"{sum(1 for _ in self._iter_evidence(mission))} | "
                 f"Web pages: {mission.get('pages_crawled', 0)} | "
                 f"Local files scanned: {mission.get('local_files_scanned', 0)}\n"
-                f"Local scan warnings: {len(mission.get('local_scan_warnings', []))}\n\n"
+                f"Local scan warnings: {len(mission.get('local_scan_warnings', []))} | "
+                f"Crawl failures: {len(mission.get('crawl_failures', []))}\n\n"
                 + final + "\n\n## Source Register\n\n"
             )
             for item in self._iter_evidence(mission):
