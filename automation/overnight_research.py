@@ -442,6 +442,7 @@ class OvernightResearch:
             self._update(mission["id"], provider_failures=mission["provider_failures"])
         mission["search_rounds"] = int(mission.get("search_rounds", 0)) + 1
         self._update(mission["id"], search_rounds=mission["search_rounds"],
+                     source_count=mission.get("source_count", 0),
                      progress=f"Search round {mission['search_rounds']} complete; {mission.get('source_count', 0)} evidence records.")
 
     def _crawl_frontier(self, mission, frontier, seen, crawled_urls, max_pages=40):
@@ -490,6 +491,7 @@ class OvernightResearch:
                              progress=f"Crawled {mission['pages_crawled']} pages; {mission.get('source_count', 0)} evidence records.")
             time.sleep(0.25)
         self._update(mission["id"], pages_crawled=mission.get("pages_crawled", 0),
+                     source_count=mission.get("source_count", 0),
                      progress=f"Crawl batch finished; {mission.get('source_count', 0)} evidence records.")
 
     @staticmethod
