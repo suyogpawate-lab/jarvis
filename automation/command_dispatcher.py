@@ -1997,6 +1997,12 @@ Rules:
             if result is not None:
                 return result
             return "[AIE] Use natural language to create goals, 'plan <goal>', or 'run mission <id>'."
+        # Overnight research is a deterministic, model-free collection job.
+        # Claim it before natural-language AIE or FastAgent can route it elsewhere.
+        overnight_request = self.research.parse_request(text)
+        if overnight_request and overnight_request.get("timing") == "overnight":
+            return self.research.start_overnight(overnight_request["query"])
+
         if aie_nl is not None:
             aie_result = aie_nl.handle(text, source=source)
             if aie_result is not None:
