@@ -39,7 +39,7 @@ SKIP_DIRS = {
     "venv", "site-packages", "models", "phonon-model", "proc", "sys", "dev",
     "memory", "sessions", "whatsapp", "contacts", "auth", "keys", "secrets",
     "credentials", "private", "personal", "backups", "logs", "DCIM",
-    "Pictures", "Movies", "Music",
+    "Pictures", "Movies", "Music", "Android", "WhatsApp", "Telegram", "Signal",
 }
 SKIP_NAMES = {
     ".env", ".env.local", ".env.production", "credentials", "secrets",
@@ -558,9 +558,7 @@ class OvernightResearch:
         if configured:
             roots = configured
         else:
-            roots = [Path.home(),
-                     Path.home() / "storage" / "shared" / "Documents",
-                     Path.home() / "storage" / "shared" / "Download"]
+            roots = [Path.home(), Path.home() / "storage" / "shared"]
         unique = []
         self._local_root_warnings = []
         for root in roots:
