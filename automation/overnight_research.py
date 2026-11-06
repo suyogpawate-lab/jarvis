@@ -799,7 +799,9 @@ class OvernightResearch:
             f"Local files scanned: {mission.get('local_files_scanned', 0)} | "
             f"Evidence stored: {mission.get('evidence_bytes', 0)} bytes\n"
             f"Local scan warnings: {len(mission.get('local_scan_warnings', []))} | "
-            f"Crawl failures: {len(mission.get('crawl_failures', []))}\n\n",
+            f"Crawl failures: {len(mission.get('crawl_failures', []))}\n"
+            "Coverage: configured search providers, reachable public HTTPS pages, "
+            "the Knowledge Hub, and accessible permitted local text files; not exhaustive.\n\n",
             final,
             "\n\n## Source Register\n\n",
         ]
