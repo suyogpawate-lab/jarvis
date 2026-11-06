@@ -510,6 +510,7 @@ class OvernightResearch:
                      Path.home() / "storage" / "shared" / "Documents",
                      Path.home() / "storage" / "shared" / "Download"]
         unique = []
+        self._local_root_warnings = []
         for root in roots:
             try:
                 resolved = root.resolve(strict=True)
@@ -517,8 +518,10 @@ class OvernightResearch:
                     parent == resolved or parent in resolved.parents for parent in unique
                 ):
                     unique.append(resolved)
-            except OSError:
-                continue
+            except OSError as exc:
+                self._local_root_warnings.append({
+                    "path": str(root), "error": type(exc).__name__,
+                })
         return unique
 
     def _scan_local_files(self, mission, seen):
@@ -527,8 +530,17 @@ class OvernightResearch:
             return
         scanned = 0
         roots = self._local_roots()
+        mission["local_roots"] = [str(root) for root in roots]
+        mission["local_scan_warnings"] = list(getattr(self, "_local_root_warnings", []))
+        walk_errors = []
         for root in roots:
-            for current, dirs, files in os.walk(root, followlinks=False):
+            for current, dirs, files in os.walk(
+                root, followlinks=False,
+                onerror=lambda exc: walk_errors.append({
+                    "path": getattr(exc, "filename", "") or "",
+                    "error": type(exc).__name__,
+                }),
+            ):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")
                            and not (Path(current) / d).is_symlink()]
                 for filename in files:
@@ -569,9 +581,12 @@ class OvernightResearch:
                     if scanned % 500 == 0:
                         self._update(mission["id"], local_files_scanned=scanned,
                                      progress=f"Scanned {scanned} local text files.")
+        mission["local_scan_warnings"].extend(walk_errors[-50:])
         self._update(mission["id"], local_files_scanned=scanned,
                      source_count=mission.get("source_count", 0),
-                     progress=f"Local scan complete: {scanned} text files inspected across {len(roots)} roots.")
+                     local_roots=mission["local_roots"],
+                     local_scan_warnings=mission["local_scan_warnings"],
+                     progress=f"Local scan complete: {scanned} text files inspected across {len(roots)} accessible roots; {len(mission['local_scan_warnings'])} access warnings.")
 
     def _knowledge_hub(self, mission, seen):
         payload = json.dumps({"query": mission["query"][:MAX_QUERY]}).encode("utf-8")
