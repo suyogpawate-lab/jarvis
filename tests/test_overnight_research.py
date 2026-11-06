@@ -72,6 +72,25 @@ class OvernightResearchTests(unittest.TestCase):
             self.assertIn("JARVIS Android 10 1GB RAM research papers studies", queries)
             agent._omniroute_request.assert_not_called()
 
+    def test_streamed_batches_preserve_every_evidence_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = OvernightResearch(
+                Mock(), Mock(), Path(directory) / "state.json"
+            )
+            evidence = Path(directory) / "evidence.jsonl"
+            with evidence.open("w", encoding="utf-8") as stream:
+                for index in range(11):
+                    stream.write(json.dumps({
+                        "id": f"S{index:04d}",
+                        "kind": "web_page",
+                        "content": ("technical evidence " + str(index) + " ") * 500,
+                    }) + "\\n")
+            mission = {"evidence_file": str(evidence)}
+            batches = list(manager._iter_batches(mission))
+            collected = [item["id"] for batch in batches for item in batch]
+            self.assertEqual(collected, [f"S{index:04d}" for index in range(11)])
+            self.assertTrue(all(len(batch) <= 8 for batch in batches))
+
     def test_search_result_is_persisted_without_model_synthesis(self):
         provider = Mock()
         provider.name = "fixture"
