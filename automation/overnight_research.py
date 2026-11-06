@@ -50,13 +50,13 @@ TEXT_SUFFIXES = {
 }
 SECRET_LINE = re.compile(
     r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|"
-    r"secret|client[_-]?secret|private[_-]?key|authorization)\\s*[:=]\\s*[^\\s,;]+"
+    r"secret|client[_-]?secret|private[_-]?key|authorization)\s*[:=]\s*[^\s,;]+"
 )
 TOKEN_PATTERNS = (
     re.compile(r"(?i)sk-[A-Za-z0-9_-]{16,}"),
     re.compile(r"(?i)gsk_[A-Za-z0-9_-]{16,}"),
     re.compile(r"(?i)gh[pousr]_[A-Za-z0-9_]{20,}"),
-    re.compile(r"(?i)Bearer\\s+[A-Za-z0-9._~-]{16,}"),
+    re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~-]{16,}"),
 )
 
 
@@ -73,7 +73,7 @@ def _redact(text):
         for pattern in TOKEN_PATTERNS:
             line = pattern.sub("[REDACTED]", line)
         lines.append(line)
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 class _PageParser(HTMLParser):
@@ -363,8 +363,12 @@ class OvernightResearch:
 
     def _append_evidence(self, mission, item, seen):
         url = str(item.get("url") or "").strip()
-        key = url.lower().rstrip("/") if url else (
-            str(item.get("provider")) + "|" + str(item.get("title")))
+        kind = _clean(item.get("kind") or "web", 30)
+        content = _redact(str(item.get("content") or ""))[:MAX_PAGE_BYTES]
+        if len(content) < 80:
+            return False
+        key = ((url.lower().rstrip("/") + "|" + kind) if url else
+               (str(item.get("provider")) + "|" + str(item.get("title")) + "|" + kind))
         if key in seen:
             return False
         seen.add(key)
@@ -373,17 +377,15 @@ class OvernightResearch:
             "provider": _clean(item.get("provider"), 80),
             "title": _clean(item.get("title"), 300),
             "url": url[:1500],
-            "kind": _clean(item.get("kind") or "web", 30),
+            "kind": kind,
             "path": _clean(item.get("path"), 1000),
             "depth": int(item.get("depth", 0) or 0),
             "collected_at": time.time(),
-            "content": _redact(str(item.get("content") or ""))[:MAX_PAGE_BYTES],
+            "content": content,
         }
-        if len(record["content"]) < 80:
-            return False
         path = Path(mission["evidence_file"])
         with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
             stream.flush()
         self._update(mission["id"], source_count=int(mission.get("source_count", 0)) + 1)
         mission["source_count"] = int(mission.get("source_count", 0)) + 1
@@ -421,7 +423,7 @@ class OvernightResearch:
         self._update(mission["id"], search_rounds=mission["search_rounds"],
                      progress=f"Search round {mission['search_rounds']} complete; {mission.get('source_count', 0)} evidence records.")
 
-    def _crawl_frontier(self, mission, frontier, seen, max_pages=40):
+    def _crawl_frontier(self, mission, frontier, seen, crawled_urls, max_pages=40):
         queue = deque(frontier)
         queued = {x[0] for x in frontier}
         crawled = 0
@@ -433,8 +435,9 @@ class OvernightResearch:
             if not normalized:
                 continue
             key = normalized.lower().rstrip("/")
-            if key in seen or depth > MAX_CRAWL_DEPTH:
+            if key in crawled_urls or depth > MAX_CRAWL_DEPTH:
                 continue
+            crawled_urls.add(key)
             try:
                 html = self._fetch(normalized)
                 title, content, links = self._parse_page(html, normalized)
@@ -493,7 +496,9 @@ class OvernightResearch:
         for root in roots:
             try:
                 resolved = root.resolve(strict=True)
-                if resolved.is_dir() and resolved not in unique:
+                if resolved.is_dir() and resolved not in unique and not any(
+                    parent == resolved or parent in resolved.parents for parent in unique
+                ):
                     unique.append(resolved)
             except OSError:
                 continue
@@ -535,7 +540,7 @@ class OvernightResearch:
                             excerpts.extend(lines[max(0, index - 1):min(len(lines), index + 2)])
                             if sum(map(len, excerpts)) > 12000:
                                 break
-                    content = _redact("\\n".join(excerpts))[:12000]
+                    content = _redact("\n".join(excerpts))[:12000]
                     if content:
                         self._append_evidence(mission, {
                             "provider": "local_file", "title": path.name,
@@ -625,10 +630,10 @@ class OvernightResearch:
                 blocks, used = [], 0
                 for item in records[offset:offset + MAX_EVIDENCE_PER_BATCH]:
                     block = (
-                        f"ID: [{item['id']}]\\nTYPE: {item.get('kind')}\\n"
-                        f"PROVIDER: {item.get('provider')}\\nTITLE: {item.get('title')}\\n"
-                        f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\\n"
-                        f"CONTENT:\\n{item['content'][:6000]}\\n"
+                        f"ID: [{item['id']}]\nTYPE: {item.get('kind')}\n"
+                        f"PROVIDER: {item.get('provider')}\nTITLE: {item.get('title')}\n"
+                        f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\n"
+                        f"CONTENT:\n{item['content'][:6000]}\n"
                     )
                     if used + len(block) > MAX_EVIDENCE_CHARS:
                         break
@@ -636,9 +641,9 @@ class OvernightResearch:
                     used += len(block)
                 summary = self._omni(
                     [{"role": "user", "content": (
-                        f"Research question: {mission['query']}\\n"
-                        f"Evidence batch {batch_no}/{total_batches}:\\n\\n" + "\\n---\\n".join(blocks)
-                        + "\\n\\nProduce a structured evidence analysis with source-ID citations. "
+                        f"Research question: {mission['query']}\n"
+                        f"Evidence batch {batch_no}/{total_batches}:\n\n" + "\n---\n".join(blocks)
+                        + "\n\nProduce a structured evidence analysis with source-ID citations. "
                           "Record findings, supporting evidence, contradictions, uncertainty, and unanswered questions."
                     )}],
                     system, max_tokens=1500, timeout=120,
@@ -656,21 +661,21 @@ class OvernightResearch:
             for start in range(0, len(level), 8):
                 if cancel.is_set():
                     raise InterruptedError("Research cancelled during final synthesis.")
-                text = "\\n\\n".join(level[start:start + 8])
+                text = "\n\n".join(level[start:start + 8])
                 next_level.append(self._omni(
                     [{"role": "user", "content": (
-                        f"Consolidate these evidence analyses for: {mission['query']}\\n"
+                        f"Consolidate these evidence analyses for: {mission['query']}\n"
                         + text[:MAX_EVIDENCE_CHARS]
-                        + "\\nPreserve all important findings, source IDs, conflicts and caveats."
+                        + "\nPreserve all important findings, source IDs, conflicts and caveats."
                     )}], system, max_tokens=1800, timeout=120,
                 ))
             level = next_level
         final = self._omni(
             [{"role": "user", "content": (
                 "Write the comprehensive final research report for this question: "
-                + mission["query"] + "\\n\\nEvidence analyses:\\n"
-                + "\\n\\n".join(level)[:MAX_EVIDENCE_CHARS * 4]
-                + "\\n\\nUse clear sections: Executive Summary; Scope and Method; "
+                + mission["query"] + "\n\nEvidence analyses:\n"
+                + "\n\n".join(level)[:MAX_EVIDENCE_CHARS * 4]
+                + "\n\nUse clear sections: Executive Summary; Scope and Method; "
                   "Detailed Findings; Technical Analysis; Conflicting Evidence; "
                   "Limitations and Unknowns; Conclusions; Practical Recommendations. "
                   "Cite claims using exact source IDs. Do not claim exhaustive internet coverage."
@@ -682,11 +687,11 @@ class OvernightResearch:
             sources.append(f"- [{item['id']}] {item.get('title') or 'Untitled'} — "
                            f"{item.get('url') or item.get('path') or item.get('provider')}")
         report = (
-            f"# Overnight Research: {mission['query']}\\n\\n"
+            f"# Overnight Research: {mission['query']}\n\n"
             f"> Mission: {mission['id']} | Evidence records: {len(records)} | "
             f"Web pages: {mission.get('pages_crawled', 0)} | "
-            f"Local files scanned: {mission.get('local_files_scanned', 0)}\\n\\n"
-            + final + "\\n\\n## Source Register\\n\\n" + "\\n".join(sources)
+            f"Local files scanned: {mission.get('local_files_scanned', 0)}\n\n"
+            + final + "\n\n## Source Register\n\n" + "\n".join(sources)
         )
         Path(mission["report_file"]).write_text(report, encoding="utf-8")
         return len(records)
@@ -699,9 +704,16 @@ class OvernightResearch:
                 return
             mission = dict(mission)
         seen = set()
+        crawled_urls = set()
         for item in self._load_evidence(mission):
-            key = (item.get("url") or (item.get("provider", "") + "|" + item.get("title", ""))).lower().rstrip("/")
+            url = (item.get("url") or "").lower().rstrip("/")
+            kind = str(item.get("kind") or "web")
+            key = (url + "|" + kind) if url else (
+                str(item.get("provider", "")) + "|" + str(item.get("title", "")) + "|" + kind
+            )
             seen.add(key)
+            if url and kind == "web_page":
+                crawled_urls.add(url)
         try:
             # One-time local corpus collection, then repeated public discovery.
             if not mission.get("local_scan_complete"):
@@ -712,7 +724,7 @@ class OvernightResearch:
             while not cancel.is_set() and time.time() < deadline:
                 frontier = deque()
                 self._search_round(mission, seen, frontier)
-                self._crawl_frontier(mission, list(frontier), seen, max_pages=50)
+                self._crawl_frontier(mission, list(frontier), seen, crawled_urls, max_pages=50)
                 remaining = max(0, deadline - time.time())
                 if remaining <= 0:
                     break
