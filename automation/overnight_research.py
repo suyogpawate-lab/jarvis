@@ -258,11 +258,18 @@ class OvernightResearch:
 
     def cancel(self, mission_id):
         mission_id = _clean(mission_id, 100)
-        event = self._cancel.get(mission_id)
-        if not event:
-            return "[ERROR] No active worker for that mission. It may already be complete or require resume."
-        event.set()
-        self._update(mission_id, status="CANCEL_REQUESTED", progress="Cancellation requested.")
+        with self._lock:
+            mission = self._mission(mission_id)
+            if not mission or mission.get("status") not in {
+                "COLLECTING", "ANALYZING", "CANCEL_REQUESTED"
+            }:
+                return "[INFO] That mission is not currently running."
+            event = self._cancel.get(mission_id)
+            if not event:
+                return "[ERROR] No active worker for that mission. Resume it if it is paused."
+            event.set()
+            self._update(mission_id, status="CANCEL_REQUESTED",
+                         progress="Cancellation requested.")
         return f"Cancellation requested for {mission_id}. Collected evidence is preserved."
 
     def resume(self, mission_id):
