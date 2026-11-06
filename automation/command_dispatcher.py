@@ -2049,19 +2049,21 @@ Rules:
         if re.fullmatch(r"(?:show|list)\s+(?:my\s+)?research\s+(?:missions|jobs)", text, re.I):
             self.research.status(self.automation)
             missions = self.research.list_missions()
-            if not missions:
+            overnight = self.research.overnight.status().get("missions", [])
+            combined = missions[-10:] + overnight[-10:]
+            if not combined:
                 return "There are no saved research missions."
             lines = []
-            for item in missions[-10:]:
+            for item in combined[-15:]:
                 status = item.get("status", "UNKNOWN")
                 automation_id = item.get("automation_id")
                 if automation_id:
                     job = self.automation.get(automation_id) or {}
                     status = job.get("status", status)
                 lines.append(
-                    f"{item.get('id')} / {automation_id or 'one-shot'} — {status} — {item.get('query', '')}"
+                    f"{item.get('id')} / {automation_id or 'background'} — {status} — {item.get('query', '')}"
                 )
-            return "Research missions:\\n" + "\\n".join(lines)
+            return "Research missions:\n" + "\n".join(lines)
 
         research_request = self.research.parse_request(text)
         if research_request:
