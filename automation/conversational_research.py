@@ -32,13 +32,13 @@ class ConversationalResearch:
                  knowledge_hub_url="http://127.0.0.1:8766/api/search"):
         self.search_hub = search_hub
         self.deep_search = deep_search
+        self.state_path = Path(state_path)
         self.overnight = OvernightResearch(
             search_hub, getattr(deep_search, "fast_agent", None),
             state_path=str(self.state_path.parent / "overnight.json"),
         )
         # Deliberately loopback-only: research must not turn this into an SSRF proxy.
         self.knowledge_hub_url = "http://127.0.0.1:8766/api/search"
-        self.state_path = Path(state_path)
         self._lock = threading.RLock()
         self.whatsapp_sender = None
         self.monitor = ResearchMonitor(
