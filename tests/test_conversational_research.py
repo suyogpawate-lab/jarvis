@@ -19,6 +19,26 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(parsed["timing"], "now")
         self.assertIn("robotics", parsed["query"])
 
+    def test_overnight_research_is_distinct_and_preserves_explicit_tomorrow(self):
+        overnight = ConversationalResearch.parse_request(
+            "overnight research on JARVIS compatibility on 1GB RAM Android 10"
+        )
+        self.assertEqual(overnight["timing"], "overnight")
+        self.assertEqual(
+            overnight["query"],
+            "JARVIS compatibility on 1GB RAM Android 10",
+        )
+        alternate = ConversationalResearch.parse_request(
+            "research overnight on Android 10 memory compatibility"
+        )
+        self.assertEqual(alternate["timing"], "overnight")
+        self.assertEqual(alternate["query"], "Android 10 memory compatibility")
+        scheduled = ConversationalResearch.parse_request(
+            "Research overnight on robotics and show me the results tomorrow at 5 AM"
+        )
+        self.assertEqual(scheduled["timing"], "tomorrow")
+        self.assertEqual(scheduled["query"], "robotics")
+
     def test_scheduler_management_text_is_not_research_intent(self):
         requests = (
             "Reschedule auto-96307a83 to 2026-11-06 at 05:00 IST",
