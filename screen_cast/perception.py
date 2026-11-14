@@ -106,13 +106,17 @@ def handle_screen_request(
         return "Sir, tell me what to inspect or change on the screen."
     receiver = receiver or get_receiver()
 
-    if not _ACTION_RE.search(text):
-        return analyze_latest_screen(text, ask)
-
-    if _HIGH_IMPACT_RE.search(text):
+    consequential_intent = bool(
+        re.match(r"^(?:please\\s+)?(?:send|post|publish|submit|purchase|buy|pay|transfer|delete|remove|share|invite)\\b", text, re.I)
+        or re.search(r"\\b(?:tap|click|press)\\s+(?:the\\s+)?(?:send|post|publish|submit|buy|pay|delete|remove)\\b", text, re.I)
+    )
+    if consequential_intent:
         return ("Sir, I won't perform sending, publishing, purchasing, payment, deletion, "
                 "or other externally consequential actions through the generic screen controller. "
                 "Use the app's own confirmation flow.")
+
+    if not _ACTION_RE.search(text):
+        return analyze_latest_screen(text, ask)
 
     snapshot, error = get_screen_snapshot(receiver)
     if error or snapshot is None:
