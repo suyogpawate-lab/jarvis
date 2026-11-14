@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import json
+import time
 from android.shell_executor import ShellExecutor
 from android.android_tools import AndroidTools
 from tools.registry import registry as tool_registry
@@ -99,7 +100,14 @@ class FastAgent:
             raise RuntimeError("This model ID is disabled. Configure a non-Gemini, non-Claude OmniRoute model in OMNIROUTE_COMPLEX_MODEL.")
         payload_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else [])
         payload_messages.extend(messages)
+        started = time.perf_counter()
         response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": model, "messages": payload_messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}, timeout=timeout)
+        if response.status_code == 200:
+            try:
+                from monitoring.cli_telemetry import record_model_usage
+                record_model_usage("omniroute", model, response.json().get("usage") or {}, (time.perf_counter() - started) * 1000)
+            except Exception:
+                pass
         if response.status_code != 200:
             detail = " ".join(str(getattr(response, "text", "")).split())[:300]
             raise RuntimeError(f"OmniRoute request failed (HTTP {response.status_code})" + (f": {detail}" if detail else ""))
@@ -220,6 +228,7 @@ class FastAgent:
             if not key:
                 continue
             try:
+                started = time.perf_counter()
                 response = requests.post(
                     f"{self.base_url}/chat/completions",
                     headers={
@@ -235,6 +244,11 @@ class FastAgent:
 
             if response.status_code == 200:
                 self.current_key_index = index
+                try:
+                    from monitoring.cli_telemetry import record_model_usage
+                    record_model_usage("groq", payload.get("model", self.model), response.json().get("usage") or {}, (time.perf_counter() - started) * 1000)
+                except Exception:
+                    pass
                 if os.getenv("JARVIS_DEBUG_TOKENS") == "1":
                     try:
                         usage = response.json().get("usage") or {}
@@ -3148,6 +3162,11 @@ class FastAgent:
                         )
 
                         result = self._execute_tool_call(tool_call)
+                        try:
+                            from monitoring.cli_telemetry import record_tool_usage
+                            record_tool_usage(tool_call["function"].get("name", "unknown"), result)
+                        except Exception:
+                            pass
 
                         if isinstance(result, dict) and result.get("ok") is False:
                             reason = str(result.get("error") or result.get("message") or "unknown error")
