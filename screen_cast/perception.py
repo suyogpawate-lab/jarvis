@@ -31,7 +31,7 @@ def is_screen_context_request(text: str) -> bool:
     if not value:
         return False
     screen_context = re.search(
-        r"\b(?:on\s+(?:my\s+|the\s+)?screen|(?:my|this|current|the)\s+screen|"
+        r"\b(?:on\s+(?:my\s+|the\s+)?screen|(?:my|this|current)\s+screen|"
         r"screen\s+(?:shows?|contents?|right now|currently)|current\s+display|"
         r"visible\s+(?:page|screen)|currently\s+open|current\s+page|"
         r"this\s+page|this\s+app|that\s+app|what am i looking at|"
