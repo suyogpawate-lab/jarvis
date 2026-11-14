@@ -26,3 +26,14 @@ LoRA is a parameter-efficient adaptation method. DPO is preference optimization 
 ## Deployment policy
 
 Never overwrite the baseline model. Store candidate adapters in versioned directories off-device, validate hashes and compatibility, then promote explicitly. Provide immediate rollback to the frozen baseline. Groq remains the reasoning provider unless a separately evaluated local model is deliberately configured.
+
+## Local promotion check
+
+Place reviewed baseline and candidate metric JSON files directly in the local ignored `data/learning/` directory. Each file must contain numeric `task_accuracy`, `instruction_following` and `safety_pass_rate` values from 0 to 1. Run:
+
+```text
+/learn evaluate baseline.json candidate.json
+/learn evaluate baseline.json candidate.json 0.005
+```
+
+The default maximum regression tolerance is 1 percentage point. This command reports whether the candidate passes the metric gate; it does not install or activate the adapter.
