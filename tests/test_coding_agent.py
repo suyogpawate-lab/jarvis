@@ -30,8 +30,14 @@ class CodingAgentManagerTests(unittest.TestCase):
         self.assertTrue(CodingAgentManager.is_complex_coding_request(
             "Implement CLI telemetry and token tracking in the JARVIS codebase"
         ))
+        self.assertTrue(CodingAgentManager.is_complex_coding_request(
+            "Fix the floating window loading bug in the JARVIS web workspace"
+        ))
         self.assertFalse(CodingAgentManager.is_complex_coding_request(
             "How does Python memory management work?"
+        ))
+        self.assertFalse(CodingAgentManager.is_complex_coding_request(
+            "How do I fix a test in this project?"
         ))
         self.assertFalse(CodingAgentManager.is_complex_coding_request(
             "Explain this function"
