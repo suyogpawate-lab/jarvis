@@ -25,9 +25,10 @@ _ACTION_RE = re.compile(
 )
 
 
-def get_screen_snapshot() -> tuple[dict[str, Any] | None, str | None]:
+def get_screen_snapshot(receiver=None) -> tuple[dict[str, Any] | None, str | None]:
     """Fetch a fresh Accessibility hierarchy; never cache the result."""
-    result = get_receiver().control({"action": "snapshot"})
+    receiver = receiver or get_receiver()
+    result = receiver.control({"action": "snapshot"})
     if not result.get("ok"):
         return None, str(result.get("error", "Android Accessibility snapshot unavailable"))
     if result.get("type") != "screen_accessibility":
@@ -113,7 +114,7 @@ def handle_screen_request(
                 "or other externally consequential actions through the generic screen controller. "
                 "Use the app's own confirmation flow.")
 
-    snapshot, error = get_screen_snapshot()
+    snapshot, error = get_screen_snapshot(receiver)
     if error or snapshot is None:
         return "Sir, I can't safely control the screen without a fresh Accessibility snapshot. " + (error or "")
     compact = _bounded_snapshot(snapshot)
@@ -201,7 +202,7 @@ def handle_screen_request(
         return "Sir, Android rejected that screen action: " + str(result.get("error", "unknown error"))[:240]
 
     # Closed-loop verification: never trust the action acknowledgement alone.
-    after, verify_error = get_screen_snapshot()
+    after, verify_error = get_screen_snapshot(receiver)
     if verify_error or after is None:
         return "The action was accepted by Android, but I couldn't verify the resulting screen: " + str(verify_error or "snapshot unavailable")
     verification_prompt = (
