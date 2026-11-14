@@ -177,6 +177,10 @@ Use /btw to ask an independent side question while a Claude Code job or another 
 /btw quest <independent goal>
 ```
 
+### Local task prediction baseline
+
+Use /agent predict <goal> to estimate completion likelihood from JARVIS's own completed/failed task history. The baseline is a small standard-library Naive Bayes model and can estimate active execution time when at least three similar tasks have timing data. It requires at least five resolved tasks, including two successes and two failures. It reports insufficient data rather than inventing a score. Predictions are historical estimates, not guarantees, and all task history stays local.
+
 ### Explicit preference data for LoRA / RLHF-style alignment
 
 JARVIS can store owner-submitted preference pairs and export a DPO-style JSONL dataset:
