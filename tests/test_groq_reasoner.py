@@ -31,6 +31,19 @@ class GroqScreenReasonerTests(unittest.TestCase):
         self.assertEqual(post.call_args_list[2].kwargs["headers"]["Authorization"], "Bearer key3")
         self.assertEqual(post.call_args_list[2].kwargs["json"]["messages"][1]["content"], "Accessibility text only")
 
+
+    @patch.dict(os.environ, {"GROQ_API_KEY": "primary", "GROQ_API_KEYS": "secondary,third,primary"}, clear=True)
+    @patch("intelligence.groq_reasoner.requests.post")
+    def test_combines_singular_and_plural_key_sources_without_duplicates(self, post):
+        post.side_effect = [
+            FakeResponse(429),
+            FakeResponse(429),
+            FakeResponse(200, {"choices": [{"message": {"content": "Ready."}}]}),
+        ]
+        self.assertEqual(ask_screen_with_groq("text"), "Ready.")
+        sent = [call.kwargs["headers"]["Authorization"] for call in post.call_args_list]
+        self.assertEqual(sent, ["Bearer primary", "Bearer secondary", "Bearer third"])
+
     @patch.dict(os.environ, {"GROQ_API_KEYS": "key1,key2",}, clear=True)
     @patch("intelligence.groq_reasoner.requests.post")
     def test_reports_all_keys_rate_limited(self, post):
