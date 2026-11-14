@@ -350,26 +350,100 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
  const restore=id=>{const w=desk.querySelector('[data-id="'+CSS.escape(id)+'"]');if(!w)return;w.classList.remove("min","max");dock.querySelectorAll("[data-id]").forEach(b=>{if(b.dataset.id===id)b.remove()});focus(w);api("/api/workspace/update",{id,status:"active"}).catch(()=>{})};
  const minimize=(id,w)=>{w.classList.add("min");if(!dock.querySelector('[data-id="'+CSS.escape(id)+'"]')){const b=el("button","",w.dataset.title);b.dataset.id=id;b.onclick=()=>restore(id);dock.append(b)}api("/api/workspace/update",{id,status:"minimized"}).catch(()=>{})};
  const close=id=>api("/api/workspace/close",{id}).catch(e=>console.warn("[JARVIS workspace]",e));
- const media=(item,body)=>{
-   const url=item.url||"",kind=item.kind;
-   if(url&&["web","browser","youtube","document","pdf","audio","video","image"].includes(kind)){
-     let n;
-     if(kind==="image"||/\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(url)){n=el("img");n.src=url;n.alt=item.title}
-     else if(kind==="video"||/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)){n=el("video");n.src=url;n.controls=true;n.playsInline=true}
-     else if(kind==="audio"||/\.(mp3|m4a|ogg|wav)(\?|#|$)/i.test(url)){n=el("audio");n.src=url;n.controls=true;n.style.width="100%"}
-     else {n=el("iframe");if(kind==="youtube"){try{const u=new URL(url),id=u.hostname==="youtu.be"?u.pathname.slice(1):u.searchParams.get("v");n.src="https://www.youtube-nocookie.com/embed/"+encodeURIComponent(id||"")}catch{n.src=url}}else n.src=url;n.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";n.referrerPolicy="strict-origin-when-cross-origin"}
-     body.append(n);
-     if(kind!=="image"&&kind!=="audio"&&kind!=="video"){
-       const open=el("a","ws-external","OPEN IN BROWSER");open.href=url;open.target="_blank";open.rel="noopener noreferrer";body.append(open);
-       const note=el("span","","If this page is blank, the site may block embedded viewing. Open it in the browser instead.");note.style.cssText="display:block;color:#9bb7c6;font-size:10px;padding:2px 6px";body.append(note);
+ const youtubeEmbed=(raw)=>{
+   try{
+     const u=new URL(raw),host=u.hostname.toLowerCase();
+     if(!(host==="youtu.be"||host.endsWith("youtube.com")||host.endsWith("youtube-nocookie.com")))return "";
+     let id="";
+     if(host==="youtu.be")id=u.pathname.split("/").filter(Boolean)[0]||"";
+     else{
+       const parts=u.pathname.split("/").filter(Boolean);
+       if(u.pathname==="/watch")id=u.searchParams.get("v")||"";
+       else if(["shorts","live","embed","v"].includes(parts[0]))id=parts[1]||"";
      }
+     if(!/^[A-Za-z0-9_-]{6,20}$/.test(id))return "";
+     return "https://www.youtube-nocookie.com/embed/"+encodeURIComponent(id);
+   }catch{return ""}
+ };
+ const showState=(body,message,tone)=>{
+   let n=body.querySelector(".ws-load-state");
+   if(!n){n=el("div","ws-load-state");n.style.cssText="padding:7px 9px;color:#a9c2cf;font-size:11px;line-height:1.4";n.setAttribute("role","status");n.setAttribute("aria-live","polite");body.append(n)}
+   n.textContent=message;
+   n.style.color=tone==="error"?"#ffb4a8":"#a9c2cf";
+ };
+ const addExternal=(body,url)=>{
+   const open=el("a","ws-external","OPEN IN BROWSER");
+   open.href=url;open.target="_blank";open.rel="noopener noreferrer";
+   body.append(open);
+ };
+ const renderContent=(item,w,body)=>{
+   const key=[item.kind||"",item.url||"",item.title||""].join("|");
+   if(w.dataset.contentKey===key)return;
+   w.dataset.contentKey=key;
+   body.replaceChildren();
+   const url=item.url||"",kind=item.kind||"";
+   if((kind==="web"||kind==="browser")&&!url){
+     const nav=el("div","ws-address"),field=el("input"),go=el("button","","GO");
+     field.placeholder="https://example.com";field.autocomplete="url";field.inputMode="url";
+     const navigate=async()=>{
+       const raw=field.value.trim();if(!raw)return;
+       let parsed;
+       try{parsed=new URL(/^https?:\/\//i.test(raw)?raw:"https://"+raw);if(!["http:","https:"].includes(parsed.protocol)||!parsed.hostname)throw Error("Enter a valid HTTP(S) address.");}
+       catch(err){showState(body,err.message||"Invalid address.","error");return}
+       go.disabled=true;showState(body,"Connecting to "+parsed.hostname+"…");
+       try{
+         await api("/api/workspace/update",{id:item.id,url:parsed.href,title:parsed.hostname});
+         const next={...item,url:parsed.href,title:parsed.hostname};
+         const titleNode=w.querySelector(".ws-title"),kindNode=w.querySelector(".ws-kind");
+         if(titleNode)titleNode.textContent=next.title;
+         if(kindNode)kindNode.textContent=String(next.kind).replace("_"," ");
+         w.dataset.title=next.title;
+         renderContent(next,w,body);
+       }catch(err){showState(body,"Could not open address: "+(err.message||"workspace update failed"),"error")}
+       finally{go.disabled=false}
+     };
+     go.onclick=navigate;field.addEventListener("keydown",e=>{if(e.key==="Enter")navigate()});
+     nav.append(field,go);body.append(nav);
+     showState(body,"Enter a website address and select GO.");
      return;
    }
-   if(kind==="web"||kind==="browser"){const p=el("div","ws-placeholder");p.append(el("strong","","Browser window"),el("span","","Enter a website address in the window toolbar to navigate."));body.append(p);return}
-   const p=el("div","ws-placeholder");p.append(el("strong","",item.title||kind.toUpperCase()),el("span","",kind==="live_screen"?"Live screen stream is not connected to this surface yet.":kind==="terminal"?"Execution output will appear when a redacted task stream is connected.":kind==="task"?"JARVIS task activity surface.":kind==="telemetry"?"Live telemetry values are shown when reported by the runtime.":"Workspace surface ready."));body.append(p);
+   if(url&&["web","browser","youtube","document","pdf","audio","video","image"].includes(kind)){
+     let node=null;
+     const path=(()=>{try{return new URL(url).pathname.toLowerCase()}catch{return ""}})();
+     if(kind==="image"||/\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:$)/i.test(path)){
+       node=el("img");node.alt=item.title||"JARVIS media";node.onload=()=>showState(body,"Image loaded.");node.onerror=()=>showState(body,"Image could not be loaded. The URL may be unavailable or block access.","error");
+     }else if(kind==="video"||/\.(mp4|webm|mov|m4v)(?:$)/i.test(path)){
+       node=el("video");node.controls=true;node.playsInline=true;node.onloadeddata=()=>showState(body,"Video ready.");node.onerror=()=>showState(body,"Video could not be decoded or reached.","error");
+     }else if(kind==="audio"||/\.(mp3|m4a|ogg|wav|aac|flac)(?:$)/i.test(path)){
+       node=el("audio");node.controls=true;node.style.cssText="width:100%;margin-top:8px";node.onloadeddata=()=>showState(body,"Audio ready.");node.onerror=()=>showState(body,"Audio could not be decoded or reached.","error");
+     }else{
+       node=el("iframe");node.title=item.title||"Embedded webpage";node.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";node.referrerPolicy="strict-origin-when-cross-origin";
+       let loaded=false,timer=setTimeout(()=>{if(!loaded)showState(body,"The embedded page has not confirmed loading. It may block iframe viewing; use Open in Browser.","error")},12000);
+       node.onload=()=>{loaded=true;clearTimeout(timer);showState(body,"The embedded frame responded. If its content is blank, the site may block embedding; use Open in Browser.")};
+       node.onerror=()=>{loaded=true;clearTimeout(timer);showState(body,"The site refused or failed to load inside this window.","error")};
+       node.src=kind==="youtube"?(youtubeEmbed(url)||url):url;
+       if(kind==="youtube"&&!youtubeEmbed(url))showState(body,"This YouTube URL format could not be converted to an embed. Open it in the browser.","error");
+     }
+     if(node&&!node.src)node.src=url;
+     if(node)body.append(node);
+     showState(body,"Loading "+(item.title||kind)+"…");
+     if(kind!=="image"&&kind!=="audio"&&kind!=="video")addExternal(body,url);
+     else addExternal(body,url);
+     return;
+   }
+   const p=el("div","ws-placeholder");
+   const descriptions={
+     live_screen:"Live screen stream is not connected to this surface yet.",
+     terminal:"Execution output will appear when a redacted task stream is connected.",
+     task:"JARVIS task activity surface.",
+     telemetry:"Live telemetry values are shown when reported by the runtime.",
+     tools:"Connector and tool details are shown when reported by the runtime."
+   };
+   p.append(el("strong","",item.title||String(kind).toUpperCase()),el("span","",descriptions[kind]||"Workspace surface ready."));
+   body.append(p);
  };
  function makeWindow(item,i){
-   let w=desk.querySelector('[data-id="'+CSS.escape(item.id)+'"]');if(w){if(item.status!=="minimized"&&w.classList.contains("min"))restore(item.id);return w}
+   let w=desk.querySelector('[data-id="'+CSS.escape(item.id)+'"]');if(w){w.dataset.title=item.title||"JARVIS window";const t=w.querySelector(".ws-title"),k=w.querySelector(".ws-kind"),b=w.querySelector(".ws-body");if(t)t.textContent=item.title||"JARVIS window";if(k)k.textContent=String(item.kind).replace("_"," ");if(b)renderContent(item,w,b);if(item.status!=="minimized"&&w.classList.contains("min"))restore(item.id);return w}
    w=el("section","ws-win");w.dataset.id=item.id;w.dataset.title=item.title||"JARVIS window";w.style.zIndex=++z;
    const width=Math.min(460,Math.max(270,desk.clientWidth*.38)),height=Math.min(340,Math.max(210,desk.clientHeight*.45));
    w.style.width=width+"px";w.style.height=height+"px";w.style.left=Math.max(8,Math.min(desk.clientWidth-width-8,desk.clientWidth*.08+(i%3)*65))+"px";w.style.top=Math.max(8,Math.min(desk.clientHeight-height-8,desk.clientHeight*.08+(i%3)*48))+"px";
@@ -377,11 +451,7 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
    const mini=el("button","","−"),max=el("button","","□"),x=el("button","","×");mini.title="Minimize";max.title="Maximize / restore";x.title="Close";
    mini.onclick=e=>{e.stopPropagation();minimize(item.id,w)};max.onclick=e=>{e.stopPropagation();const next=w.classList.contains("max")?"active":"maximized";w.classList.toggle("max",next==="maximized");focus(w);api("/api/workspace/update",{id:item.id,status:next}).catch(()=>{})};x.onclick=e=>{e.stopPropagation();close(item.id)};
    const hint=el("span","ws-hint","2-FINGER RESIZE");bar.append(title,kind,hint,mini,max,x);const body=el("div","ws-body");
-   if((item.kind==="web"||item.kind==="browser")&&!item.url){
-     const nav=el("div","ws-address"),field=el("input"),go=el("button","","GO");field.placeholder="https://example.com";
-     const navigate=async()=>{const raw=field.value.trim();if(!raw)return;const url=/^https?:\/\//i.test(raw)?raw:"https://"+raw;try{await api("/api/workspace/update",{id:item.id,url,title:new URL(url).hostname});const frame=el("iframe");frame.src=url;frame.referrerPolicy="strict-origin-when-cross-origin";frame.allow="fullscreen";body.replaceChildren(nav,frame);const ext=el("a","ws-external","OPEN IN BROWSER");ext.href=url;ext.target="_blank";ext.rel="noopener noreferrer";body.append(ext)}catch(err){console.warn(err)}};
-     go.onclick=navigate;field.addEventListener("keydown",e=>{if(e.key==="Enter")navigate()});nav.append(field,go);body.append(nav);
-   }else media(item,body);
+   renderContent(item,w,body);
    w.append(bar,body);desk.append(w);
    w.addEventListener("pointerdown",()=>focus(w));
    let drag=null;const touches=new Map();let pinch=null;
