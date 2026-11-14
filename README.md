@@ -168,6 +168,36 @@ JARVIS has persistent personal/project memory and can use relevant stored contex
 
 `/remember` saves personal memory; `/project` saves project memory. `/memory` displays memory, with optional `personal` or `project` filters. `/discuss` starts a multi-agent discussion; a duration suffix such as `/discuss5m` requests a five-minute discussion (duration is capped at one hour).
 
+### Background Claude Code jobs
+
+Complex coding requests can be delegated to the installed Claude Code CLI without opening its interactive terminal UI. JARVIS starts Claude Code in print mode, routes its Anthropic-compatible requests through the configured local OmniRoute endpoint, and gives each job a separate Git worktree.
+
+Configure these optional values in .env:
+
+```bash
+JARVIS_CODING_AGENT_COMMAND=claude
+JARVIS_CODING_AGENT_MODEL=auto/best-reasoning
+JARVIS_CODING_AGENT_MAX_TURNS=20
+JARVIS_CODING_AGENT_TIMEOUT=3600
+```
+
+The model value must be a model or combination exposed by your OmniRoute instance and compatible with Claude Code's Anthropic Messages API. For a personal OmniRoute combination named claude-code, set JARVIS_CODING_AGENT_MODEL=claude-code in your local .env. Do not commit that personal setting or any API credentials. Other installations can select their own compatible OmniRoute model; JARVIS does not silently fall back to a different provider.
+
+Commands:
+
+```text
+/code start <complex coding goal>
+/code status <job-id>
+/code list
+/code logs <job-id>
+/code review <job-id>
+/code cancel <job-id>
+```
+
+Coding workers use a restricted non-interactive permission policy and a separate Git worktree. They do not commit, push, merge, deploy, install dependencies, or access the network. Review the worktree and test results before manually integrating changes. The worktree is not an OS-level sandbox; keep secrets out of project files and retain the normal Android/Termux security controls.
+
+Natural-language requests that clearly ask JARVIS to implement, debug, refactor, or repair a substantial codebase feature are routed to this worker. Programming questions and small code explanations remain on the normal fast-agent path.
+
 ### Shell commands and background jobs
 
 Explicit dispatcher commands include:
