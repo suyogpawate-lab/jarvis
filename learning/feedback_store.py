@@ -114,6 +114,24 @@ class FeedbackStore:
             "off-device LoRA fine-tuning workflow."
         )
 
+    def evaluate_candidate(self, arguments):
+        from intelligence.model_evaluation import ModelEvaluation
+        parts = str(arguments or "").split()
+        if len(parts) not in {2, 3}:
+            return "Usage: /learn evaluate <baseline-metrics.json> <candidate-metrics.json> [max-regression]"
+        paths = []
+        for name in parts[:2]:
+            candidate = (self.path.parent / name).resolve()
+            if candidate.parent != self.path.parent.resolve() or not candidate.is_file():
+                return "[LEARNING ERROR] Metrics files must exist directly inside the local learning data directory."
+            paths.append(candidate)
+        try:
+            tolerance = float(parts[2]) if len(parts) == 3 else 0.01
+            result = ModelEvaluation(*paths).compare(max_regression=tolerance)
+        except Exception as exc:
+            return f"[LEARNING EVALUATION ERROR] {type(exc).__name__}: {exc}"
+        return "[LEARNING EVALUATION] " + json.dumps(result, ensure_ascii=False)
+
     def handle(self, command):
         text = str(command or "").strip()
         if text.lower() in {"", "help", "?"}:
@@ -130,6 +148,8 @@ class FeedbackStore:
             return self.status()
         if action == "export":
             return self.export_dpo()
+        if action == "evaluate":
+            return self.evaluate_candidate(rest)
         if action == "prefer":
             parts = [part.strip() for part in rest.split("||")]
             if len(parts) != 3:
