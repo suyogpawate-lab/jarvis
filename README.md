@@ -168,6 +168,15 @@ JARVIS has persistent personal/project memory and can use relevant stored contex
 
 `/remember` saves personal memory; `/project` saves project memory. `/memory` displays memory, with optional `personal` or `project` filters. `/discuss` starts a multi-agent discussion; a duration suffix such as `/discuss5m` requests a five-minute discussion (duration is capped at one hour).
 
+### Side questions and background side quests
+
+Use /btw to ask an independent side question while a Claude Code job or another background task is running. Side questions use a direct answer path without exposing the action-tool catalogue. Use /btw quest <goal> to plan and start one independent Agent Engine task in the background. Inspect it with /agent status <task-id> or /agent list; the existing task approval and execution safeguards still apply.
+
+```text
+/btw <side question>
+/btw quest <independent goal>
+```
+
 ### Plain CLI telemetry
 
 The plain Python CLI displays per-turn elapsed time, session uptime, input/output token counts, tools used, tool success rate, and explicit verification coverage when tools report a verified result. It does not present an uncalibrated model guess as a confidence percentage. No prompts, answers, tool arguments, or credentials are written to the telemetry journal. The summary is not rendered in the full-screen Termux UI or web UI.
