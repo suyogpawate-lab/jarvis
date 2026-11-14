@@ -46,6 +46,18 @@ _servers = []
 _tool_count = 0
 _count_lock = threading.Lock()
 
+# Runtime state is metadata-only; never expose configured environment values.
+_server_states = {}
+_state_lock = threading.Lock()
+
+
+def _set_server_state(name, status, **details):
+    with _state_lock:
+        current = dict(_server_states.get(name, {}))
+        current.update({"name": str(name), "status": str(status), **details})
+        _server_states[name] = current
+
+
 
 class MCPError(Exception):
     pass
@@ -295,6 +307,7 @@ def _log_failure(name, message):
 
 
 def _boot(name, config):
+    _set_server_state(name, "STARTING", tools=0, error=None)
     env = {key: os.path.expandvars(str(value)) for key, value in (config.get("env") or {}).items()}
     args = [os.path.expandvars(str(value)) for value in (config.get("args") or [])]
 
@@ -327,9 +340,13 @@ def _boot(name, config):
         server.start()
         _servers.append(server)
         count = _register_server_tools(server)
+        _set_server_state(name, "RUNNING", tools=count, pid=server.proc.pid if server.proc else None, error=None)
         _log_failure(name, f"{count} tool(s) ready")
     except Exception as exc:
         server.stop()
+        if server in _servers:
+            _servers.remove(server)
+        _set_server_state(name, "ERROR", tools=0, error=f"{type(exc).__name__}: {str(exc)[:180]}")
         _log_failure(name, f"failed to start: {type(exc).__name__}: {exc}")
 
 
@@ -344,14 +361,58 @@ def start_all_async():
         return
 
     for name, config in (data.get("servers") or {}).items():
-        if not config.get("enabled", True) or not config.get("command"):
+        if not config.get("enabled", True):
+            _set_server_state(name, "DISABLED", tools=0, error=None)
             continue
+        if not config.get("command"):
+            _set_server_state(name, "INVALID", tools=0, error="No command configured.")
+            continue
+        _set_server_state(name, "STARTING", tools=0, error=None)
         threading.Thread(target=_boot, args=(name, config), daemon=True).start()
+
+
+def status_snapshot():
+    """Return MCP process state and exposed tool counts without configuration secrets."""
+    with _state_lock:
+        result = [dict(item) for item in _server_states.values()]
+    for item in result:
+        if item.get("status") == "RUNNING":
+            server = next((x for x in _servers if x.name == item["name"]), None)
+            if server is None or server.proc is None or server.proc.poll() is not None:
+                item["status"] = "EXITED"
+                _set_server_state(item["name"], "EXITED", tools=item.get("tools", 0),
+                                  pid=item.get("pid"), error="MCP process is no longer running.")
+    return sorted(result, key=lambda item: item.get("name", ""))
+
+
+def status_text(show_tools=False):
+    states = status_snapshot()
+    if not states:
+        return "[MCP] No configured MCP servers were found."
+    lines = ["MCP server status:"]
+    for item in states:
+        line = f"- {item['name']}: {item['status']} ({int(item.get('tools', 0))} tools)"
+        if item.get("error"):
+            line += " — " + str(item["error"])[:180]
+        lines.append(line)
+    if show_tools:
+        names = sorted(
+            schema.get("function", {}).get("name", "")
+            for schema in registry.schemas()
+            if schema.get("function", {}).get("name", "").startswith("mcp_")
+        )
+        lines.append("Registered MCP tools:")
+        if names:
+            lines.extend("- " + name for name in names)
+        else:
+            lines.append("- none")
+    return "\n".join(lines)
 
 
 def stop_all():
     for server in _servers:
         server.stop()
+        _set_server_state(server.name, "STOPPED", tools=0, pid=None, error=None)
 
 
 atexit.register(stop_all)
