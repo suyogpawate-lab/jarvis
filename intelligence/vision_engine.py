@@ -88,10 +88,25 @@ class VisionEngine:
             self._load()
             np = self._np
             with self._Image.open(io.BytesIO(image_bytes)) as image:
-                array = np.asarray(
-                    image.convert("RGB").resize((self._size[1], self._size[0])),
-                    dtype=np.float32,
-                ) / 255.0
+                image = image.convert("RGB")
+                target_h, target_w = self._size
+                if target_h <= 0 or target_w <= 0:
+                    raise ValueError("Invalid MobileCLIP input dimensions.")
+                # MobileCLIP-S0 preprocessing uses bicubic shortest-edge resize
+                # followed by a centered 256x256 crop, not a stretched resize.
+                width, height = image.size
+                scale = max(target_w / width, target_h / height)
+                resized_w = max(target_w, int(round(width * scale)))
+                resized_h = max(target_h, int(round(height * scale)))
+                resampling = getattr(self._Image, "Resampling", self._Image)
+                image = image.resize(
+                    (resized_w, resized_h),
+                    resample=getattr(resampling, "BICUBIC", 3),
+                )
+                left = (resized_w - target_w) // 2
+                top = (resized_h - target_h) // 2
+                image = image.crop((left, top, left + target_w, top + target_h))
+                array = np.asarray(image, dtype=np.float32) / 255.0
             tensor = (((array - self._mean) / self._std).transpose(2, 0, 1)[None, ...]).astype(np.float32)
             output = self._session.run(None, {self._input_name: tensor})
             if not output:
