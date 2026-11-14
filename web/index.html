@@ -353,7 +353,7 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
  const youtubeEmbed=(raw)=>{
    try{
      const u=new URL(raw),host=u.hostname.toLowerCase();
-     if(!(host==="youtu.be"||host.endsWith("youtube.com")||host.endsWith("youtube-nocookie.com")))return "";
+     if(!(host==="youtu.be"||host==="youtube.com"||host.endsWith(".youtube.com")||host==="youtube-nocookie.com"||host.endsWith(".youtube-nocookie.com")))return "";
      let id="";
      if(host==="youtu.be")id=u.pathname.split("/").filter(Boolean)[0]||"";
      else{
@@ -408,7 +408,7 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
      return;
    }
    if(url&&["web","browser","youtube","document","pdf","audio","video","image"].includes(kind)){
-     let node=null;
+     let node=null,mediaWarning="";
      const path=(()=>{try{return new URL(url).pathname.toLowerCase()}catch{return ""}})();
      if(kind==="image"||/\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:$)/i.test(path)){
        node=el("img");node.alt=item.title||"JARVIS media";node.onload=()=>showState(body,"Image loaded.");node.onerror=()=>showState(body,"Image could not be loaded. The URL may be unavailable or block access.","error");
@@ -422,13 +422,13 @@ setTheme('emerald');loadHist();connect();requestAnimationFrame(frame);
        node.onload=()=>{loaded=true;clearTimeout(timer);showState(body,"The embedded frame responded. If its content is blank, the site may block embedding; use Open in Browser.")};
        node.onerror=()=>{loaded=true;clearTimeout(timer);showState(body,"The site refused or failed to load inside this window.","error")};
        node.src=kind==="youtube"?(youtubeEmbed(url)||url):url;
-       if(kind==="youtube"&&!youtubeEmbed(url))showState(body,"This YouTube URL format could not be converted to an embed. Open it in the browser.","error");
+       if(kind==="youtube"&&!youtubeEmbed(url))mediaWarning="This YouTube URL format could not be converted to an embed. Open it in the browser.";
      }
      if(node&&!node.src)node.src=url;
      if(node)body.append(node);
      showState(body,"Loading "+(item.title||kind)+"…");
-     if(kind!=="image"&&kind!=="audio"&&kind!=="video")addExternal(body,url);
-     else addExternal(body,url);
+     if(mediaWarning)showState(body,mediaWarning,"error");
+     addExternal(body,url);
      return;
    }
    const p=el("div","ws-placeholder");
