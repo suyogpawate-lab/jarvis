@@ -107,8 +107,8 @@ def handle_screen_request(
     receiver = receiver or get_receiver()
 
     consequential_intent = bool(
-        re.match(r"^(?:please\\s+)?(?:send|post|publish|submit|purchase|buy|pay|transfer|delete|remove|share|invite)\\b", text, re.I)
-        or re.search(r"\\b(?:tap|click|press)\\s+(?:the\\s+)?(?:send|post|publish|submit|buy|pay|delete|remove)\\b", text, re.I)
+        re.match(r"^(?:please\s+)?(?:send|post|publish|submit|purchase|buy|pay|transfer|delete|remove|share|invite)\b", text, re.I)
+        or re.search(r"\b(?:tap|click|press)\s+(?:the\s+)?(?:send|post|publish|submit|buy|pay|delete|remove)\b", text, re.I)
     )
     if consequential_intent:
         return ("Sir, I won't perform sending, publishing, purchasing, payment, deletion, "
