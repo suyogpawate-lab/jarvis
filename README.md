@@ -168,6 +168,91 @@ JARVIS has persistent personal/project memory and can use relevant stored contex
 
 `/remember` saves personal memory; `/project` saves project memory. `/memory` displays memory, with optional `personal` or `project` filters. `/discuss` starts a multi-agent discussion; a duration suffix such as `/discuss5m` requests a five-minute discussion (duration is capped at one hour).
 
+### Side questions and background side quests
+
+Use /btw to ask an independent side question while a Claude Code job or another background task is running. Side questions use a direct answer path without exposing the action-tool catalogue. Use /btw quest <goal> to plan and start one independent Agent Engine task in the background. Inspect it with /agent status <task-id> or /agent list; the existing task approval and execution safeguards still apply.
+
+```text
+/btw <side question>
+/btw quest <independent goal>
+```
+
+### Local task prediction baseline
+
+Use /agent predict <goal> to estimate completion likelihood from JARVIS's own completed/failed task history. The baseline is a small standard-library Naive Bayes model and can estimate active execution time when at least three similar tasks have timing data. It requires at least five resolved tasks, including two successes and two failures. It reports insufficient data rather than inventing a score. Predictions are historical estimates, not guarantees, and all task history stays local.
+
+### Explicit preference data for LoRA / RLHF-style alignment
+
+JARVIS can store owner-submitted preference pairs and export a DPO-style JSONL dataset:
+
+```text
+/learn status
+/learn prefer <prompt> || <preferred answer> || <rejected answer>
+/learn export
+/learn evaluate baseline.json candidate.json
+```
+
+This is opt-in only: JARVIS does not silently save conversations or train on user messages. The export contains prompt/chosen/rejected fields and remains local under the ignored data/ directory. It is a dataset-preparation stage, not on-device model training. LoRA/DPO training should run on a separate machine with suitable memory/compute; the Lenovo Android tablet remains the low-memory inference/control device. Classical RLHF with a separately trained reward model is not implemented by this data-capture stage.
+
+### Approval-gated automatic updates
+
+The plain CLI checks origin/main in the background at startup (set JARVIS_AUTO_UPDATE_CHECK=0 to disable). When a newer version is found, JARVIS displays its commit subjects and file summary before changing anything.
+
+```text
+/update check
+/update status
+/update apply
+```
+
+Only /update apply installs the update. It requires the main branch and a clean working tree, rechecks that the remote SHA has not changed since approval, creates a backup branch, then performs a fast-forward-only merge. Local modifications are never overwritten. Run /doctor after updating. The full-screen Termux UI and web UI are not redesigned by this update workflow.
+
+### MCP server diagnostics
+
+JARVIS can start configured stdio MCP servers asynchronously. Inspect connection state and registered tools from the CLI without exposing server environment variables:
+
+```text
+/mcp status
+/mcp tools
+```
+
+The status view reports starting, running, disabled, invalid, failed or exited servers and the number of registered tools. Server stderr and startup failures remain in the local logs directory.
+
+### Plain CLI telemetry
+
+The plain Python CLI displays per-turn elapsed time, session uptime, input/output token counts, tools used, tool success rate, and explicit verification coverage when tools report a verified result. It does not present an uncalibrated model guess as a confidence percentage. No prompts, answers, tool arguments, or credentials are written to the telemetry journal. The summary is not rendered in the full-screen Termux UI or web UI.
+
+Set JARVIS_CLI_TELEMETRY=0 in .env to disable telemetry persistence and the CLI summary. Metrics are stored locally in data/cli_telemetry.jsonl, which is covered by the existing data/ ignore rule.
+
+### Background Claude Code jobs
+
+Complex coding requests can be delegated to the installed Claude Code CLI without opening its interactive terminal UI. JARVIS starts Claude Code in print mode, routes its Anthropic-compatible requests through the configured local OmniRoute endpoint, and gives each job a separate Git worktree.
+
+Configure these optional values in .env:
+
+```bash
+JARVIS_CODING_AGENT_COMMAND=claude
+JARVIS_CODING_AGENT_MODEL=auto/best-reasoning
+JARVIS_CODING_AGENT_MAX_TURNS=20
+JARVIS_CODING_AGENT_TIMEOUT=3600
+```
+
+The model value must be a model or combination exposed by your OmniRoute instance and compatible with Claude Code's Anthropic Messages API. For a personal OmniRoute combination named claude-code, set JARVIS_CODING_AGENT_MODEL=claude-code in your local .env. Do not commit that personal setting or any API credentials. Other installations can select their own compatible OmniRoute model; JARVIS does not silently fall back to a different provider.
+
+Commands:
+
+```text
+/code start <complex coding goal>
+/code status <job-id>
+/code list
+/code logs <job-id>
+/code review <job-id>
+/code cancel <job-id>
+```
+
+Coding workers use a restricted non-interactive permission policy and a separate Git worktree. They do not commit, push, merge, deploy, install dependencies, or access the network. Review the worktree and test results before manually integrating changes. The worktree is not an OS-level sandbox; keep secrets out of project files and retain the normal Android/Termux security controls.
+
+Natural-language requests that clearly ask JARVIS to implement, debug, refactor, or repair a substantial codebase feature are routed to this worker. Programming questions and small code explanations remain on the normal fast-agent path.
+
 ### Shell commands and background jobs
 
 Explicit dispatcher commands include:
@@ -523,6 +608,32 @@ python skills/multi_install.py https://github.com/owner/repository/tree/main/pat
 
 The installer discovers all `SKILL.md` files in the selected repository/folder, lists them, and asks before installing the set. Add `--yes` only when you intentionally want non-interactive installation. It installs each skill into its own folder under `skills/`, refuses to overwrite existing folders, and does not execute installed skill content. Review skills from unfamiliar sources before using them. The installer downloads each discovered skill folder, including its `SKILL.md` and supporting files, with per-file/total-size limits. It does not execute installed skill content.
 
+
+## Local intelligence: vision, forecasting and model adaptation
+
+Groq remains the primary reasoning model. Optional local engines provide visual classification and low-memory forecasting without loading a local language model.
+
+```text
+/vision status
+/vision classify <screenshot-path>
+/forecast status
+/forecast <horizon> <comma-separated-values>
+/agent predict <goal>
+```
+
+The vector-only vision engine requires a compatible image ONNX encoder and precomputed text prototypes from the same contrastive embedding space. It does not replace OCR or Android accessibility. Arbitrary SmolVLM vision features cannot be treated as CLIP text-aligned embeddings. Model files are intentionally excluded from Git; see [intelligence/README.md](intelligence/README.md).
+
+ForecastEngine currently supplies a deterministic damped-median-trend baseline. Chronos-Bolt, Timestral and Lag-Llama are candidate models for later device benchmarks, not silently installed dependencies or currently active inference backends.
+
+### Accuracy-preserving LoRA / preference optimization
+
+```text
+/learn status
+/learn prefer <prompt> || <preferred answer> || <rejected answer>
+/learn export
+```
+
+Preference collection is opt-in. LoRA/DPO training is intended for an external machine. Keep a frozen baseline and a held-out evaluation set; compare task accuracy, instruction following and safety before explicitly promoting any adapter. Candidate adapters must be rejected if required metrics regress beyond the configured tolerance. DPO is preference optimization, not classical reward-model RLHF. See [learning/README.md](learning/README.md).
 
 ## Live Android Screen Cast
 

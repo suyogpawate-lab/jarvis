@@ -19,6 +19,7 @@ Multiple commands can exist in one input.
 
 import re
 import shlex
+import threading
 import json
 import os
 import uuid
@@ -34,6 +35,8 @@ from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
+from automation.coding_agent import CodingAgentManager
+from automation.update_manager import UpdateManager
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
 from automation.aie import AIEEngine, NaturalLanguageAIE
@@ -41,6 +44,8 @@ from automation.overnight_planner import OvernightPlanner
 from automation.conversational_research import ConversationalResearch
 from core.temporal_context import build_temporal_context
 from monitoring.health_manager import HealthManager
+from intelligence.vision_engine import VisionEngine
+from intelligence.forecast_engine import ForecastEngine
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.fast_agent import FastAgent, JARVIS_ABILITIES
@@ -117,6 +122,13 @@ class CommandDispatcher:
         # Coordinate existing providers, persisted workflows, and read-only health checks.
         self.health_manager = HealthManager(on_warning=self._on_health_warning)
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
+        # Background Claude Code jobs use isolated Git worktrees and OmniRoute.
+        self.coding_agent = CodingAgentManager()
+        self.update_manager = UpdateManager()
+        self.vision_engine = VisionEngine()
+        self.forecast_engine = ForecastEngine()
+        self._side_quest_lock = threading.Lock()
+        self._side_quest_active = False
 
         # Persistent AIE goal/event control plane; typed capabilities only.
         self.aie = AIEEngine(health_provider=self._aie_health_snapshot, goal_planner=self._aie_plan_provider)
@@ -1971,9 +1983,115 @@ Rules:
             "id": info.get("id") or info.get("key"),
         }
 
+    def _handle_btw(self, text: str, source: str = "external") -> str:
+        """Answer a side question or start one independent background quest."""
+        argument = re.sub(r"^/btw\s*", "", str(text or ""), flags=re.IGNORECASE).strip()
+        if not argument:
+            return "Use /btw <side question> or /btw quest <independent goal>."
+        quest = re.match(r"^quest\s+(.+)$", argument, re.IGNORECASE | re.DOTALL)
+        if quest:
+            goal = quest.group(1).strip()
+            if not goal:
+                return "A side-quest goal is required."
+            coding_agent = getattr(self, "coding_agent", None)
+            if coding_agent is not None and coding_agent.is_complex_coding_request(goal):
+                return coding_agent.submit(goal)
+            lock = getattr(self, "_side_quest_lock", None)
+            if lock is None:
+                self._side_quest_lock = threading.Lock()
+                lock = self._side_quest_lock
+            with lock:
+                if getattr(self, "_side_quest_active", False):
+                    return "A side quest is already running. Check it with /agent list."
+                plan = self.agent_engine.handle("/agent plan " + goal, source=source)
+                task_match = re.search(r"task-[0-9a-f]{8}", str(plan))
+                if not task_match:
+                    return str(plan)
+                task_id = task_match.group(0)
+                self._side_quest_active = True
+
+                def run_side_quest():
+                    try:
+                        self.agent_engine.handle("/agent run " + task_id, source="side_quest")
+                    except Exception as exc:
+                        print(f"[SIDE QUEST ERROR] {task_id}: {type(exc).__name__}: {exc}", flush=True)
+                    finally:
+                        self._side_quest_active = False
+
+                threading.Thread(
+                    target=run_side_quest,
+                    name="jarvis-side-" + task_id,
+                    daemon=True,
+                ).start()
+                return (
+                    str(plan) + "\n[SIDE QUEST RUNNING IN BACKGROUND] "
+                    + task_id + "\nUse /agent status " + task_id + " to inspect progress."
+                )
+
+        # Side questions are answered without exposing the action-tool catalogue.
+        try:
+            return self.fast_agent._answer_simple_direct(argument)
+        except Exception as exc:
+            return f"[BTW ERROR] Side question failed ({type(exc).__name__}: {exc})."
+
     def dispatch(self, text, conversation=None, source="external"):
         text = str(text).strip()
         original_text = text
+
+        # Explicit coding-agent controls are deterministic and stay in the background.
+        coding_agent = getattr(self, "coding_agent", None)
+        if re.match(r"^/code(?:\s|$)", text, re.IGNORECASE):
+            if coding_agent is None:
+                return "[CODE UNAVAILABLE] Background coding agent is not initialized."
+            return coding_agent.handle(text)
+
+        if re.match(r"^/btw(?:\s|$)", text, re.IGNORECASE):
+            return self._handle_btw(text, source=source)
+
+        if re.match(r"^/mcp(?:\s|$)", text, re.IGNORECASE):
+            from tools import mcp_client
+            action = re.sub(r"^/mcp\s*", "", text, flags=re.IGNORECASE).strip().lower()
+            if action in {"", "status"}:
+                return mcp_client.status_text()
+            if action in {"tools", "list"}:
+                return mcp_client.status_text(show_tools=True)
+            return "Use /mcp status or /mcp tools."
+
+        if re.match(r"^/update(?:\s|$)", text, re.IGNORECASE):
+            action = re.sub(r"^/update\s*", "", text, flags=re.IGNORECASE).strip()
+            return self.update_manager.handle(action)
+
+        if re.match(r"^/learn(?:\s|$)", text, re.IGNORECASE):
+            from learning.feedback_store import FeedbackStore
+            action = re.sub(r"^/learn\s*", "", text, flags=re.IGNORECASE)
+            return FeedbackStore().handle(action)
+
+        if re.match(r"^/vision(?:\s|$)", text, re.IGNORECASE):
+            action = re.sub(r"^/vision\s*", "", text, flags=re.IGNORECASE).strip()
+            if action.lower() in {"", "status"}:
+                return "[VISION] " + json.dumps(self.vision_engine.status(), ensure_ascii=False)
+            if action.lower().startswith("classify "):
+                result = self.vision_engine.classify(action[9:].strip())
+                return "[VISION] " + json.dumps(result, ensure_ascii=False)
+            return "Use /vision status or /vision classify <screenshot-path>."
+
+        if re.match(r"^/forecast(?:\s|$)", text, re.IGNORECASE):
+            action = re.sub(r"^/forecast\s*", "", text, flags=re.IGNORECASE).strip()
+            if action.lower() == "status":
+                return "[FORECAST] " + json.dumps(self.forecast_engine.status(), ensure_ascii=False)
+            match = re.match(r"^(\d+)\s+(.+)$", action)
+            if not match:
+                return "Use /forecast status or /forecast <horizon> <comma-separated-values>."
+            try:
+                values = [float(item.strip()) for item in match.group(2).split(",") if item.strip()]
+            except ValueError:
+                return "[FORECAST ERROR] Values must be comma-separated numbers."
+            return "[FORECAST] " + json.dumps(self.forecast_engine.forecast(values, int(match.group(1))), ensure_ascii=False)
+
+        # Complex implementation requests use the installed Claude Code CLI through
+        # OmniRoute. Simple programming questions remain on the normal fast route.
+        if source != "agent_step" and coding_agent is not None and coding_agent.is_complex_coding_request(text):
+            return coding_agent.submit(text)
 
         # Explicit JARVIS floating-window requests are routed before AIE/Agent
         # planning. The bridge only claims requests that explicitly say window,
@@ -1998,12 +2116,6 @@ Rules:
             if result is not None:
                 return result
             return "[AIE] Use natural language to create goals, 'plan <goal>', or 'run mission <id>'."
-        # Overnight research is a deterministic, model-free collection job.
-        # Claim it before natural-language AIE or FastAgent can route it elsewhere.
-        overnight_request = self.research.parse_request(text)
-        if overnight_request and overnight_request.get("timing") == "overnight":
-            return self.research.start_overnight(overnight_request["query"])
-
         if aie_nl is not None:
             aie_result = aie_nl.handle(text, source=source)
             if aie_result is not None:
@@ -2033,6 +2145,12 @@ Rules:
         automation_result = self._automation_route(text)
         if automation_result is not None:
             return automation_result
+
+        # Overnight research is a deterministic, model-free collection job.
+        # Scheduler management and explicit local commands must be claimed first.
+        overnight_request = self.research.parse_request(text)
+        if overnight_request and overnight_request.get("timing") == "overnight":
+            return self.research.start_overnight(overnight_request["query"])
 
         # ======================================================
         # CONVERSATIONAL RESEARCH — shared voice/text intake.
