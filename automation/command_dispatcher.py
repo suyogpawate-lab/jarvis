@@ -1990,7 +1990,7 @@ Rules:
             print(f"[WORKSPACE ROUTE] {type(exc).__name__}: {exc}", flush=True)
 
         # Explicit coding-agent controls are deterministic and stay in the background.
-        if re.match(r"^/code(?:\\s|$)", text, re.IGNORECASE):
+        if re.match(r"^/code(?:\s|$)", text, re.IGNORECASE):
             return self.coding_agent.handle(text)
 
         # Complex implementation requests use the installed Claude Code CLI through
