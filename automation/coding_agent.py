@@ -81,7 +81,8 @@ class CodingAgentManager:
         complexity = re.search(
             r"\b(repo|repository|codebase|project|module|package|tests?|"
             r"multiple files|architecture|feature|integration|refactor|"
-            r"concurrency|performance|memory|regression|end[- ]to[- ]end)\b", text
+            r"concurrency|performance|memory|regression|end[- ]to[- ]end|"
+            r"telemetry|tracking|side quests?|mcp|lora|rlhf|cli|workspace|window|ui)\b", text
         )
         return bool(action and target and complexity)
 
