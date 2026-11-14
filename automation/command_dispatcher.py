@@ -1990,13 +1990,16 @@ Rules:
             print(f"[WORKSPACE ROUTE] {type(exc).__name__}: {exc}", flush=True)
 
         # Explicit coding-agent controls are deterministic and stay in the background.
+        coding_agent = getattr(self, "coding_agent", None)
         if re.match(r"^/code(?:\s|$)", text, re.IGNORECASE):
-            return self.coding_agent.handle(text)
+            if coding_agent is None:
+                return "[CODE UNAVAILABLE] Background coding agent is not initialized."
+            return coding_agent.handle(text)
 
         # Complex implementation requests use the installed Claude Code CLI through
         # OmniRoute. Simple programming questions remain on the normal fast route.
-        if source != "agent_step" and self.coding_agent.is_complex_coding_request(text):
-            return self.coding_agent.submit(text)
+        if source != "agent_step" and coding_agent is not None and coding_agent.is_complex_coding_request(text):
+            return coding_agent.submit(text)
 
         # AIE has a natural-language goal interface shared by voice and text.
         aie_nl = getattr(self, "aie_nl", None)
