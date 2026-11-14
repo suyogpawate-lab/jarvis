@@ -177,6 +177,17 @@ Use /btw to ask an independent side question while a Claude Code job or another 
 /btw quest <independent goal>
 ```
 
+### MCP server diagnostics
+
+JARVIS can start configured stdio MCP servers asynchronously. Inspect connection state and registered tools from the CLI without exposing server environment variables:
+
+```text
+/mcp status
+/mcp tools
+```
+
+The status view reports starting, running, disabled, invalid, failed or exited servers and the number of registered tools. Server stderr and startup failures remain in the local logs directory.
+
 ### Plain CLI telemetry
 
 The plain Python CLI displays per-turn elapsed time, session uptime, input/output token counts, tools used, tool success rate, and explicit verification coverage when tools report a verified result. It does not present an uncalibrated model guess as a confidence percentage. No prompts, answers, tool arguments, or credentials are written to the telemetry journal. The summary is not rendered in the full-screen Termux UI or web UI.
