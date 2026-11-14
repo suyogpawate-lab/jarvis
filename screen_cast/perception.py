@@ -25,6 +25,32 @@ _ACTION_RE = re.compile(
 )
 
 
+def is_screen_context_request(text: str) -> bool:
+    """Recognize broad screen/UI context, leaving intent and target interpretation to Groq.
+
+    This is a routing gate, not a phrase whitelist: ordinary variations such as
+    "whats on my screen", "what am I looking at", and UI action requests all
+    reach the same live-frame + Accessibility pipeline.
+    """
+    value = re.sub(r"[’']", "", str(text or "").lower()).strip()
+    if not value:
+        return False
+    screen_context = re.search(
+        r"\\b(?:screen|display|visible|currently open|current page|this page|"
+        r"this app|that app|what am i looking at|what is in front of me|"
+        r"notification shade|quick settings)\\b",
+        value,
+        re.I,
+    )
+    ui_action = re.match(
+        r"^(?:please\\s+|jarvis[, ]+)?(?:tap|click|press|select|scroll|swipe|"
+        r"type|enter|go back|go home|show recents|open notifications)\\b",
+        value,
+        re.I,
+    )
+    return bool(screen_context or ui_action)
+
+
 def get_screen_snapshot(receiver=None) -> tuple[dict[str, Any] | None, str | None]:
     """Fetch a fresh Accessibility hierarchy; never cache the result."""
     receiver = receiver or get_receiver()
