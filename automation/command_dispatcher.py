@@ -2068,6 +2068,11 @@ Rules:
             action = re.sub(r"^/update\s*", "", text, flags=re.IGNORECASE).strip()
             return self.update_manager.handle(action)
 
+        if re.match(r"^/learn(?:\s|$)", text, re.IGNORECASE):
+            from learning.feedback_store import FeedbackStore
+            action = re.sub(r"^/learn\s*", "", text, flags=re.IGNORECASE)
+            return FeedbackStore().handle(action)
+
         # Complex implementation requests use the installed Claude Code CLI through
         # OmniRoute. Simple programming questions remain on the normal fast route.
         if source != "agent_step" and coding_agent is not None and coding_agent.is_complex_coding_request(text):
