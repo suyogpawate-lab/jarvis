@@ -19,6 +19,7 @@ Multiple commands can exist in one input.
 
 import re
 import shlex
+import threading
 import json
 import os
 import uuid
@@ -120,6 +121,8 @@ class CommandDispatcher:
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
         # Background Claude Code jobs use isolated Git worktrees and OmniRoute.
         self.coding_agent = CodingAgentManager()
+        self._side_quest_lock = threading.Lock()
+        self._side_quest_active = False
 
         # Persistent AIE goal/event control plane; typed capabilities only.
         self.aie = AIEEngine(health_provider=self._aie_health_snapshot, goal_planner=self._aie_plan_provider)
@@ -1974,6 +1977,57 @@ Rules:
             "id": info.get("id") or info.get("key"),
         }
 
+    def _handle_btw(self, text: str, source: str = "external") -> str:
+        """Answer a side question or start one independent background quest."""
+        argument = re.sub(r"^/btw\s*", "", str(text or ""), flags=re.IGNORECASE).strip()
+        if not argument:
+            return "Use /btw <side question> or /btw quest <independent goal>."
+        quest = re.match(r"^quest\s+(.+)$", argument, re.IGNORECASE | re.DOTALL)
+        if quest:
+            goal = quest.group(1).strip()
+            if not goal:
+                return "A side-quest goal is required."
+            coding_agent = getattr(self, "coding_agent", None)
+            if coding_agent is not None and coding_agent.is_complex_coding_request(goal):
+                return coding_agent.submit(goal)
+            lock = getattr(self, "_side_quest_lock", None)
+            if lock is None:
+                self._side_quest_lock = threading.Lock()
+                lock = self._side_quest_lock
+            with lock:
+                if getattr(self, "_side_quest_active", False):
+                    return "A side quest is already running. Check it with /agent list."
+                plan = self.agent_engine.handle("/agent plan " + goal, source=source)
+                task_match = re.search(r"task-[0-9a-f]{8}", str(plan))
+                if not task_match:
+                    return str(plan)
+                task_id = task_match.group(0)
+                self._side_quest_active = True
+
+                def run_side_quest():
+                    try:
+                        self.agent_engine.handle("/agent run " + task_id, source="side_quest")
+                    except Exception as exc:
+                        print(f"[SIDE QUEST ERROR] {task_id}: {type(exc).__name__}: {exc}", flush=True)
+                    finally:
+                        self._side_quest_active = False
+
+                threading.Thread(
+                    target=run_side_quest,
+                    name="jarvis-side-" + task_id,
+                    daemon=True,
+                ).start()
+                return (
+                    str(plan) + "\n[SIDE QUEST RUNNING IN BACKGROUND] "
+                    + task_id + "\nUse /agent status " + task_id + " to inspect progress."
+                )
+
+        # Side questions are answered without exposing the action-tool catalogue.
+        try:
+            return self.fast_agent._answer_simple_direct(argument)
+        except Exception as exc:
+            return f"[BTW ERROR] Side question failed ({type(exc).__name__}: {exc})."
+
     def dispatch(self, text, conversation=None, source="external"):
         text = str(text).strip()
         original_text = text
@@ -1995,6 +2049,9 @@ Rules:
             if coding_agent is None:
                 return "[CODE UNAVAILABLE] Background coding agent is not initialized."
             return coding_agent.handle(text)
+
+        if re.match(r"^/btw(?:\s|$)", text, re.IGNORECASE):
+            return self._handle_btw(text, source=source)
 
         # Complex implementation requests use the installed Claude Code CLI through
         # OmniRoute. Simple programming questions remain on the normal fast route.
