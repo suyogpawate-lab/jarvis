@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import requests
 
+from agents.groq_keys import get_groq_api_keys
+
 
 class ScreenReasoningError(RuntimeError):
     """Safe, non-sensitive failure category for the HTTP layer."""
@@ -15,21 +17,7 @@ class ScreenReasoningError(RuntimeError):
 
 def ask_screen_with_groq(prompt: str) -> str:
     """Send only Accessibility text and local MobileCLIP labels to Groq."""
-    # Combine the plural pool and legacy singular variable. Some deployments
-    # intentionally keep one primary key in GROQ_API_KEY plus additional
-    # accounts in GROQ_API_KEYS. Preserve order while removing duplicates.
-    raw_values = [
-        os.getenv("GROQ_API_KEY", ""),
-        os.getenv("GROQ_API_KEYS", ""),
-    ]
-    keys = []
-    seen = set()
-    for raw in raw_values:
-        for item in raw.replace("\\n", ",").replace(";", ",").split(","):
-            key = item.strip()
-            if key and key not in seen:
-                seen.add(key)
-                keys.append(key)
+    keys = get_groq_api_keys()
     model = os.getenv("JARVIS_FAST_MODEL", "openai/gpt-oss-20b")
     prompt = str(prompt or "")[:22000]
     if not keys:
