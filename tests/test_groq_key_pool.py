@@ -44,7 +44,7 @@ class GroqKeyPoolTests(unittest.TestCase):
             [f"Bearer key{i}" for i in range(1, 8)],
         )
 
-    def test_fast_agent_sweeps_all_keys_even_for_tpm_limit(self):
+    def test_fast_agent_stops_for_model_scoped_tpm_limit(self):
         agent = object.__new__(FastAgent)
         agent.api_keys = [f"key{i}" for i in range(1, 4)]
         agent.current_key_index = 0
@@ -53,7 +53,7 @@ class GroqKeyPoolTests(unittest.TestCase):
         with patch("agents.fast_agent.requests.post", return_value=response) as post:
             result = agent._groq_post({"model": "test", "messages": []})
         self.assertIs(result, response)
-        self.assertEqual(post.call_count, 3)
+        self.assertEqual(post.call_count, 1)
 
 
 if __name__ == "__main__":
