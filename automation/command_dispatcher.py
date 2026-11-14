@@ -36,6 +36,7 @@ from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
 from automation.coding_agent import CodingAgentManager
+from automation.update_manager import UpdateManager
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
 from automation.aie import AIEEngine, NaturalLanguageAIE
@@ -121,6 +122,7 @@ class CommandDispatcher:
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
         # Background Claude Code jobs use isolated Git worktrees and OmniRoute.
         self.coding_agent = CodingAgentManager()
+        self.update_manager = UpdateManager()
         self._side_quest_lock = threading.Lock()
         self._side_quest_active = False
 
@@ -2061,6 +2063,10 @@ Rules:
             if action in {"tools", "list"}:
                 return mcp_client.status_text(show_tools=True)
             return "Use /mcp status or /mcp tools."
+
+        if re.match(r"^/update(?:\s|$)", text, re.IGNORECASE):
+            action = re.sub(r"^/update\s*", "", text, flags=re.IGNORECASE).strip()
+            return self.update_manager.handle(action)
 
         # Complex implementation requests use the installed Claude Code CLI through
         # OmniRoute. Simple programming questions remain on the normal fast route.
