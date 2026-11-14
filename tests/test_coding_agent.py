@@ -1,6 +1,7 @@
 """Tests for the isolated background Claude Code runner."""
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -77,6 +78,46 @@ class CodingAgentManagerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             manager._path("../outside")
         self.assertEqual(manager._path("code-1234abcd").name, "code-1234abcd.json")
+
+
+class SideQuestTests(unittest.TestCase):
+    def test_btw_side_question_uses_direct_answer_without_tool_dispatch(self):
+        from automation.command_dispatcher import CommandDispatcher
+        dispatcher = object.__new__(CommandDispatcher)
+        dispatcher.fast_agent = type("Fast", (), {
+            "_answer_simple_direct": lambda self, question: "direct:" + question
+        })()
+        self.assertEqual(
+            dispatcher._handle_btw("/btw what is orbital resonance?"),
+            "direct:what is orbital resonance?",
+        )
+
+    def test_btw_quest_runs_agent_task_in_background(self):
+        from automation.command_dispatcher import CommandDispatcher
+        finished = threading.Event()
+
+        class AgentEngine:
+            def handle(self, command, source="external"):
+                if command.startswith("/agent plan "):
+                    return "[AGENT PLAN] task-12345678"
+                if command == "/agent run task-12345678":
+                    finished.set()
+                    return "[AGENT TASK] COMPLETED"
+                raise AssertionError(command)
+
+        dispatcher = object.__new__(CommandDispatcher)
+        dispatcher.agent_engine = AgentEngine()
+        dispatcher.coding_agent = type("Coding", (), {
+            "is_complex_coding_request": staticmethod(lambda goal: False)
+        })()
+        dispatcher._side_quest_lock = threading.Lock()
+        dispatcher._side_quest_active = False
+        result = dispatcher._handle_btw("/btw quest research a new battery chemistry")
+        self.assertIn("SIDE QUEST RUNNING IN BACKGROUND", result)
+        self.assertIn("task-12345678", result)
+        self.assertTrue(finished.wait(2))
+
+
 
 
 if __name__ == "__main__":
