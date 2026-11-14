@@ -2053,6 +2053,15 @@ Rules:
         if re.match(r"^/btw(?:\s|$)", text, re.IGNORECASE):
             return self._handle_btw(text, source=source)
 
+        if re.match(r"^/mcp(?:\s|$)", text, re.IGNORECASE):
+            from tools import mcp_client
+            action = re.sub(r"^/mcp\s*", "", text, flags=re.IGNORECASE).strip().lower()
+            if action in {"", "status"}:
+                return mcp_client.status_text()
+            if action in {"tools", "list"}:
+                return mcp_client.status_text(show_tools=True)
+            return "Use /mcp status or /mcp tools."
+
         # Complex implementation requests use the installed Claude Code CLI through
         # OmniRoute. Simple programming questions remain on the normal fast route.
         if source != "agent_step" and coding_agent is not None and coding_agent.is_complex_coding_request(text):
