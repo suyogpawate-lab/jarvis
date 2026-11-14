@@ -49,7 +49,30 @@ done
 
 python "$ROOT/scripts/build_kokoro_voice_blend.py" --voices "$VOICE_DIR" --base am_onyx --donor af_nicole --weight 0.30 --output jarvis_nicole30
 
-echo "Building persistent Android/Termux Kokoro worker..."
+# Reuse Termux's installed ONNX Runtime shared library instead of downloading
+# a second runtime copy during the Rust build.
+ORT_LIB="$(python - <<'PY'
+from pathlib import Path
+try:
+    import onnxruntime
+    root = Path(onnxruntime.__file__).resolve().parent
+    candidates = [root / "capi" / "libonnxruntime.so", root.parent.parent / "lib" / "libonnxruntime.so"]
+    for candidate in candidates:
+        if candidate.is_file():
+            print(candidate)
+            break
+except Exception:
+    pass
+PY
+)"
+if [ -z "$ORT_LIB" ] || [ ! -f "$ORT_LIB" ]; then
+  echo "Could not locate Termux libonnxruntime.so. Install python-onnxruntime first." >&2
+  exit 1
+fi
+export ORT_STRATEGY=system
+export ORT_DYLIB_PATH="$ORT_LIB"
+
+echo "Building persistent Android/Termux Kokoro worker against $ORT_LIB ..."
 cargo build --release --manifest-path "$ROOT/voice/kokoro_worker/Cargo.toml"
 
 echo
