@@ -65,8 +65,7 @@ class FastAgent:
     def __init__(self, search_hub=None, deep_search=None):
         self.abilities = JARVIS_ABILITIES
         # Keep API keys outside source code. Set GROQ_API_KEYS or GROQ_API_KEY.
-        raw_groq_keys = os.getenv("GROQ_API_KEYS") or os.getenv("GROQ_API_KEY", "")
-        self.api_keys = [k.strip() for k in raw_groq_keys.replace("\n", ",").split(",") if k.strip()]
+        self.api_keys = get_groq_api_keys()
         self.current_key_index = 0
 
         # FIX: Swapped to the correct official API subdomain
