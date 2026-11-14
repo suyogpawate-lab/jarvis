@@ -44,6 +44,8 @@ from automation.overnight_planner import OvernightPlanner
 from automation.conversational_research import ConversationalResearch
 from core.temporal_context import build_temporal_context
 from monitoring.health_manager import HealthManager
+from intelligence.vision_engine import VisionEngine
+from intelligence.forecast_engine import ForecastEngine
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.fast_agent import FastAgent, JARVIS_ABILITIES
@@ -123,6 +125,8 @@ class CommandDispatcher:
         # Background Claude Code jobs use isolated Git worktrees and OmniRoute.
         self.coding_agent = CodingAgentManager()
         self.update_manager = UpdateManager()
+        self.vision_engine = VisionEngine()
+        self.forecast_engine = ForecastEngine()
         self._side_quest_lock = threading.Lock()
         self._side_quest_active = False
 
@@ -2061,6 +2065,28 @@ Rules:
             from learning.feedback_store import FeedbackStore
             action = re.sub(r"^/learn\s*", "", text, flags=re.IGNORECASE)
             return FeedbackStore().handle(action)
+
+        if re.match(r"^/vision(?:\s|$)", text, re.IGNORECASE):
+            action = re.sub(r"^/vision\s*", "", text, flags=re.IGNORECASE).strip()
+            if action.lower() in {"", "status"}:
+                return "[VISION] " + json.dumps(self.vision_engine.status(), ensure_ascii=False)
+            if action.lower().startswith("classify "):
+                result = self.vision_engine.classify(action[9:].strip())
+                return "[VISION] " + json.dumps(result, ensure_ascii=False)
+            return "Use /vision status or /vision classify <screenshot-path>."
+
+        if re.match(r"^/forecast(?:\s|$)", text, re.IGNORECASE):
+            action = re.sub(r"^/forecast\s*", "", text, flags=re.IGNORECASE).strip()
+            if action.lower() == "status":
+                return "[FORECAST] " + json.dumps(self.forecast_engine.status(), ensure_ascii=False)
+            match = re.match(r"^(\d+)\s+(.+)$", action)
+            if not match:
+                return "Use /forecast status or /forecast <horizon> <comma-separated-values>."
+            try:
+                values = [float(item.strip()) for item in match.group(2).split(",") if item.strip()]
+            except ValueError:
+                return "[FORECAST ERROR] Values must be comma-separated numbers."
+            return "[FORECAST] " + json.dumps(self.forecast_engine.forecast(values, int(match.group(1))), ensure_ascii=False)
 
         # Complex implementation requests use the installed Claude Code CLI through
         # OmniRoute. Simple programming questions remain on the normal fast route.
