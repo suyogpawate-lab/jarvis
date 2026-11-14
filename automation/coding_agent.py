@@ -76,7 +76,7 @@ class CodingAgentManager:
             r"optimi[sz]e|integrate|add|remove|update|repair|create)\b", text
         )
         target = re.search(
-            r"\b(code|coding|program|script|cli|mcp|lora|rlhf|telemetry|workspace|window|ui|repo|repository|codebase|project|
+            r"\b(code|coding|program|script|cli|mcp|lora|rlhf|telemetry|workspace|window|ui|repo|repository|codebase|project|"
             r"module|package|tests?|bug|feature|api|python|javascript|typescript|"
             r"android|termux|jarvis|function|class|database|server)\b", text
         )
