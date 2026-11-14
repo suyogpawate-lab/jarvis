@@ -51,10 +51,27 @@ def _start_worker() -> dict:
     cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "jarvis"
     cache.mkdir(parents=True, exist_ok=True)
     _LOG = (cache / "kokoro_worker.log").open("a", encoding="utf-8")
+    worker_env = os.environ.copy()
+    try:
+        import onnxruntime
+        ort_root = Path(onnxruntime.__file__).resolve().parent
+        candidates = [
+            ort_root / "capi" / "libonnxruntime.so",
+            Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr")) / "lib" / "libonnxruntime.so",
+        ]
+        ort_library = next((path for path in candidates if path.is_file()), None)
+        if ort_library is not None:
+            worker_env["ORT_STRATEGY"] = "system"
+            worker_env["ORT_DYLIB_PATH"] = str(ort_library)
+            current_ld = worker_env.get("LD_LIBRARY_PATH", "")
+            worker_env["LD_LIBRARY_PATH"] = str(ort_library.parent) + (":" + current_ld if current_ld else "")
+    except Exception:
+        pass
     _PROCESS = subprocess.Popen(
         [str(WORKER), str(MODEL), str(VOICE_DIR)],
         cwd=str(ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=_LOG, text=True, bufsize=1, start_new_session=True,
+        env=worker_env,
     )
     try:
         payload = json.loads(_readline(_PROCESS.stdout, 300.0))
