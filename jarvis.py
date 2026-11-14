@@ -1247,7 +1247,7 @@ def _check_updates_for_cli():
         if str(result).startswith("[UPDATE AVAILABLE]"):
             cli_update_queue.put(str(result))
     except Exception as exc:
-        print(f"[UPDATE CHECK WARN] {type(exc).__name__}: {exc}", flush=True)
+        cli_update_queue.put(f"[UPDATE CHECK WARN] {type(exc).__name__}: {exc}")
 
 
 def pop_cli_update_notice():
@@ -1437,7 +1437,7 @@ def main():
             # Update notices are shown only in the plain CLI, never in web/TUI surfaces.
             update_notice = pop_cli_update_notice() if not is_float_mode() else None
             if update_notice:
-                print(f"\\n{update_notice}\\n", flush=True)
+                print(f"\n{update_notice}\n", flush=True)
 
             # Deliver only from the main thread, never over an active prompt.
             while True:
