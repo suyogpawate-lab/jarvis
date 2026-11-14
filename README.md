@@ -608,6 +608,32 @@ python skills/multi_install.py https://github.com/owner/repository/tree/main/pat
 The installer discovers all `SKILL.md` files in the selected repository/folder, lists them, and asks before installing the set. Add `--yes` only when you intentionally want non-interactive installation. It installs each skill into its own folder under `skills/`, refuses to overwrite existing folders, and does not execute installed skill content. Review skills from unfamiliar sources before using them. The installer downloads each discovered skill folder, including its `SKILL.md` and supporting files, with per-file/total-size limits. It does not execute installed skill content.
 
 
+## Local intelligence: vision, forecasting and model adaptation
+
+Groq remains the primary reasoning model. Optional local engines provide visual classification and low-memory forecasting without loading a local language model.
+
+```text
+/vision status
+/vision classify <screenshot-path>
+/forecast status
+/forecast <horizon> <comma-separated-values>
+/agent predict <goal>
+```
+
+The vector-only vision engine requires a compatible image ONNX encoder and precomputed text prototypes from the same contrastive embedding space. It does not replace OCR or Android accessibility. Arbitrary SmolVLM vision features cannot be treated as CLIP text-aligned embeddings. Model files are intentionally excluded from Git; see [intelligence/README.md](intelligence/README.md).
+
+ForecastEngine currently supplies a deterministic damped-median-trend baseline. Chronos-Bolt, Timestral and Lag-Llama are candidate models for later device benchmarks, not silently installed dependencies or currently active inference backends.
+
+### Accuracy-preserving LoRA / preference optimization
+
+```text
+/learn status
+/learn prefer <prompt> || <preferred answer> || <rejected answer>
+/learn export
+```
+
+Preference collection is opt-in. LoRA/DPO training is intended for an external machine. Keep a frozen baseline and a held-out evaluation set; compare task accuracy, instruction following and safety before explicitly promoting any adapter. Candidate adapters must be rejected if required metrics regress beyond the configured tolerance. DPO is preference optimization, not classical reward-model RLHF. See [learning/README.md](learning/README.md).
+
 ## Live Android Screen Cast
 
 JARVIS now includes a live-stream receiver and an Android companion app source project in [`android-screen-cast/`](android-screen-cast/README.md). The companion uses Android's visible MediaProjection consent flow to stream continuous frames into Termux over localhost, and an optional Accessibility Service provides UI actions. JARVIS keeps frames in RAM and analyzes the latest frame on request through the configured OmniRoute vision-capable model to avoid sending a model request for every video frame. See the companion README for build, permission, HTTP API, and device-test instructions.
