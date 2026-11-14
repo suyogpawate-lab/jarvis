@@ -93,7 +93,7 @@ def _ask_screen(prompt: str, ask: Callable[..., str], frame: bytes | None) -> st
     visual_context = _local_visual_context(frame)
     # Groq receives text only: Accessibility data + MobileCLIP's local labels.
     # The raw screen frame is never uploaded to a remote vision endpoint.
-    enriched = str(prompt) + "\\n\\n" + visual_context
+    enriched = str(prompt) + "\n\n" + visual_context
     return str(ask(enriched) or "").strip()
 
 
