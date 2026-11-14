@@ -177,6 +177,18 @@ Use /btw to ask an independent side question while a Claude Code job or another 
 /btw quest <independent goal>
 ```
 
+### Approval-gated automatic updates
+
+The plain CLI checks origin/main in the background at startup (set JARVIS_AUTO_UPDATE_CHECK=0 to disable). When a newer version is found, JARVIS displays its commit subjects and file summary before changing anything.
+
+```text
+/update check
+/update status
+/update apply
+```
+
+Only /update apply installs the update. It requires the main branch and a clean working tree, rechecks that the remote SHA has not changed since approval, creates a backup branch, then performs a fast-forward-only merge. Local modifications are never overwritten. Run /doctor after updating. The full-screen Termux UI and web UI are not redesigned by this update workflow.
+
 ### MCP server diagnostics
 
 JARVIS can start configured stdio MCP servers asynchronously. Inspect connection state and registered tools from the CLI without exposing server environment variables:
