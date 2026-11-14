@@ -276,8 +276,10 @@ class FastAgent:
             if code == 429:
                 wait, kind = self._groq_rate_info(response)
                 print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
-                # Keep the sweep complete: configured keys may belong to
-                # independent Groq accounts/organizations with separate quotas.
+                # TPM is commonly model/organization scoped. Rotating
+                # keys repeats the same blocked request, so stop this sweep.
+                if kind == "tokens per minute":
+                    return response
                 continue
             if code in (401, 403):
                 print(f" Groq account {index + 1}: key rejected (HTTP {code})")
