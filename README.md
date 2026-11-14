@@ -177,6 +177,18 @@ Use /btw to ask an independent side question while a Claude Code job or another 
 /btw quest <independent goal>
 ```
 
+### Explicit preference data for LoRA / RLHF-style alignment
+
+JARVIS can store owner-submitted preference pairs and export a DPO-style JSONL dataset:
+
+```text
+/learn status
+/learn prefer <prompt> || <preferred answer> || <rejected answer>
+/learn export
+```
+
+This is opt-in only: JARVIS does not silently save conversations or train on user messages. The export contains prompt/chosen/rejected fields and remains local under the ignored data/ directory. It is a dataset-preparation stage, not on-device model training. LoRA/DPO training should run on a separate machine with suitable memory/compute; the Lenovo Android tablet remains the low-memory inference/control device. Classical RLHF with a separately trained reward model is not implemented by this data-capture stage.
+
 ### Approval-gated automatic updates
 
 The plain CLI checks origin/main in the background at startup (set JARVIS_AUTO_UPDATE_CHECK=0 to disable). When a newer version is found, JARVIS displays its commit subjects and file summary before changing anything.
