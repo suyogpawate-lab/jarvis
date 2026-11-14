@@ -8,6 +8,7 @@ from tools.registry import registry as tool_registry
 from tools import skills as jarvis_skills
 from tools import mcp_client
 from tools import progress
+from agents.groq_keys import get_groq_api_keys
 
 JARVIS_ABILITIES = [
     "Understand and execute natural-language commands.",
@@ -64,8 +65,7 @@ class FastAgent:
     def __init__(self, search_hub=None, deep_search=None):
         self.abilities = JARVIS_ABILITIES
         # Keep API keys outside source code. Set GROQ_API_KEYS or GROQ_API_KEY.
-        raw_groq_keys = os.getenv("GROQ_API_KEYS") or os.getenv("GROQ_API_KEY", "")
-        self.api_keys = [k.strip() for k in raw_groq_keys.replace("\n", ",").split(",") if k.strip()]
+        self.api_keys = get_groq_api_keys()
         self.current_key_index = 0
 
         # FIX: Swapped to the correct official API subdomain
@@ -276,8 +276,8 @@ class FastAgent:
             if code == 429:
                 wait, kind = self._groq_rate_info(response)
                 print(f" Groq account {index + 1}: {kind} hit (resets in ~{wait:.0f}s)")
-                # TPM is commonly model/org scoped. Rotating through every key
-                # immediately repeats the same failed request and burns tool rounds.
+                # TPM is commonly model/organization scoped. Rotating
+                # keys repeats the same blocked request, so stop this sweep.
                 if kind == "tokens per minute":
                     return response
                 continue

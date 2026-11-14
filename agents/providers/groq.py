@@ -3,24 +3,11 @@ import os
 from openai import OpenAI
 
 from agents.providers.openai_compatible import OpenAICompatibleAgent
+from agents.groq_keys import get_groq_api_keys
 
 
 def _groq_api_keys():
-    """Load the plural key list, falling back to the legacy singular variable."""
-    raw = os.getenv("GROQ_API_KEYS", "")
-    keys = [
-        item.strip()
-        for item in raw.replace(",", " ").split()
-        if item.strip()
-    ]
-
-    if not keys:
-        single = os.getenv("GROQ_API_KEY", "").strip()
-        if single:
-            keys = [single]
-
-    return keys
-
+    return get_groq_api_keys()
 
 class GroqAgent(OpenAICompatibleAgent):
     def __init__(self):

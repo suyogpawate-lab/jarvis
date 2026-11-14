@@ -92,8 +92,7 @@ class VisionEngine:
                 target_h, target_w = self._size
                 if target_h <= 0 or target_w <= 0:
                     raise ValueError("Invalid MobileCLIP input dimensions.")
-                # MobileCLIP-S0 preprocessing uses bicubic shortest-edge resize
-                # followed by a centered 256x256 crop, not a stretched resize.
+                # MobileCLIP-S0 uses bicubic shortest-edge resize then a center crop.
                 width, height = image.size
                 scale = max(target_w / width, target_h / height)
                 resized_w = max(target_w, int(round(width * scale)))

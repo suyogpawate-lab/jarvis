@@ -22,8 +22,8 @@ The JSON manifest schema is:
 {
   "schema_version": 1,
   "input_size": [256, 256],
-  "mean": [0.48145466, 0.4578275, 0.40821073],
-  "std": [0.26862954, 0.26130258, 0.27577711],
+  "mean": [0.0, 0.0, 0.0],
+  "std": [1.0, 1.0, 1.0],
   "labels": [
     {"label": "Android home screen with app icons", "embedding": [0.1, 0.2]}
   ]
@@ -33,6 +33,23 @@ The JSON manifest schema is:
 The two-dimensional embedding above is illustrative only; the real vectors must
 match the exported encoder's output dimension. The preprocessing metadata must
 match the export's processor exactly. Do not use arbitrary CLIP/SigLIP vectors.
+
+## Generate the model artifacts
+
+The repository intentionally does not commit the upstream checkpoint or a device-specific ONNX binary. Generate the two runtime artifacts on a desktop/Linux machine; do not attempt PyTorch export on the low-RAM Android tablet.
+
+1. Create a Python environment with PyTorch, ONNX, Hugging Face Hub, and Apple's official `ml-mobileclip` package installed.
+2. From the JARVIS repository root, run:
+
+```bash
+python scripts/export_mobileclip_s0.py --output-dir models/vision
+```
+
+The exporter downloads Apple's `apple/MobileCLIP-S0` checkpoint if no local checkpoint is supplied, exports the image encoder, computes text prototypes from the matching text encoder, and validates the ONNX graph. It writes:
+- `models/vision/mobileclip_s0_image.onnx`
+- `models/vision/mobileclip_s0_prototypes.json`
+
+The exporter uses the MobileCLIP-S0 256-pixel input, bicubic shortest-edge resize, centered crop, and no channel normalization (mean 0 / standard deviation 1). The checkpoint and weights remain subject to Apple's model license; review it before redistribution.
 
 ## Termux runtime
 
