@@ -34,6 +34,7 @@ from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
+from automation.coding_agent import CodingAgentManager
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
 from automation.aie import AIEEngine, NaturalLanguageAIE
@@ -117,6 +118,8 @@ class CommandDispatcher:
         # Coordinate existing providers, persisted workflows, and read-only health checks.
         self.health_manager = HealthManager(on_warning=self._on_health_warning)
         self.agent_engine = AgentEngine(self.fast_agent, self.task_executor, self.health_manager)
+        # Background Claude Code jobs use isolated Git worktrees and OmniRoute.
+        self.coding_agent = CodingAgentManager()
 
         # Persistent AIE goal/event control plane; typed capabilities only.
         self.aie = AIEEngine(health_provider=self._aie_health_snapshot, goal_planner=self._aie_plan_provider)
@@ -1985,6 +1988,15 @@ Rules:
                 return "Workspace request queued. I will open or manage the requested JARVIS window."
         except Exception as exc:
             print(f"[WORKSPACE ROUTE] {type(exc).__name__}: {exc}", flush=True)
+
+        # Explicit coding-agent controls are deterministic and stay in the background.
+        if re.match(r"^/code(?:\\s|$)", text, re.IGNORECASE):
+            return self.coding_agent.handle(text)
+
+        # Complex implementation requests use the installed Claude Code CLI through
+        # OmniRoute. Simple programming questions remain on the normal fast route.
+        if source != "agent_step" and self.coding_agent.is_complex_coding_request(text):
+            return self.coding_agent.submit(text)
 
         # AIE has a natural-language goal interface shared by voice and text.
         aie_nl = getattr(self, "aie_nl", None)
