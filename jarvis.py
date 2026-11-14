@@ -1462,7 +1462,10 @@ def main():
                 print_memory()
                 continue
 
-            show_cli_metrics = not is_float_mode()
+            show_cli_metrics = (
+                not is_float_mode()
+                and os.getenv("JARVIS_CLI_TELEMETRY", "1").strip().lower() not in {"0", "false", "no", "off"}
+            )
             metrics_started = time.perf_counter()
             metrics_ready = False
             if show_cli_metrics:
