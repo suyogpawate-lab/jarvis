@@ -47,11 +47,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let voices = PathBuf::from(args.next().ok_or("missing voices directory")?);
     eprintln!("[JARVIS Kokoro] Loading Kokoro-82M ONNX and voice packs...");
     let tts = KokoroTts::new(&model, &voices).await?;
-    let available = tts.voices();
-    if available.len() < 54 {
-        return Err(format!("Expected all 54 Kokoro voices, loaded {}: {}", available.len(), available.join(", ")).into());
+    const SAMPLE_RATE: u32 = 24_000;
+    let mut available = std::fs::read_dir(&voices)?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("bin") {
+                return None;
+            }
+            path.file_stem().and_then(|stem| stem.to_str()).map(str::to_owned)
+        })
+        .collect::<Vec<_>>();
+    available.sort();
+    if available.len() < 55 {
+        return Err(format!("Expected 54 stock voices plus the custom blend; found {}", available.len()).into());
     }
-    let sample_rate = tts.sample_rate();
+    let sample_rate = SAMPLE_RATE;
     // Real synthesis warmup: the model is ready before the service advertises itself.
     let (_warm_audio, warm_elapsed) = tts.synth("Ready.", "am_onyx").await?;
     eprintln!("[JARVIS Kokoro] Model loaded; {} voices resident; warmup {:?}.", available.len(), warm_elapsed);
