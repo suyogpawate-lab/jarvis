@@ -241,7 +241,7 @@ class EnvFile:
 def split_keys(raw):
     keys = []
     seen = set()
-    for key in re.split(r"[,;\\s]+", str(raw or "").strip()):
+    for key in re.split(r"[,;\s]+", str(raw or "").strip()):
         key = key.strip()
         if key and key not in seen:
             seen.add(key)
