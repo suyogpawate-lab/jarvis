@@ -190,8 +190,19 @@ class CodingAgentManager:
             )
         try:
             env = self._omniroute_env()
-            job_id = "code-" + uuid.uuid4().hex[:8]
-            worktree, branch = self._new_worktree(job_id)
+            with self._lock:
+                for saved in self.jobs_dir.glob("code-????????.json"):
+                    existing = self._load(saved.stem)
+                    if existing and existing.get("status") in ACTIVE:
+                        self.status(saved.stem)
+                        refreshed = self._load(saved.stem)
+                        if refreshed and refreshed.get("status") in ACTIVE:
+                            return (
+                                "[CODE BUSY] One coding job is already active: "
+                                + saved.stem + ". Wait for it to finish or cancel it."
+                            )
+                job_id = "code-" + uuid.uuid4().hex[:8]
+                worktree, branch = self._new_worktree(job_id)
         except Exception as exc:
             return "[CODE ERROR] " + str(exc)
 
@@ -342,7 +353,7 @@ class CodingAgentManager:
         if not worktree.is_dir():
             return "[CODE ERROR] Coding worktree no longer exists."
         status = self._git("status", "--short", cwd=worktree)
-        diff = self._git("diff", "--stat", cwd=worktree)
+        diff = self._git("diff", "HEAD", "--stat", cwd=worktree)
         return (
             f"Job: {job_id} ({job.get('status')})\n"
             f"Branch: {job.get('branch')}\n"
