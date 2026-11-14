@@ -34,7 +34,7 @@ class FeedbackStoreTests(unittest.TestCase):
             self.store.add_preference("Prompt", "Same", "Same")
 
     def test_command_requires_three_explicit_fields(self):
-        result = self.store.handle("/learn prefer prompt || chosen")
+        result = self.store.handle("prefer prompt || chosen")
         self.assertIn("Use:", result)
         self.assertFalse(self.store.path.exists())
 
