@@ -12,7 +12,7 @@ from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
 from screen_cast.receiver import get_receiver
-from screen_cast.perception import analyze_latest_screen, handle_screen_request, get_screen_snapshot
+from screen_cast.perception import analyze_latest_screen, handle_screen_request, get_screen_snapshot, is_screen_context_request
 
 
 import os
@@ -276,16 +276,18 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
             if self.path == "/chat":
                 command_text = str(body.get("command", "")).strip()
-                lower = command_text.lower()
-                screen_questions = (
-                    "what is on my screen", "what's on my screen",
-                    "describe my screen", "look at my screen",
-                    "analyze my screen", "read my screen",
-                    "what's open", "what is open",
-                )
-                if lower in screen_questions or lower.startswith(("what does this screen", "on my screen,", "from my screen")):
-                    answer = analyze_latest_screen(command_text, ask=ask_screen_with_groq)
-                    self._send_json(200, {"ok": True, "response": answer, "perception": "accessibility_json"})
+                if is_screen_context_request(command_text):
+                    answer = handle_screen_request(
+                        command_text,
+                        ask=ask_screen_with_groq,
+                        receiver=screen_receiver,
+                    )
+                    self._send_json(200, {
+                        "ok": True,
+                        "response": answer,
+                        "perception": "accessibility_json",
+                        "stream": screen_receiver.status(),
+                    })
                     return
                 # Explicit screen commands use a narrow grammar rather than
                 # allowing arbitrary model output to become touch input.
