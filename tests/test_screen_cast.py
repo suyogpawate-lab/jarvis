@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from screen_cast.receiver import ScreenCastReceiver, _coordinate
+from screen_cast.perception import handle_screen_request
 
 
 class ScreenCastReceiverTests(unittest.TestCase):
@@ -57,6 +58,66 @@ class ScreenCastReceiverTests(unittest.TestCase):
         fake = FakeSocket()
         self.assertEqual(ScreenCastReceiver._read_exact(fake, 4), b"\x00\x00\x00\x03")
         self.assertEqual(ScreenCastReceiver._read_exact(fake, 3), b"abc")
+
+
+    def test_natural_language_click_uses_current_accessibility_element_and_verifies(self):
+        before = {"ok": True, "type": "screen_accessibility", "elements": [
+            {"element_index": 7, "text": "Settings", "clickable": True}
+        ]}
+        after = {"ok": True, "type": "screen_accessibility", "elements": [
+            {"element_index": 8, "text": "Settings page", "clickable": False}
+        ]}
+        receiver = MagicMock()
+        receiver.control.side_effect = [before, {"ok": True}, after]
+        receiver.latest_frame.return_value = (None, 0)
+        answers = iter([
+            '{"status":"action","action":"click_element","element_index":7}',
+            "The Settings page is now open."
+        ])
+        result = handle_screen_request("open Settings", lambda prompt: next(answers), receiver=receiver)
+        self.assertIn("Action executed", result)
+        self.assertEqual(receiver.control.call_args_list[1].args[0], {
+            "action": "click_element", "element_index": 7
+        })
+        self.assertEqual(receiver.control.call_count, 3)
+
+    def test_natural_language_control_rejects_stale_or_invented_element(self):
+        before = {"ok": True, "type": "screen_accessibility", "elements": [
+            {"element_index": 2, "text": "Search"}
+        ]}
+        receiver = MagicMock()
+        receiver.control.return_value = before
+        receiver.latest_frame.return_value = (None, 0)
+        result = handle_screen_request(
+            "tap the profile button",
+            lambda prompt: '{"status":"action","action":"click_element","element_index":99}',
+            receiver=receiver,
+        )
+        self.assertIn("not present", result)
+        self.assertEqual(receiver.control.call_count, 1)
+
+    def test_consequential_screen_action_is_not_executed(self):
+        receiver = MagicMock()
+        result = handle_screen_request(
+            "send this message",
+            lambda prompt: '{"status":"action","action":"click_element","element_index":1}',
+            receiver=receiver,
+        )
+        self.assertIn("won't perform", result)
+        receiver.control.assert_not_called()
+
+    def test_ambiguous_screen_action_requests_clarification(self):
+        before = {"ok": True, "type": "screen_accessibility", "elements": []}
+        receiver = MagicMock()
+        receiver.control.return_value = before
+        receiver.latest_frame.return_value = (None, 0)
+        result = handle_screen_request(
+            "click the button",
+            lambda prompt: '{"status":"clarify","question":"Which button do you mean?"}',
+            receiver=receiver,
+        )
+        self.assertEqual(result, "Which button do you mean?")
+        self.assertEqual(receiver.control.call_count, 1)
 
 
 if __name__ == "__main__":
