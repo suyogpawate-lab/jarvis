@@ -189,6 +189,7 @@ JARVIS can store owner-submitted preference pairs and export a DPO-style JSONL d
 /learn status
 /learn prefer <prompt> || <preferred answer> || <rejected answer>
 /learn export
+/learn evaluate baseline.json candidate.json
 ```
 
 This is opt-in only: JARVIS does not silently save conversations or train on user messages. The export contains prompt/chosen/rejected fields and remains local under the ignored data/ directory. It is a dataset-preparation stage, not on-device model training. LoRA/DPO training should run on a separate machine with suitable memory/compute; the Lenovo Android tablet remains the low-memory inference/control device. Classical RLHF with a separately trained reward model is not implemented by this data-capture stage.
