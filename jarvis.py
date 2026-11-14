@@ -568,9 +568,9 @@ _SCREEN_QUESTION_RE = re.compile(
     r"^(?:(?:what(?:'s| is) on my screen|describe my screen|look at my screen|"
     r"analyze my screen|read my screen|what(?:'s| is) open|"
     r"what does this screen(?: show)?|tell me what is on my screen)[?.! ]*|"
-    r"(?:tap|click|press|select|scroll|swipe|type|enter)\\b.+|"
+    r"(?:tap|click|press|select|scroll|swipe|type|enter)\b.+|"
     r"(?:go back|go home|open notifications|show recents)|"
-    r"open\\b.+\\bon my screen)$",
+    r"open\b.+\bon my screen)$",
     re.IGNORECASE,
 )
 
