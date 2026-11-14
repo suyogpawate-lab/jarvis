@@ -33,7 +33,7 @@ class LocalScreenPerceptionTests(unittest.TestCase):
     def test_no_frame_is_reported_without_loading_model(self):
         captured = []
         result = perception._ask_screen("Describe screen", captured.append, None)
-        self.assertIsNone(result)
+        self.assertEqual(result, "")
         self.assertIn("no fresh live frame", captured[0])
 
 
