@@ -16,7 +16,7 @@ def get_groq_api_keys(environ=None):
     seen = set()
     for variable in ("GROQ_API_KEY", "GROQ_API_KEYS"):
         raw = str(env.get(variable, "") or "").replace("\\n", "\n")
-        for item in re.split(r"[,;\\s]+", raw):
+        for item in re.split(r"[,;\s]+", raw):
             key = item.strip()
             if key and key not in seen:
                 seen.add(key)
