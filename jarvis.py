@@ -1106,6 +1106,9 @@ def handle_prompt(prompt, source="external"):
 notification_queue = queue.Queue()
 notification_watcher = None
 
+# Update notices are consumed by the plain CLI only; they are not forwarded to web/TUI.
+cli_update_queue = queue.Queue()
+
 # VOICE LISTENER INTEGRATION
 voice_command_queue = queue.Queue()
 voice_listener = None
@@ -1229,6 +1232,27 @@ def shutdown():
 def pop_notification():
     try:
         return notification_queue.get_nowait()
+    except queue.Empty:
+        return None
+
+
+
+def _check_updates_for_cli():
+    """Fetch update metadata in the background; never install without user approval."""
+    try:
+        manager = getattr(dispatcher, "update_manager", None)
+        if manager is None:
+            return
+        result = manager.check()
+        if str(result).startswith("[UPDATE AVAILABLE]"):
+            cli_update_queue.put(str(result))
+    except Exception as exc:
+        print(f"[UPDATE CHECK WARN] {type(exc).__name__}: {exc}", flush=True)
+
+
+def pop_cli_update_notice():
+    try:
+        return cli_update_queue.get_nowait()
     except queue.Empty:
         return None
 
@@ -1381,6 +1405,12 @@ def main():
 
     init_services()
 
+    if (
+        not is_float_mode()
+        and os.getenv("JARVIS_AUTO_UPDATE_CHECK", "1").strip().lower() not in {"0", "false", "no", "off"}
+    ):
+        threading.Thread(target=_check_updates_for_cli, name="jarvis-update-check", daemon=True).start()
+
     if is_float_mode():
         # Termux:Float is a small terminal surface; keep the CLI compact and
         # avoid starting the separate Rich full-screen UI/web companion.
@@ -1403,6 +1433,11 @@ def main():
     while True:
 
         try:
+
+            # Update notices are shown only in the plain CLI, never in web/TUI surfaces.
+            update_notice = pop_cli_update_notice() if not is_float_mode() else None
+            if update_notice:
+                print(f"\\n{update_notice}\\n", flush=True)
 
             # Deliver only from the main thread, never over an active prompt.
             while True:
