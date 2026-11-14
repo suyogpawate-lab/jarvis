@@ -8,6 +8,7 @@ from tools.registry import registry as tool_registry
 from tools import skills as jarvis_skills
 from tools import mcp_client
 from tools import progress
+from agents.groq_keys import get_groq_api_keys
 
 JARVIS_ABILITIES = [
     "Understand and execute natural-language commands.",
