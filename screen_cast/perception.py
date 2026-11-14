@@ -20,8 +20,8 @@ _HIGH_IMPACT_RE = re.compile(
     r"confirm order|place order|share|invite|block|unfollow)\b", re.I
 )
 _ACTION_RE = re.compile(
-    r"\b(tap|click|press|select|open|choose|scroll|swipe|type|enter|"
-    r"go back|back|go home|home|open notifications|show recents)\b", re.I
+    r"^(?:(?:please|jarvis[, ]+)*)?(?:tap|click|press|select|open|choose|scroll|swipe|type|enter)\b|"
+    r"^(?:go back|go home|open notifications|show recents)\b", re.I
 )
 
 
