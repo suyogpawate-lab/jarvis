@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from automation.mission_insights import MissionInsights
+from automation.mission_predictor import MissionPredictor
 
 MAX_PLAN_STEPS = 8
 MAX_ACTION_CHARS = 500
@@ -24,6 +25,7 @@ class AgentEngine:
         self.task_executor = task_executor
         self.health_manager = health_manager
         self.mission_insights = MissionInsights(task_executor.task_dir)
+        self.mission_predictor = MissionPredictor(task_executor.task_dir)
         # Persisted RUNNING tasks may have been interrupted by Android process death.
         # Pause them for explicit review rather than automatically replaying side effects.
         self.recovered_tasks = self.task_executor.recover_interrupted()
@@ -126,6 +128,10 @@ class AgentEngine:
             return runtime.history_text()
         if action in {"insights", "learn"}:
             return self.mission_insights.insights()
+        if action == "predict":
+            if not value:
+                return "Usage: /agent predict <goal>"
+            return self.mission_predictor.predict(value)
         if action == "diagnose":
             if not value:
                 return "Usage: /agent diagnose <task-id>"
@@ -175,6 +181,7 @@ class AgentEngine:
             "/agent health — inspect device and service health\n"
             "/agent history — inspect recent workflow execution events\n"
             "/agent insights (or /agent learn) — summarize local success/failure patterns\n"
+            "/agent predict <goal> — estimate outcome/time from local task history\n"
             "/agent diagnose <task-id> — explain a saved mission's state and failure point\n"
             "/agent recall <words> — search previous goals, commands, and results locally\n"
             "Mission memory is local-only; insights never rerun or auto-retry commands."
