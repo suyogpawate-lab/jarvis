@@ -1462,7 +1462,25 @@ def main():
                 print_memory()
                 continue
 
+            show_cli_metrics = not is_float_mode()
+            metrics_started = time.perf_counter()
+            metrics_ready = False
+            if show_cli_metrics:
+                try:
+                    from monitoring.cli_telemetry import begin_turn
+                    begin_turn()
+                    metrics_ready = True
+                except Exception:
+                    pass
+
             answer, should_speak = handle_prompt(prompt, source=prompt_source)
+
+            if metrics_ready:
+                try:
+                    from monitoring.cli_telemetry import finish_turn, format_cli_summary
+                    print(format_cli_summary(finish_turn(time.perf_counter() - metrics_started)))
+                except Exception:
+                    pass
 
             if not answer:
                 continue
