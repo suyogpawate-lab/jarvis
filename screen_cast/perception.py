@@ -25,6 +25,28 @@ _ACTION_RE = re.compile(
 )
 
 
+def is_screen_context_request(text: str) -> bool:
+    """Route screen/UI context broadly; let Groq interpret the user's actual intent."""
+    value = re.sub(r"[’']", "", str(text or "").lower()).strip()
+    if not value:
+        return False
+    screen_context = re.search(
+        r"\b(?:on\s+(?:my\s+|the\s+)?screen|(?:my|this|current)\s+screen|"
+        r"screen\s+(?:shows?|contents?|right now|currently)|current\s+display|"
+        r"visible\s+(?:page|screen)|currently\s+open|current\s+page|"
+        r"this\s+page|this\s+app|that\s+app|what am i looking at|"
+        r"what is in front of me|notification shade|quick settings)\b",
+        value,
+        re.I,
+    )
+    ui_action = re.match(
+        r"^(?:please\s+|jarvis[, ]+)?(?:tap|click|press|select|scroll|swipe|"
+        r"type|enter|go back|go home|show recents|open notifications)\b",
+        value,
+        re.I,
+    )
+    return bool(screen_context or ui_action)
+
 def get_screen_snapshot(receiver=None) -> tuple[dict[str, Any] | None, str | None]:
     """Fetch a fresh Accessibility hierarchy; never cache the result."""
     receiver = receiver or get_receiver()

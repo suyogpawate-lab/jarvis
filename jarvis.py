@@ -564,24 +564,14 @@ def ensure_whatsapp_daemon():
 # ==============================================================
 # ON-DEMAND SCREEN PERCEPTION
 # ==============================================================
-_SCREEN_QUESTION_RE = re.compile(
-    r"^(?:(?:what(?:'s| is) on my screen|describe my screen|look at my screen|"
-    r"analyze my screen|read my screen|what(?:'s| is) open|"
-    r"what does this screen(?: show)?|tell me what is on my screen)[?.! ]*|"
-    r"(?:tap|click|press|select|scroll|swipe|type|enter)\b.+|"
-    r"(?:go back|go home|open notifications|show recents)|"
-    r"open\b.+\bon my screen)$",
-    re.IGNORECASE,
-)
-
-
 def handle_screen_question(prompt):
     """Ask the local HTTP bridge for a fresh Accessibility snapshot only on request.
 
     Do not save the prompt or answer to conversation memory: answers may contain
     private screen contents, and screen perception is explicitly ephemeral.
     """
-    if not _SCREEN_QUESTION_RE.fullmatch(prompt.strip()):
+    from screen_cast.perception import is_screen_context_request
+    if not is_screen_context_request(prompt):
         return None
 
     try:

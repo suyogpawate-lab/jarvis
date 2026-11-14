@@ -3,10 +3,32 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from screen_cast.receiver import ScreenCastReceiver, _coordinate
-from screen_cast.perception import handle_screen_request
+from screen_cast.perception import handle_screen_request, is_screen_context_request
 
 
 class ScreenCastReceiverTests(unittest.TestCase):
+    def test_screen_context_router_accepts_natural_variations(self):
+        for phrase in (
+            "whats on my screen",
+            "What's on my screen?",
+            "what am I looking at",
+            "describe the current display",
+            "read the text on this page",
+            "please scroll down a little",
+            "tap the search icon",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(is_screen_context_request(phrase))
+
+    def test_screen_context_router_does_not_claim_normal_chat(self):
+        for phrase in (
+            "Explain photosynthesis",
+            "What is the screen resolution standard?",
+            "Tell me about quantum mechanics",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertFalse(is_screen_context_request(phrase))
+
     def test_status_starts_empty_and_ram_only(self):
         status = ScreenCastReceiver(port=0).status()
         self.assertFalse(status["streaming"])
