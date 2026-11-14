@@ -239,7 +239,15 @@ class EnvFile:
 # ───────────────────────────── 1. AI keys ─────────────────────────────
 
 def split_keys(raw):
-    return [k for k in re.split(r"[,\s]+", raw.strip()) if k]
+    keys = []
+    seen = set()
+    normalized = str(raw or "").replace("\\\\n", "\\n")
+    for key in re.split(r"[,;\\s]+", normalized.strip()):
+        key = key.strip()
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+    return keys
 
 
 def test_groq_key(key):
@@ -295,7 +303,10 @@ def step_keys(env):
 
     info("Groq is the fast-response and tool provider. Get a key at https://console.groq.com/keys")
 
-    current = split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY"))
+    current = split_keys(env.get("GROQ_API_KEY")) + [
+        key for key in split_keys(env.get("GROQ_API_KEYS"))
+        if key not in split_keys(env.get("GROQ_API_KEY"))
+    ]
     if current:
         info(f"Currently configured: {len(current)} Groq key(s).")
 
