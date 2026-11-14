@@ -77,21 +77,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !available.iter().any(|name| name == &request.voice) {
                 return Err(format!("unknown voice '{}'", request.voice).into());
             }
-            let (audio, elapsed) = futures::executor::block_on(
-                tts.synth(&request.text, Voice::new(request.voice).with_speed(request.speed))
-            )?;
-            if audio.is_empty() { return Err("Kokoro returned empty audio".into()); }
-            write_wav(&request.output, &audio, sample_rate)?;
-            respond(serde_json::json!({
-                "ok": true,
-                "synthesis_ms": elapsed.as_millis(),
-                "samples": audio.len(),
-                "sample_rate": sample_rate
-            }))?;
-            Ok(())
+            Ok((request.text, request.voice, request.speed, request.output))
         })();
-        if let Err(error) = result {
-            let _ = respond(serde_json::json!({"ok": false, "error": error.to_string()}));
+        match result {
+            Ok((text, voice, speed, output)) => {
+                match tts.synth(&text, Voice::new(voice).with_speed(speed)).await {
+                    Ok((audio, elapsed)) if !audio.is_empty() => {
+                        if let Err(error) = write_wav(&output, &audio, sample_rate) {
+                            let _ = respond(serde_json::json!({"ok": false, "error": error.to_string()}));
+                            continue;
+                        }
+                        respond(serde_json::json!({
+                            "ok": true,
+                            "synthesis_ms": elapsed.as_millis(),
+                            "samples": audio.len(),
+                            "sample_rate": sample_rate
+                        }))?;
+                    }
+                    Ok(_) => {
+                        respond(serde_json::json!({"ok": false, "error": "Kokoro returned empty audio"}))?;
+                    }
+                    Err(error) => {
+                        respond(serde_json::json!({"ok": false, "error": error.to_string()}))?;
+                    }
+                }
+            }
+            Err(error) => {
+                let _ = respond(serde_json::json!({"ok": false, "error": error.to_string()}));
+            }
         }
     }
     Ok(())
