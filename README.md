@@ -168,6 +168,12 @@ JARVIS has persistent personal/project memory and can use relevant stored contex
 
 `/remember` saves personal memory; `/project` saves project memory. `/memory` displays memory, with optional `personal` or `project` filters. `/discuss` starts a multi-agent discussion; a duration suffix such as `/discuss5m` requests a five-minute discussion (duration is capped at one hour).
 
+### Plain CLI telemetry
+
+The plain Python CLI displays per-turn elapsed time, session uptime, input/output token counts, tools used, tool success rate, and explicit verification coverage when tools report a verified result. It does not present an uncalibrated model guess as a confidence percentage. No prompts, answers, tool arguments, or credentials are written to the telemetry journal. The summary is not rendered in the full-screen Termux UI or web UI.
+
+Set JARVIS_CLI_TELEMETRY=0 in .env to disable telemetry persistence and the CLI summary. Metrics are stored locally in data/cli_telemetry.jsonl, which is covered by the existing data/ ignore rule.
+
 ### Background Claude Code jobs
 
 Complex coding requests can be delegated to the installed Claude Code CLI without opening its interactive terminal UI. JARVIS starts Claude Code in print mode, routes its Anthropic-compatible requests through the configured local OmniRoute endpoint, and gives each job a separate Git worktree.
