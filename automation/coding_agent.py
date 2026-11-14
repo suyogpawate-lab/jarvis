@@ -69,12 +69,14 @@ class CodingAgentManager:
         text = " ".join(str(prompt or "").split()).lower()
         if len(text) < 18:
             return False
+        if re.match(r"^(how|why|what|when|where|who|can i|could i|should i|explain|describe|teach me)\b", text):
+            return False
         action = re.search(
             r"\b(fix|debug|implement|refactor|rewrite|build|develop|migrate|"
             r"optimi[sz]e|integrate|add|remove|update|repair|create)\b", text
         )
         target = re.search(
-            r"\b(code|coding|program|script|repo|repository|codebase|project|"
+            r"\b(code|coding|program|script|cli|mcp|lora|rlhf|telemetry|workspace|window|ui|repo|repository|codebase|project|
             r"module|package|tests?|bug|feature|api|python|javascript|typescript|"
             r"android|termux|jarvis|function|class|database|server)\b", text
         )
