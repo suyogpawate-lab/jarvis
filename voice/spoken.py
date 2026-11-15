@@ -9,7 +9,7 @@ MAX_WORDS = 99
 def to_speakable(text, max_words=MAX_WORDS):
     text = strip_markdown(text)
     # Remove only the comma immediately before the honorific "sir".
-    text = re.sub(r",\\s*(?=sir\\b)", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r",\s*(?=sir\b)", " ", text, flags=re.IGNORECASE)
     lines = []
     for line in text.splitlines():
         line = re.sub(r"^\s*(\d+[.)]|[a-zA-Z][.)])\s+", "", line).strip()
