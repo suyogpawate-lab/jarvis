@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import os
+import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -13,8 +15,10 @@ VOICE_ROOT = Path.home() / "jarvis_voice"
 SERVER = ROOT / "voice" / "jarvis_voice" / "server.py"
 SAY = ROOT / "voice" / "jarvis_voice" / "say"
 PREFIX = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
-SOCKET_FILE = PREFIX / "tmp" / "jarvis_tts.sock"
+SOCKET_FILE = PREFIX / "tmp" / "jarvis_tts_v2.sock"
+LEGACY_SOCKET_FILE = PREFIX / "tmp" / "jarvis_tts.sock"
 _server_process = None
+_ensure_lock = threading.Lock()
 
 
 def _link(source: Path, target: Path) -> None:
@@ -75,11 +79,53 @@ def server_running() -> bool:
         return False
 
 
+def _stop_legacy_server() -> None:
+    """Stop only an older JARVIS ZIP voice server before starting protocol v2."""
+    target = os.fsencode(str(SERVER))
+    proc_root = Path("/proc")
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid == os.getpid():
+            continue
+        try:
+            command = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if target not in command:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            raise RuntimeError(f"Cannot stop legacy JARVIS ZIP voice server PID {pid}.")
+        deadline = time.monotonic() + 1.5
+        while (proc_root / str(pid)).exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if (proc_root / str(pid)).exists():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    try:
+        LEGACY_SOCKET_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def ensure_server(timeout: float = 30.0) -> bool:
-    """Start the ZIP server and detect early process exits instead of waiting blindly."""
+    """Start or reuse the v2 ZIP server, serializing concurrent startup attempts."""
+    with _ensure_lock:
+        return _ensure_server_locked(timeout)
+
+
+def _ensure_server_locked(timeout: float = 30.0) -> bool:
     global _server_process
     if server_running():
         return True
+    _stop_legacy_server()
     prepare_layout()
     cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "jarvis"
     cache.mkdir(parents=True, exist_ok=True)
