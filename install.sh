@@ -1,15 +1,13 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# JARVIS installer for Termux.
+# JARVIS all-in-one installer for Termux.
 #
-#   bash install.sh                  full Termux install: core + all speech engines/models, then guided setup
-#   bash install.sh     (compatibility flag; voice is installed by default)
-#   bash install.sh --skip-voice --with-phonon    (compatibility flag; Phonon is installed by default)
-#   bash install.sh --skip-osint     skip the OSINT tools
-#   bash install.sh --skip-setup     don't launch `python setup.py` at the end
+#   bash install.sh              install core runtime + speech engines/models + guided setup
+#   bash install.sh --skip-voice skip Sherpa, Kokoro, Needle/Whistle and wake clips
+#   bash install.sh --skip-phonon skip the Phonon Rust runtime/model
+#   bash install.sh --skip-osint skip optional OSINT tools
+#   bash install.sh --skip-setup don't launch the guided setup at the end
 #
-# Safe to re-run: it only installs what is missing and never touches your
-# .env, WhatsApp session, contacts or memory.
-
+# Re-runnable: preserves .env, WhatsApp sessions, contacts, and user data.
 echo "[*] Checking Device Environment..."
 
 # Read the native Android build property
@@ -64,10 +62,6 @@ fi
 info "Installing system packages..."
 pkg update -y
 pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak-ng python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make cmake portaudio
-
-if [ "$WITH_VOICE" -eq 1 ]; then
-    pkg install -y portaudio
-fi
 
 # ───────────────────────── python packages ─────────────────────────
 info "Installing Python packages..."
