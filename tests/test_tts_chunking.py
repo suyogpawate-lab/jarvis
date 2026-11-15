@@ -1,6 +1,7 @@
 import unittest
 
 from voice.text_chunking import phonon_chunk_text
+from voice.spoken import to_speakable
 
 
 class SpeechChunkingTests(unittest.TestCase):
@@ -33,6 +34,19 @@ class SpeechChunkingTests(unittest.TestCase):
         chunks = phonon_chunk_text(" ".join(sentences))
         self.assertEqual([len(chunk.split()) for chunk in chunks], [50, 20, 10])
         self.assertTrue(all(chunk[-1] in ".?!" for chunk in chunks))
+
+
+    def test_comma_immediately_before_sir_is_removed(self):
+        self.assertEqual(to_speakable("Certainly, sir."), "Certainly sir.")
+        self.assertEqual(to_speakable("Done, Sir."), "Done Sir.")
+        self.assertEqual(to_speakable("Yes,sir, I understand."), "Yes sir, I understand.")
+
+    def test_other_commas_are_preserved(self):
+        self.assertEqual(
+            to_speakable("Hello, how are you, sir?"),
+            "Hello, how are you sir?",
+        )
+        self.assertEqual(to_speakable("The sirloin is ready, sir."), "The sirloin is ready sir.")
 
 
 if __name__ == "__main__":
