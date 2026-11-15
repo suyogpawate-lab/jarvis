@@ -137,88 +137,86 @@ def speak(model_name, text, generation=None):
             return
 
         engine = get_engine(model_name)
-    pieces = re.split(r"(\[[a-zA-Z0-9_\-]+\])", text)
-    audio_segments = []
-    sample_rate = None
+        pieces = re.split(r"(\\[[a-zA-Z0-9_\\-]+\\])", text)
+        audio_segments = []
+        sample_rate = None
 
-    for piece in pieces:
-        with _state_lock:
-            if generation != _generation:
-                return
-        piece = piece.strip()
-        if not piece:
-            continue
-        if piece.startswith("[") and piece.endswith("]"):
-            effect = find_tag_file(model_name, piece[1:-1])
-            if effect:
-                data, rate = sf.read(str(effect), dtype="float32")
-                if data.ndim > 1:
-                    data = data.mean(axis=1)
-                if sample_rate is not None and rate != sample_rate:
-                    target_len = int(len(data) * sample_rate / rate)
-                    data = np.interp(
-                        np.linspace(0, len(data), target_len, endpoint=False),
-                        np.arange(len(data)),
-                        data,
+        for piece in pieces:
+            with _state_lock:
+                if generation != _generation:
+                    return
+            piece = piece.strip()
+            if not piece:
+                continue
+            if piece.startswith("[") and piece.endswith("]"):
+                effect = find_tag_file(model_name, piece[1:-1])
+                if effect:
+                    data, rate = sf.read(str(effect), dtype="float32")
+                    if data.ndim > 1:
+                        data = data.mean(axis=1)
+                    if sample_rate is not None and rate != sample_rate:
+                        target_len = int(len(data) * sample_rate / rate)
+                        data = np.interp(
+                            np.linspace(0, len(data), target_len, endpoint=False),
+                            np.arange(len(data)),
+                            data,
+                        )
+                    else:
+                        sample_rate = rate
+                    audio_segments.append(data.astype(np.float32))
+            else:
+                generated = engine.generate(piece, sid=0, speed=1.0)
+                if generated.samples is None or len(generated.samples) == 0:
+                    raise RuntimeError("Sherpa returned empty audio.")
+                if sample_rate is not None and generated.sample_rate != sample_rate:
+                    raise RuntimeError(
+                        f"Audio sample-rate mismatch: {sample_rate} vs {generated.sample_rate}"
                     )
-                else:
-                    sample_rate = rate
-                audio_segments.append(data.astype(np.float32))
-        else:
-            generated = engine.generate(piece, sid=0, speed=1.0)
-            if generated.samples is None or len(generated.samples) == 0:
-                raise RuntimeError("Sherpa returned empty audio.")
-            if sample_rate is not None and generated.sample_rate != sample_rate:
-                raise RuntimeError(
-                    f"Audio sample-rate mismatch: {sample_rate} vs {generated.sample_rate}"
-                )
-            sample_rate = generated.sample_rate
-            audio_segments.append(np.asarray(generated.samples, dtype=np.float32))
+                sample_rate = generated.sample_rate
+                audio_segments.append(np.asarray(generated.samples, dtype=np.float32))
 
-    if not audio_segments:
-        return
-    if not audio_segments:
-        return
-    audio = np.concatenate(audio_segments)
-    PREFIX.joinpath("tmp").mkdir(parents=True, exist_ok=True)
-    fd, wav_name = tempfile.mkstemp(prefix="jarvis_zip_voice_", suffix=".wav", dir=str(PREFIX / "tmp"))
-    os.close(fd)
-    wav_path = Path(wav_name)
-    try:
-        sf.write(str(wav_path), audio, sample_rate)
-        with _state_lock:
-            if generation != _generation:
-                return
-            proc = subprocess.Popen(
-                ["play", "-q", str(wav_path)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            _playback_proc = proc
-        while proc.poll() is None:
+        if not audio_segments:
+            return
+        audio = np.concatenate(audio_segments)
+        tmp_dir = PREFIX / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        fd, wav_name = tempfile.mkstemp(
+            prefix="jarvis_zip_voice_", suffix=".wav", dir=str(tmp_dir)
+        )
+        os.close(fd)
+        wav_path = Path(wav_name)
+        try:
+            sf.write(str(wav_path), audio, sample_rate)
+            with _state_lock:
+                if generation != _generation:
+                    return
+                proc = subprocess.Popen(
+                    ["play", "-q", str(wav_path)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                _playback_proc = proc
+            while proc.poll() is None:
+                with _state_lock:
+                    interrupted = generation != _generation
+                if interrupted:
+                    try:
+                        proc.terminate()
+                    except OSError:
+                        pass
+                    break
+                time.sleep(0.05)
+            return_code = proc.wait()
             with _state_lock:
                 interrupted = generation != _generation
-            if interrupted:
-                try:
-                    proc.terminate()
-                except OSError:
-                    pass
-                break
-            time.sleep(0.05)
-        return_code = proc.wait()
-        with _state_lock:
-            interrupted = generation != _generation
-        if return_code and not interrupted:
-            raise RuntimeError(f"Termux 'play' exited with status {return_code}.")
-    finally:
-        with _state_lock:
-            if _playback_proc is locals().get("proc"):
-                _playback_proc = None
-        try:
+            if return_code and not interrupted:
+                raise RuntimeError(f"Termux 'play' exited with status {return_code}.")
+        finally:
+            with _state_lock:
+                if _playback_proc is locals().get("proc"):
+                    _playback_proc = None
             wav_path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _handle_client(conn):
