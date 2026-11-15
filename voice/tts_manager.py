@@ -57,6 +57,8 @@ class TTSManager:
             threading.Thread(target=self._warm_say, daemon=True, name="ZipSayWarmup").start()
         elif _provider() == "phonon":
             threading.Thread(target=self._warm_phonon, daemon=True, name="PhononWarmup").start()
+        elif _provider() == "kokoro":
+            threading.Thread(target=self._warm_kokoro, daemon=True, name="KokoroWarmup").start()
 
     def _warm_piper(self):
         try:
@@ -85,6 +87,14 @@ class TTSManager:
             self.last_error = str(exc)
             print(f"[TTS WARN] Phonon preload failed; CLI fallback remains available: {exc}", flush=True)
 
+    def _warm_kokoro(self):
+        try:
+            from voice.kokoro_tts import warmup
+            warmup()
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"[TTS ERROR] Kokoro preload failed: {exc}", flush=True)
+
     def _run_provider(self, text, speed=1.0, gen=None):
         gen = self._gen if gen is None else gen
         provider = _provider()
@@ -104,8 +114,11 @@ class TTSManager:
         elif provider == "phonon":
             # The producer synthesizes ahead while one continuous mpv stream plays.
             result = self._play_pipeline(provider, text, speed, gen)
+        elif provider == "kokoro":
+            # Reuse the preloaded Kokoro worker and the common buffered playback pipeline.
+            result = self._play_pipeline(provider, text, speed, gen)
         else:
-            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, or phonon.")
+            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, phonon, or kokoro.")
         if not result:
             raise RuntimeError(f"{provider} TTS playback failed")
         return provider
@@ -165,6 +178,10 @@ class TTSManager:
         if provider == "phonon":
             from voice.phonon_tts import synth
             return synth(sentence)
+        if provider == "kokoro":
+            from voice.kokoro_tts import synth
+            voice = os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_whisper").strip()
+            return synth(sentence, voice=voice, speed=speed)
         from voice import sherpa_tts as st
         import soundfile as sf
         voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
@@ -439,6 +456,11 @@ class TTSManager:
             phonon_interrupt()
         except Exception:
             pass
+        try:
+            from voice.kokoro_tts import interrupt as kokoro_interrupt
+            kokoro_interrupt()
+        except Exception:
+            pass
 
     def clear(self):
         try:
@@ -479,6 +501,10 @@ class TTSManager:
         elif provider == "phonon":
             model = "phonon/" + (os.environ.get("JARVIS_PHONON_VOICE", "").strip() or "default")
             primary = model
+        elif provider == "kokoro":
+            voice = os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_nicole30").strip() or "jarvis_nicole30"
+            model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/model_q8f16.onnx")
+            primary = f"kokoro82m/{voice}"
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model
@@ -495,6 +521,7 @@ class TTSManager:
             "pipeline_metrics": dict(self.last_pipeline_metrics),
             "fish_available": False,
             "sherpa_available": provider in ("sherpa", "say"),
+            "kokoro_available": provider == "kokoro",
             "android_tts_available": False,
             "socket": None,
             "model": model,
