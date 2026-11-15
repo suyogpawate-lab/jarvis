@@ -16,7 +16,7 @@ import traceback
 from pathlib import Path
 
 PREFIX = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
-SOCKET_FILE = PREFIX / "tmp" / "jarvis_tts.sock"
+SOCKET_FILE = PREFIX / "tmp" / "jarvis_tts_v2.sock"
 TMP_WAV = PREFIX / "tmp" / "jarvis_zip_voice.wav"
 VOICE_ROOT = Path.home() / "jarvis_voice"
 FX_ROOT = VOICE_ROOT / "fx"
