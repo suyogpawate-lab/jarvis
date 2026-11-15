@@ -422,7 +422,7 @@ class TTSManager:
         self.interrupt()
         if _provider() == "kokoro" and voice is None:
             from voice.voice_policy import choose_kokoro_voice
-            voice = choose_kokoro_voice(user_prompt)
+            voice = choose_kokoro_voice(user_prompt, text)
         try:
             # Edge gets the whole reply; local engines split into sentences inside _play_pipeline.
             self.queue.put_nowait((text, speed, self._gen, voice))
