@@ -11,8 +11,8 @@ _WHISPER_CUES = re.compile(
     re.IGNORECASE,
 )
 _URGENT_CUES = re.compile(
-    r"\\b(?:urgent|emergency|life[- ]threatening|immediate danger|fire alarm|"
-    r"evacuate now|call emergency services|seek immediate help)\\b",
+    r"\b(?:urgent|emergency|life[- ]threatening|immediate danger|fire alarm|"
+    r"evacuate now|call emergency services|seek immediate help)\b",
     re.IGNORECASE,
 )
 _NORMAL_CUES = re.compile(
