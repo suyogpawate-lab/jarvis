@@ -35,7 +35,7 @@ RUN_SETUP=1
 for arg in "$@"; do
     case "$arg" in
         --with-voice) WITH_VOICE=1 ;;
-        --skip-voice) WITH_VOICE=0 ;;
+        --skip-voice) WITH_VOICE=0; WITH_PHONON=0 ;;
         --with-phonon) WITH_PHONON=1 ;;
         --skip-phonon) WITH_PHONON=0 ;;
         --skip-osint) WITH_OSINT=0 ;;
