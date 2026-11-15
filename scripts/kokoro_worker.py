@@ -123,9 +123,13 @@ class PersistentKokoroEngine:
             nicole = self.voices["af_nicole"].astype(np.float32)
             male_style = self.voices[male].astype(np.float32)
             if mode == "formant":
-                style = 0.90 * nicole + 0.10 * male_style
+                nicole_mix = float(os.environ.get("JARVIS_KOKORO_NICOLE_MIX", "0.90"))
+                nicole_mix = max(0.0, min(1.0, nicole_mix))
+                style = nicole_mix * nicole + (1.0 - nicole_mix) * male_style
             else:
-                style = 0.75 * male_style + 0.25 * nicole
+                nicole_mix = float(os.environ.get("JARVIS_KOKORO_NICOLE_MIX", "0.25"))
+                nicole_mix = max(0.0, min(1.0, nicole_mix))
+                style = (1.0 - nicole_mix) * male_style + nicole_mix * nicole
             return style, ("en-gb" if male.startswith("bm_") else "en-us"), mode
         if voice not in self.voice_names:
             raise ValueError(f"Unknown Kokoro voice {voice!r}.")
@@ -212,11 +216,6 @@ class PersistentKokoroEngine:
             finally:
                 raw.unlink(missing_ok=True)
         return {"samples": int(len(audio)), "sample_rate": SAMPLE_RATE, "mode": mode}
-
-    def warmup(self) -> None:
-        # Run the real inference path once so first user speech avoids model setup.
-        self.synthesize("Ready.", "jarvis_whisper", 1.0, Path(os.devnull) if False else Path("/dev/null.wav"))
-
 
 def main() -> int:
     if len(sys.argv) != 3:
