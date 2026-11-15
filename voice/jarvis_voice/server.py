@@ -9,6 +9,9 @@ import os
 import re
 import socket
 import subprocess
+import tempfile
+import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -37,6 +40,28 @@ MODELS = {
 
 active_name = None
 active_tts = None
+_state_lock = threading.RLock()
+_speak_lock = threading.Lock()
+_generation = 0
+_playback_proc = None
+
+
+def interrupt():
+    """Invalidate in-flight synthesis and stop the active audio process."""
+    global _generation
+    with _state_lock:
+        _generation += 1
+        proc = _playback_proc
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=0.7)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        except OSError:
+            pass
+    return _generation
 
 
 def get_engine(name):
@@ -97,16 +122,29 @@ def find_tag_file(model_name, tag):
     return None
 
 
-def speak(model_name, text):
+def speak(model_name, text, generation=None):
+    """Synthesize and play only if this request has not been interrupted."""
+    global _playback_proc
     import numpy as np
     import soundfile as sf
 
-    engine = get_engine(model_name)
+    with _speak_lock:
+        with _state_lock:
+            current_generation = _generation
+        if generation is None:
+            generation = current_generation
+        if generation != current_generation:
+            return
+
+        engine = get_engine(model_name)
     pieces = re.split(r"(\[[a-zA-Z0-9_\-]+\])", text)
     audio_segments = []
     sample_rate = None
 
     for piece in pieces:
+        with _state_lock:
+            if generation != _generation:
+                return
         piece = piece.strip()
         if not piece:
             continue
@@ -139,27 +177,87 @@ def speak(model_name, text):
 
     if not audio_segments:
         return
+    if not audio_segments:
+        return
     audio = np.concatenate(audio_segments)
-    sf.write(str(TMP_WAV), audio, sample_rate)
+    PREFIX.joinpath("tmp").mkdir(parents=True, exist_ok=True)
+    fd, wav_name = tempfile.mkstemp(prefix="jarvis_zip_voice_", suffix=".wav", dir=str(PREFIX / "tmp"))
+    os.close(fd)
+    wav_path = Path(wav_name)
     try:
-        result = subprocess.run(
-            ["play", "-q", str(TMP_WAV)],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=180,
-            check=False,
-        )
-        if result.returncode:
-            raise RuntimeError(
-                f"Termux 'play' exited with {result.returncode}: {result.stderr[-500:]}"
+        sf.write(str(wav_path), audio, sample_rate)
+        with _state_lock:
+            if generation != _generation:
+                return
+            proc = subprocess.Popen(
+                ["play", "-q", str(wav_path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
+            _playback_proc = proc
+        while proc.poll() is None:
+            with _state_lock:
+                interrupted = generation != _generation
+            if interrupted:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+                break
+            time.sleep(0.05)
+        return_code = proc.wait()
+        with _state_lock:
+            interrupted = generation != _generation
+        if return_code and not interrupted:
+            raise RuntimeError(f"Termux 'play' exited with status {return_code}.")
     finally:
+        with _state_lock:
+            if _playback_proc is locals().get("proc"):
+                _playback_proc = None
         try:
-            TMP_WAV.unlink()
+            wav_path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def _handle_client(conn):
+    with conn:
+        try:
+            chunks = []
+            while True:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            payload = b"".join(chunks).decode("utf-8").strip()
+            if payload == "INTERRUPT":
+                interrupt()
+                conn.sendall(b"OK")
+                return
+            if not payload:
+                conn.sendall(b"OK")
+                return
+            if ":::" in payload:
+                model_name, text = payload.split("::: ", 1) if "::: " in payload else payload.split("::: ", 1)
+            else:
+                model_name, text = "alan", payload
+            if model_name not in MODELS:
+                raise ValueError(f"Unknown voice: {model_name}")
+            if not text.strip():
+                raise ValueError("No text supplied.")
+            with _state_lock:
+                request_generation = _generation
+            speak(model_name, text, generation=request_generation)
+            conn.sendall(b"OK")
+        except Exception as exc:
+            detail = f"{type(exc).__name__}: {exc}"
+            print(f"[ZIP TTS ERROR] {detail}", flush=True)
+            traceback.print_exc()
+            try:
+                conn.sendall(("ERROR: " + detail).encode("utf-8", errors="replace"))
+            except OSError:
+                pass
 
 
 def main():
@@ -178,36 +276,10 @@ def main():
     try:
         while True:
             conn, _ = server.accept()
-            with conn:
-                try:
-                    chunks = []
-                    while True:
-                        chunk = conn.recv(4096)
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                    payload = b"".join(chunks).decode("utf-8").strip()
-                    if not payload:
-                        conn.sendall(b"OK")
-                        continue
-                    if ":::" in payload:
-                        model_name, text = payload.split(":::", 1)
-                    else:
-                        model_name, text = "alan", payload
-                    if model_name not in MODELS:
-                        raise ValueError(f"Unknown voice: {model_name}")
-                    if not text.strip():
-                        raise ValueError("No text supplied.")
-                    speak(model_name, text)
-                    conn.sendall(b"OK")
-                except Exception as exc:
-                    detail = f"{type(exc).__name__}: {exc}"
-                    print(f"[ZIP TTS ERROR] {detail}", flush=True)
-                    traceback.print_exc()
-                    try:
-                        conn.sendall(("ERROR: " + detail).encode("utf-8", errors="replace"))
-                    except OSError:
-                        pass
+            threading.Thread(
+                target=_handle_client, args=(conn,), daemon=True,
+                name="JarvisZipTTSClient",
+            ).start()
     finally:
         server.close()
         try:
