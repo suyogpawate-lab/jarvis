@@ -46,12 +46,13 @@ JARVIS_TTS_PROVIDER=kokoro
 JARVIS_KOKORO_VOICE=jarvis_whisper
 JARVIS_KOKORO_MODE=formant
 JARVIS_KOKORO_MALE_VOICE=am_eric
+JARVIS_KOKORO_NICOLE_MIX=0.90
 JARVIS_KOKORO_FORMANT_DEPTH=-300
 JARVIS_KOKORO_BREATH_MIX=0.82
 JARVIS_KOKORO_THREADS=2
 ```
 
-Use `JARVIS_KOKORO_MODE=lpc` to use the alternate LPC whisper path.
+Use `JARVIS_KOKORO_MODE=lpc` to use the alternate LPC whisper path.\n`JARVIS_KOKORO_NICOLE_MIX` adjusts the `af_nicole` style contribution (default 0.90 in formant mode and 0.25 in LPC mode).
 Use any of the 54 stock voice IDs as `JARVIS_KOKORO_VOICE` to use that voice
 without the custom whisper DSP. Use `bm_george` as the male base for British
 English.
