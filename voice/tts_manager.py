@@ -520,8 +520,12 @@ class TTSManager:
             primary = model
         elif provider == "kokoro":
             voice = _normal_kokoro_voice()
-            model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/kokoro-v1.0.fp16.onnx")
-            primary = f"kokoro82m/{voice}"
+            try:
+                from voice.kokoro_tts import model_for_voice
+                model = str(model_for_voice(voice))
+            except Exception:
+                model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/kokoro-v1.0.fp16.onnx")
+            primary = f"kokoro82m/{voice} (normal + matching whisper)"
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model
