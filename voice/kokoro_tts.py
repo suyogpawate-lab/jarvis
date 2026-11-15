@@ -78,7 +78,7 @@ def synth(text: str, voice: str | None = None, speed: float = 1.0) -> Path:
     text = " ".join(str(text or "").split())
     if not text:
         raise RuntimeError("Kokoro received empty text.")
-    selected = (voice or os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_whisper")).strip()
+    selected = (voice or os.environ.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric")).strip()
     speed = max(0.5, min(2.0, float(speed)))
     with _LOCK:
         _start_worker()

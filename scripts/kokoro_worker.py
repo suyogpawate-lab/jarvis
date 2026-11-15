@@ -240,7 +240,7 @@ def main() -> int:
         try:
             request = json.loads(line)
             text = " ".join(str(request.get("text", "")).split())
-            voice = str(request.get("voice", "jarvis_whisper"))
+            voice = str(request.get("voice", "am_eric"))
             speed = float(request.get("speed", 1.0))
             output = Path(request["output"])
             if not text:

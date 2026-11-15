@@ -229,7 +229,7 @@ def work(text, gen=None, source="typed"):
         if answer and speak_it:
             set_local("speaking")
             t0 = time.time()
-            ok = BRAIN.speak(answer, quiet=True)
+            ok = BRAIN.speak(answer, quiet=True, user_prompt=text)
             if ok is False:
                 S["reply"] = answer + "\n[TTS failed - see data/ui.log]"
                 S["busy"] = False

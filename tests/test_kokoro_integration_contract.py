@@ -29,6 +29,7 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         self.assertIn("JARVIS_KOKORO_NICOLE_MIX", worker)
         self.assertIn("_warm_kokoro", manager)
         self.assertIn('"jarvis_whisper"', manager)
+        self.assertIn("choose_kokoro_voice", manager)
 
     def test_worker_keeps_model_resident_and_checks_54_voices(self):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
