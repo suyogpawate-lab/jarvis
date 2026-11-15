@@ -2690,6 +2690,45 @@ class FastAgent:
             timeout=30,
         )
 
+    @staticmethod
+    def _local_tool_result_fallback(messages):
+        """Return a verified result for supported actions without another model call."""
+        tool_names = {}
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            for call in item.get("tool_calls") or []:
+                function = call.get("function") or {}
+                tool_names[str(call.get("id") or "")] = str(function.get("name") or "")
+
+        for item in reversed(messages):
+            if not isinstance(item, dict) or item.get("role") != "tool":
+                continue
+            call_id = str(item.get("tool_call_id") or "")
+            name = tool_names.get(call_id, str(item.get("name") or ""))
+            try:
+                result = json.loads(str(item.get("content") or ""))
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(result, dict):
+                continue
+            if result.get("ok") is False:
+                error = str(result.get("error") or "The operation failed.")
+                return f"I could not complete the operation. {error[:220]}"
+            if result.get("ok") is not True:
+                continue
+            if name == "email_mark_all_read":
+                try:
+                    count = int(result.get("marked_read"))
+                except (TypeError, ValueError):
+                    continue
+                if count == 0:
+                    return "Your Gmail inbox had no unread messages to mark as read."
+                return f"Done. I marked {count} unread messages in your Gmail inbox as read."
+            if name == "email_send":
+                return "The email tool confirmed that the message was sent successfully."
+        return None
+
     def _omniroute_tool_result_fallback(self, original_prompt, messages):
         """
         Summarize already-executed tool results through OmniRoute.
@@ -2738,7 +2777,7 @@ class FastAgent:
             system_prompt=self._jarvis_system_prompt(),
             max_tokens=256,
             temperature=0.1,
-            timeout=30,
+            timeout=10,
         )
 
     @staticmethod
@@ -3150,6 +3189,14 @@ class FastAgent:
                                 prompt, messages
                             )
                         except Exception as fallback_exc:
+                            local_reply = self._local_tool_result_fallback(messages)
+                            if local_reply:
+                                print(
+                                    "[JARVIS ROUTER] OmniRoute synthesis unavailable; "
+                                    "using verified tool result without repeating the action.",
+                                    flush=True,
+                                )
+                                return local_reply
                             return (
                                 self._groq_limit_message(final_response)
                                 + " The action step already ran and was not repeated. "
