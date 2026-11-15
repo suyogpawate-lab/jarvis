@@ -97,7 +97,8 @@ def _start_worker() -> dict:
 
 
 def warmup() -> bool:
-    ready = _start_worker()
+    with _LOCK:
+        ready = _start_worker()
     print(
         "[TTS] Kokoro-82M persistent worker ready; "
         f"{ready['voices_loaded']} voices available; selected={ready['selected_voice']}; "
