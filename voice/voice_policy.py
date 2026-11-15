@@ -5,9 +5,11 @@ import os
 import re
 
 _WHISPER_CUES = re.compile(
-    r"\b(?:whisper(?:ing)?|speak softly|talk softly|keep your voice down|lower your voice|"
-    r"speak quietly|talk quietly|be quiet|quiet voice|hush|don't wake|do not wake|"
-    r"someone is sleeping|someone's asleep|people are sleeping|in a quiet room)\b",
+    r"\b(?:(?:please\s+)?(?:whisper|speak softly|talk softly|keep your voice down|lower your voice|"
+    r"speak quietly|talk quietly|be quiet|hush)|(?:can|could|would) you (?:please )?"
+    r"(?:whisper|speak softly|talk softly)|(?:speak|talk) (?:in a )?whisper|"
+    r"don't wake|do not wake|someone is sleeping|someone's asleep|people are sleeping|"
+    r"in a quiet room)\b",
     re.IGNORECASE,
 )
 _URGENT_CUES = re.compile(
