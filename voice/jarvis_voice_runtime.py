@@ -116,6 +116,22 @@ def ensure_server(timeout: float = 30.0) -> bool:
     )
 
 
+def interrupt() -> bool:
+    """Ask the persistent ZIP voice server to stop playback and invalidate synthesis."""
+    if not server_running():
+        return False
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(1.5)
+            client.connect(str(SOCKET_FILE))
+            client.sendall(b"INTERRUPT")
+            client.shutdown(socket.SHUT_WR)
+            response = client.recv(64)
+            return response == b"OK"
+    except OSError:
+        return False
+
+
 def speak(text: str, voice: str | None = None) -> bool:
     text = str(text or "").strip()
     if not text:
