@@ -101,6 +101,7 @@ class PersistentKokoroEngine:
         self.sample_rate = SAMPLE_RATE
         self._g2p = None
         self._g2p_lang = None
+        self._g2p_available = False
         self.voice_catalog: dict[str, str] = {}
 
         self._scan_voice_catalog()
@@ -198,6 +199,8 @@ class PersistentKokoroEngine:
 
     def _phonemize(self, text: str, lang: str) -> list[tuple[str, float]]:
         if lang in ("cmn", "ja") and self._g2p_lang != lang:
+            self._g2p = None
+            self._g2p_available = False
             try:
                 if lang == "cmn":
                     from misaki import zh
@@ -205,13 +208,12 @@ class PersistentKokoroEngine:
                 else:
                     from misaki import ja
                     self._g2p = ja.JAG2P()
-                self._g2p_lang = lang
-            except ImportError as exc:
-                extra = "zh" if lang == "cmn" else "ja"
-                raise RuntimeError(
-                    f"Kokoro voice {self.selected_voice} needs Misaki G2P; install with: "
-                    f"python -m pip install 'misaki[{extra}]' ({exc})"
-                ) from exc
+                self._g2p_available = True
+            except (ImportError, OSError):
+                # Misaki currently excludes Python 3.14; keep the voice usable
+                # through the same eSpeak NG path used by the supplied script.
+                self._g2p = None
+            self._g2p_lang = lang
 
         text = text.replace("--", "—")
         parts = re.split(r"([.,!?;:—。！？；：，、]+)", text)
@@ -223,7 +225,7 @@ class PersistentKokoroEngine:
             punct = parts[index + 1].strip() if index + 1 < len(parts) else "."
             mark = punct[0] if punct else "."
             mark = {"。": ".", "！": "!", "？": "?", "；": ";", "：": ":", "，": ",", "、": ","}.get(mark, mark)
-            if lang in ("cmn", "ja"):
+            if self._g2p_available and lang in ("cmn", "ja"):
                 phonemes, _ = self._g2p(phrase)
                 ipa = " ".join(str(phonemes).split())
             else:
