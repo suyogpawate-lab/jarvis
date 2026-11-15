@@ -31,7 +31,8 @@ OmniRoute request.
 - Explicit requests to return to a normal voice take priority over whisper
   cues in the same prompt.
 - Unclear context defaults to normal. Time of day alone never triggers whisper.
-- Urgent warnings and important confirmations remain on the normal voice.
+- Clearly urgent or emergency responses stay on the normal voice, even when
+  whisper mode is forced.
 
 The normal voice defaults to `am_eric`. The whisper preset retains the supplied
 `2direct_kokoro.py` formant/LPC processing and the original 54 stock voice
