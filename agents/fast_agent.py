@@ -3182,22 +3182,21 @@ class FastAgent:
                     final_response = self._groq_post(final_payload, timeout=30)
 
                     if final_response.status_code in (413, 429):
-                        # The action tools have already run. Use OmniRoute only
-                        # to explain their recorded results; never restart the
-                        # action-capable Groq loop.
+                        # The action tools have already run. Prefer a deterministic
+                        # summary for supported results; never repeat the action.
+                        local_reply = self._local_tool_result_fallback(messages)
+                        if local_reply:
+                            print(
+                                "[JARVIS ROUTER] Using verified tool result; "
+                                "the action will not be repeated.",
+                                flush=True,
+                            )
+                            return local_reply
                         try:
                             return self._omniroute_tool_result_fallback(
                                 prompt, messages
                             )
                         except Exception as fallback_exc:
-                            local_reply = self._local_tool_result_fallback(messages)
-                            if local_reply:
-                                print(
-                                    "[JARVIS ROUTER] OmniRoute synthesis unavailable; "
-                                    "using verified tool result without repeating the action.",
-                                    flush=True,
-                                )
-                                return local_reply
                             return (
                                 self._groq_limit_message(final_response)
                                 + " The action step already ran and was not repeated. "
