@@ -10,33 +10,53 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         source = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
         ast.parse(source)
 
-    def test_fp16_assets_and_all_voice_archive_are_selected(self):
+    def test_both_official_packs_and_all_157_voice_ids_are_integrated(self):
         client = (ROOT / "voice" / "kokoro_tts.py").read_text(encoding="utf-8")
+        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
         installer = (ROOT / "scripts" / "install_kokoro82m_termux.sh").read_text(encoding="utf-8")
-        self.assertIn("kokoro-v1.0.fp16.onnx", client)
-        self.assertIn("voices-v1.0.bin", client)
-        self.assertIn("kokoro-v1.0.fp16.onnx", installer)
-        self.assertIn("voices-v1.0.bin", installer)
+        setup = (ROOT / "setup").read_text(encoding="utf-8")
+        for filename in (
+            "kokoro-v1.0.fp16.onnx", "voices-v1.0.bin",
+            "kokoro-v1.1-zh.fp16.onnx", "voices-v1.1-zh.bin",
+        ):
+            self.assertIn(filename, client)
+            self.assertIn(filename, installer)
+        self.assertIn("EXPECTED_V1_VOICES = 54", worker)
+        self.assertIn("EXPECTED_V11_VOICES = 103", worker)
+        self.assertIn("len(self.voice_catalog) != 157", worker)
+        self.assertIn("len(catalog) != 157", setup)
+        self.assertIn("_show_kokoro_voice_catalog(catalog)", setup)
         self.assertIn("voices_loaded", client)
 
-    def test_supplied_whisper_modes_are_integrated(self):
-        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
-        manager = (ROOT / "voice" / "tts_manager.py").read_text(encoding="utf-8")
-        self.assertIn('"formant"', worker)
-        self.assertIn('"lpc"', worker)
-        self.assertIn("apply_lpc_whisper", worker)
-        self.assertIn("JARVIS_KOKORO_FORMANT_DEPTH", worker)
-        self.assertIn("JARVIS_KOKORO_NICOLE_MIX", worker)
-        self.assertIn("_warm_kokoro", manager)
-        self.assertIn('"jarvis_whisper"', manager)
-        self.assertIn("choose_kokoro_voice", manager)
-
-    def test_worker_keeps_model_resident_and_checks_54_voices(self):
+    def test_selected_model_only_and_selected_voice_is_cached_twice(self):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
         client = (ROOT / "voice" / "kokoro_tts.py").read_text(encoding="utf-8")
-        self.assertIn("InferenceSession", worker)
-        self.assertIn("len(self.voice_names) < 54", worker)
-        self.assertIn("subprocess.Popen", client)
+        self.assertIn("self.model_path = self.model_paths[self.model_family]", worker)
+        self.assertIn("self.base_style = self._load_voice_style(selected_voice)", worker)
+        self.assertIn("self.whisper_style = self.base_style.copy()", worker)
+        self.assertIn("normal_style_preloaded", worker)
+        self.assertIn("whisper_style_preloaded", client)
+
+    def test_matching_voice_whisper_uses_lpc_dsp(self):
+        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
+        self.assertIn("def apply_lpc_whisper", worker)
+        self.assertIn('if voice == WHISPER_VOICE:', worker)
+        self.assertIn('return self.whisper_style, self.selected_lang, "whisper"', worker)
+        self.assertIn("audio = apply_lpc_whisper(audio, breath_mix)", worker)
+        self.assertNotIn("af_nicole", worker)
+        self.assertNotIn("JARVIS_KOKORO_MALE_VOICE", worker)
+
+    def test_chinese_and_japanese_use_language_specific_g2p(self):
+        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
+        self.assertIn("zh.ZHG2P(version=None)", worker)
+        self.assertIn("ja.JAG2P()", worker)
+        self.assertIn("misaki[", worker)
+
+    def test_client_passes_the_selected_voice_and_both_asset_packs(self):
+        client = (ROOT / "voice" / "kokoro_tts.py").read_text(encoding="utf-8")
+        self.assertIn("str(MODEL_V1), str(VOICES_V1), str(MODEL_V11), str(VOICES_V11), selected", client)
+        self.assertIn("ready.get('selected_voice') != selected", client)
+        self.assertIn("def model_for_voice", client)
 
 
 if __name__ == "__main__":
