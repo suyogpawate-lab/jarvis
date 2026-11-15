@@ -55,7 +55,7 @@ class KokoroIntegrationContractTests(unittest.TestCase):
     def test_client_passes_the_selected_voice_and_both_asset_packs(self):
         client = (ROOT / "voice" / "kokoro_tts.py").read_text(encoding="utf-8")
         self.assertIn("str(MODEL_V1), str(VOICES_V1), str(MODEL_V11), str(VOICES_V11), selected", client)
-        self.assertIn("ready.get('selected_voice') != selected", client)
+        self.assertIn('ready.get("selected_voice") != selected', client)
         self.assertIn("def model_for_voice", client)
 
 
