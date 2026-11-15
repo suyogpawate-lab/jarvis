@@ -778,6 +778,12 @@ def _ensure_kokoro_g2p(voice):
     )
     if not extra:
         return True
+    if sys.version_info >= (3, 14):
+        warn(
+            f"Misaki {extra.upper()} currently declares Python <3.14. "
+            "Keeping the selected voice available with the eSpeak NG fallback on this Python."
+        )
+        return True
     try:
         if extra == "zh":
             from misaki import zh  # noqa: F401
