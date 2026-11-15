@@ -43,7 +43,7 @@ from core.temporal_context import build_temporal_context
 from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
-from agents.fast_agent import FastAgent, JARVIS_ABILITIES
+from agents.fast_agent import FastAgent
 from automation.scheduler import AutomationScheduler
 from voice.tts_manager import tts
 from search.search_hub import build_default_search_hub
@@ -67,8 +67,6 @@ class CommandDispatcher:
         self.discussion = discussion
         self.memory = memory
 
-        # Deterministic JARVIS abilities registry.
-        self.abilities = JARVIS_ABILITIES
         self.shell = ShellExecutor()
         self.contacts = ContactsManager()
         self.system = SystemTools()
@@ -965,60 +963,6 @@ class CommandDispatcher:
                 flush=True,
             )
             return None
-
-    def _abilities_request(self, text):
-        """
-        Detect only explicit requests asking what JARVIS can do.
-
-        Normal commands must never be intercepted by this route.
-        """
-        text = str(text).strip().lower()
-
-        patterns = (
-            r"^what can you do\??$",
-            r"^what are your abilities\??$",
-            r"^what are your capabilities\??$",
-            r"^what can jarvis do\??$",
-            r"^what are jarvis'?s abilities\??$",
-            r"^what are jarvis'?s capabilities\??$",
-            r"^list your abilities\??$",
-            r"^list your capabilities\??$",
-            r"^show your abilities\??$",
-            r"^show your capabilities\??$",
-        )
-
-        return any(
-            re.fullmatch(pattern, text, re.IGNORECASE)
-            for pattern in patterns
-        )
-
-    def _format_abilities(self):
-        """
-        Format the deterministic abilities registry for display.
-        """
-        lines = []
-
-        for index, ability in enumerate(self.abilities, 1):
-            if isinstance(ability, str):
-                value = ability.strip()
-            elif isinstance(ability, dict):
-                value = (
-                    ability.get("description")
-                    or ability.get("name")
-                    or ability.get("ability")
-                    or str(ability)
-                )
-                value = str(value).strip()
-            else:
-                value = str(ability).strip()
-
-            if value:
-                lines.append(f"{index}. {value}")
-
-        if not lines:
-            return "JARVIS abilities registry is empty."
-
-        return "I can:\n" + "\n".join(lines)
 
     # ==========================================================
     # MAIN ENTRY
@@ -2083,14 +2027,6 @@ Rules:
                 self.automation, self.automation.timezone,
                 schedule_at=research_request.get("schedule_at"),
             )
-
-        # ======================================================
-        # DETERMINISTIC ABILITIES ROUTE
-        # ======================================================
-        # Only explicit ability/capability questions reach this
-        # handler. Ordinary requests must never receive the list.
-        if self._abilities_request(text):
-            return self._format_abilities()
 
         # ======================================================
         # INSTANT GREETING ROUTE
