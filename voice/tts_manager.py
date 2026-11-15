@@ -15,6 +15,15 @@ from voice.spoken import to_speakable
 _ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "no.", "fig.", "approx.", "inc.", "ltd.", "co.", "u.s.", "u.k.", "a.m.", "p.m."}
 
 
+def _normal_kokoro_voice():
+    """Resolve the ordinary Kokoro voice, ignoring the former whisper default."""
+    configured = os.environ.get("JARVIS_KOKORO_NORMAL_VOICE", "").strip()
+    if configured:
+        return configured
+    legacy = os.environ.get("JARVIS_KOKORO_VOICE", "").strip()
+    return legacy if legacy and legacy != "jarvis_whisper" else "am_eric"
+
+
 def _provider():
     value = os.environ.get("JARVIS_TTS_PROVIDER", "").strip().lower()
     if value:
@@ -95,7 +104,7 @@ class TTSManager:
             self.last_error = str(exc)
             print(f"[TTS ERROR] Kokoro preload failed: {exc}", flush=True)
 
-    def _run_provider(self, text, speed=1.0, gen=None):
+    def _run_provider(self, text, speed=1.0, gen=None, voice=None):
         gen = self._gen if gen is None else gen
         provider = _provider()
         if provider == "say":
@@ -116,19 +125,19 @@ class TTSManager:
             result = self._play_pipeline(provider, text, speed, gen)
         elif provider == "kokoro":
             # Reuse the preloaded Kokoro worker and the common buffered playback pipeline.
-            result = self._play_pipeline(provider, text, speed, gen)
+            result = self._play_pipeline(provider, text, speed, gen, voice=voice)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, phonon, or kokoro.")
         if not result:
             raise RuntimeError(f"{provider} TTS playback failed")
         return provider
 
-    def _speak_with_fallbacks(self, text, speed=1.0, gen=None):
+    def _speak_with_fallbacks(self, text, speed=1.0, gen=None, voice=None):
         try:
             with self._active_lock:
                 self._active_playback = True
             try:
-                self.last_provider = self._run_provider(text, speed, gen)
+                self.last_provider = self._run_provider(text, speed, gen, voice=voice)
                 self.last_error = ""
                 return True
             except Exception as exc:
@@ -158,10 +167,10 @@ class TTSManager:
                 try:
                     if item is None:
                         break
-                    text, speed, gen = item
+                    text, speed, gen, voice = item
                     self.last_spoken_text = str(text).strip()
                     self.last_started = time.monotonic()
-                    if self._gen == gen and not self._speak_with_fallbacks(text, speed, gen):
+                    if self._gen == gen and not self._speak_with_fallbacks(text, speed, gen, voice=voice):
                         # The public speak() API only queues work; report worker
                         # failures so a silent TTS outage is diagnosable in Termux.
                         print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
@@ -171,7 +180,7 @@ class TTSManager:
             self.worker_alive = False
 
     # ---- local pipeline: synth sentence N+1 while sentence N plays ----
-    def _synth(self, provider, sentence, speed):
+    def _synth(self, provider, sentence, speed, voice=None):
         if provider == "piper":
             from voice.piper_tts import _synthesize_to_wav
             return _synthesize_to_wav(sentence)
@@ -180,8 +189,8 @@ class TTSManager:
             return synth(sentence)
         if provider == "kokoro":
             from voice.kokoro_tts import synth
-            voice = os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_whisper").strip()
-            return synth(sentence, voice=voice, speed=speed)
+            selected_voice = (voice or _normal_kokoro_voice()).strip()
+            return synth(sentence, voice=selected_voice, speed=speed)
         from voice import sherpa_tts as st
         import soundfile as sf
         voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
@@ -205,7 +214,7 @@ class TTSManager:
                 pass
         return False
 
-    def _play_pipeline(self, provider, text, speed, gen):
+    def _play_pipeline(self, provider, text, speed, gen, voice=None):
         # Local engines share the same buffered policy: no split up to 50
         # words, a ~50-word first chunk, then ~15-word chunks. The producer
         # synthesizes ahead into a two-item queue while mpv plays one stream.
@@ -224,7 +233,7 @@ class TTSManager:
                     if self._gen != gen:
                         break
                     synth_started = time.monotonic()
-                    path = self._synth(provider, sentence, speed)
+                    path = self._synth(provider, sentence, speed, voice=voice)
                     synth_elapsed = time.monotonic() - synth_started
                     with wave.open(str(path), "rb") as generated_wav:
                         audio_seconds = (
@@ -404,16 +413,19 @@ class TTSManager:
             raise errors[0]
         return True
 
-    def speak(self, text, speed=1.0):
+    def speak(self, text, speed=1.0, user_prompt="", voice=None):
         if text is None:
             return False
         text = to_speakable(text)
         if not text or not self.running:
             return False
         self.interrupt()
+        if _provider() == "kokoro" and voice is None:
+            from voice.voice_policy import choose_kokoro_voice
+            voice = choose_kokoro_voice(user_prompt)
         try:
             # Edge gets the whole reply; local engines split into sentences inside _play_pipeline.
-            self.queue.put_nowait((text, speed, self._gen))
+            self.queue.put_nowait((text, speed, self._gen, voice))
             return True
         except queue.Full:
             self.clear()
@@ -426,7 +438,7 @@ class TTSManager:
             return False
         self.last_spoken_text = text
         self.last_started = time.monotonic()
-        return self._speak_with_fallbacks(text, speed, self._gen)
+        return self._speak_with_fallbacks(text, speed, self._gen, voice=_normal_kokoro_voice())
 
     def interrupt(self):
         self._gen += 1
@@ -502,8 +514,8 @@ class TTSManager:
             model = "phonon/" + (os.environ.get("JARVIS_PHONON_VOICE", "").strip() or "default")
             primary = model
         elif provider == "kokoro":
-            voice = os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_nicole30").strip() or "jarvis_nicole30"
-            model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/model_q8f16.onnx")
+            voice = _normal_kokoro_voice()
+            model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/kokoro-v1.0.fp16.onnx")
             primary = f"kokoro82m/{voice}"
         else:
             model = "edge-tts/en-GB-RyanNeural"
