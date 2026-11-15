@@ -41,10 +41,14 @@ Italian, Japanese, Brazilian Portuguese, and Mandarin Chinese voices. The
 three English voices shipped inside the v1.1-zh pack are included in the
 catalog and use that pack's matching model.
 
-Japanese and Mandarin use the matching Misaki G2P frontends. Setup offers to
-install \`misaki[ja]\` or \`misaki[zh]\` when one of those voice families is
-selected. Other languages continue to use the installed Termux eSpeak NG
-frontend.
+Japanese and Mandarin use the matching Misaki G2P frontends when the
+installed Python version supports them. Misaki 0.9.4 currently declares
+Python versions below 3.14. On Python 3.14 (the current Termux setup), JARVIS
+falls back to eSpeak NG using the \`ja\` or \`cmn\` language frontend, following
+the supplied direct Kokoro script. This fallback needs real-device
+pronunciation and vocabulary-coverage validation for those languages; if the
+phonemes do not match the model vocabulary, synthesis reports an error rather
+than silently claiming a valid result. Other languages use Termux eSpeak NG.
 
 ## Context-aware matching-voice whisper
 
