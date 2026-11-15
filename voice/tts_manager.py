@@ -180,7 +180,7 @@ class TTSManager:
             return synth(sentence)
         if provider == "kokoro":
             from voice.kokoro_tts import synth
-            voice = os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_nicole30").strip()
+            voice = os.environ.get("JARVIS_KOKORO_VOICE", "jarvis_whisper").strip()
             return synth(sentence, voice=voice, speed=speed)
         from voice import sherpa_tts as st
         import soundfile as sf
