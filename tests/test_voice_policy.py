@@ -15,6 +15,11 @@ class KokoroVoicePolicyTests(unittest.TestCase):
             self.assertEqual(choose_kokoro_voice("Please whisper, someone is sleeping."), "jarvis_whisper")
             self.assertEqual(choose_kokoro_voice("Keep your voice down."), "jarvis_whisper")
 
+    def test_mentioning_whisper_is_not_a_voice_command(self):
+        with patch.dict(os.environ, {"JARVIS_KOKORO_VOICE_MODE": "auto"}, clear=True):
+            self.assertEqual(choose_kokoro_voice("What does whispering mean?"), "am_eric")
+            self.assertEqual(choose_kokoro_voice("Could you please whisper?"), "jarvis_whisper")
+
     def test_normal_request_overrides_whisper_cue(self):
         with patch.dict(os.environ, {"JARVIS_KOKORO_VOICE_MODE": "auto"}, clear=True):
             self.assertEqual(choose_kokoro_voice("Use your normal voice, not a whisper."), "am_eric")
