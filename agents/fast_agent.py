@@ -2819,8 +2819,8 @@ class FastAgent:
             return None
         return text
 
-    def _answer_simple_direct(self, prompt):
-        """One low-token Groq completion with no skill index or tool schemas."""
+    def _answer_simple_direct(self, prompt, allow_omniroute_fallback=True):
+        """One low-token, text-only Groq completion with no tool schemas."""
         payload = {
             "stream": False,
             "model": self.model,
@@ -2842,6 +2842,8 @@ class FastAgent:
             except (KeyError, IndexError, TypeError, ValueError):
                 return "[ERROR] Groq returned an invalid simple-answer response."
         if response.status_code == 429:
+            if not allow_omniroute_fallback:
+                return ""
             try:
                 print("[JARVIS ROUTER] Groq rate-limited simple answer -> OMNIROUTE", flush=True)
                 return self._omniroute_answer_fallback(prompt)
