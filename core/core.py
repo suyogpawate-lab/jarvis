@@ -4,7 +4,6 @@ import re
 import requests
 
 from monitoring import alerts
-from agents.fast_agent import JARVIS_ABILITIES
 
 
 class Jarvis:
@@ -27,7 +26,6 @@ class Jarvis:
                 "OmniRoute model in OMNIROUTE_COMPLEX_MODEL."
             )
 
-        self.abilities = JARVIS_ABILITIES
 
     def ask(self, prompt):
         """Ask the model; raise the right alert if the backend is unreachable."""
