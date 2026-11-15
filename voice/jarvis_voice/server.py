@@ -137,7 +137,7 @@ def speak(model_name, text, generation=None):
             return
 
         engine = get_engine(model_name)
-        pieces = re.split(r"(\\[[a-zA-Z0-9_\\-]+\\])", text)
+        pieces = re.split(r"(\[[a-zA-Z0-9_\-]+\])", text)
         audio_segments = []
         sample_rate = None
 
@@ -237,7 +237,7 @@ def _handle_client(conn):
                 conn.sendall(b"OK")
                 return
             if ":::" in payload:
-                model_name, text = payload.split("::: ", 1) if "::: " in payload else payload.split("::: ", 1)
+                model_name, text = payload.split(":::", 1)
             else:
                 model_name, text = "alan", payload
             if model_name not in MODELS:
