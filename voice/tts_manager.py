@@ -473,6 +473,11 @@ class TTSManager:
             kokoro_interrupt()
         except Exception:
             pass
+        try:
+            from voice.jarvis_voice_runtime import interrupt as say_interrupt
+            say_interrupt()
+        except Exception:
+            pass
 
     def clear(self):
         try:
