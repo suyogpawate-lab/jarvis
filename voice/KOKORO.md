@@ -1,64 +1,76 @@
-# Kokoro-82M TTS for JARVIS (Android / Termux)
+# Kokoro-82M FP16 TTS for JARVIS (Android / Termux)
 
-Kokoro is an additional selectable local TTS provider. It does not replace Edge,
-Piper, Sherpa, or Phonon. Set `JARVIS_TTS_PROVIDER=kokoro` to select it.
+Kokoro is an additional local TTS provider. It does not replace Edge, Piper,
+Sherpa, or Phonon. The integration uses the FP16 ONNX model and one NPZ-style
+voice archive containing all 54 stock voices.
 
 ## Install
 
-Run in Termux from the repository root:
+From the JARVIS repository root in Termux:
 
 ```bash
+pkg install python curl espeak-ng sox
 bash scripts/install_kokoro82m_termux.sh
 ```
 
-The installer downloads the Apache-2.0 ONNX Community Kokoro v1.0 model in
-Q8F16 quantization (~86 MB) and all 54 stock voice packs (~0.5 MB each), creates
-one additional voice pack, and compiles a persistent Rust worker. It requires
-Termux Rust/Cargo, Python, and curl. No PyTorch, PC, or cloud inference is used.
+The installer downloads and SHA-256 verifies:
+- `kokoro-v1.0.fp16.onnx` (~156 MB)
+- `voices-v1.0.bin` (~27 MB; all 54 voice presets)
 
-## Voices
+It uses the existing Termux `python-numpy` and `python-onnxruntime`
+installations. It does not require Rust, PyTorch, a PC, or cloud inference.
 
-All 54 stock voice IDs are installed and loaded into the same model worker:
-American English (11 female, 9 male), British English (4 female, 4 male),
-Spanish (2 female, 1 male), French (1 female), Hindi (2 female, 2 male),
-Italian (1 female, 1 male), Japanese (4 female, 1 male), Brazilian Portuguese
-(1 female, 2 male), and Mandarin Chinese (4 female, 4 male).
+## Whisper voice based on the supplied implementation
 
-Default JARVIS voice is `jarvis_nicole30`: a style-embedding interpolation of
-70% `am_onyx` and 30% `af_nicole`. This is not waveform mixing or a claim
-that the result will sound exactly like a male whisper. It blends the model's
-per-token style vectors; timbre, breathiness and perceived gender may not
-interpolate linearly, so listen and adjust after the first on-device samples.
-The original `am_onyx` and `af_nicole` packs remain unchanged.
+The default preset is `jarvis_whisper`, built from the uploaded
+`2direct_kokoro.py` logic:
 
-Change voice with `JARVIS_KOKORO_VOICE`; change speed with the existing TTS
-speed argument. The custom voice can be regenerated with:
+- **Formant mode (default):** 90% `af_nicole` + 10% selected male style
+  (`am_eric` by default), followed by the supplied SoX vocal-tract pitch/
+  formant shift and bass/treble shaping.
+- **LPC mode:** 75% male style + 25% `af_nicole`, followed by the supplied
+  cepstral-envelope / aspirated-noise whisper vocoder.
+- The original 54 voice vectors are never overwritten. Any stock voice ID can
+  be selected directly to bypass the custom whisper processing.
 
-```bash
-python scripts/build_kokoro_voice_blend.py --voices models/kokoro82m/voices --base am_onyx --donor af_nicole --weight 0.30 --output jarvis_nicole30
+The 90/10 and 75/25 ratios are the ratios in your supplied script; they replace
+the earlier proposed 70/30 embedding mix. The two modes are alternatives, not
+a promise that a particular timbre will be achieved on every device.
+
+## Configuration
+
+Set these in `.env`:
+
+```dotenv
+JARVIS_TTS_PROVIDER=kokoro
+JARVIS_KOKORO_VOICE=jarvis_whisper
+JARVIS_KOKORO_MODE=formant
+JARVIS_KOKORO_MALE_VOICE=am_eric
+JARVIS_KOKORO_FORMANT_DEPTH=-300
+JARVIS_KOKORO_BREATH_MIX=0.82
+JARVIS_KOKORO_THREADS=2
 ```
 
-## Preloading and memory
+Use `JARVIS_KOKORO_MODE=lpc` to use the alternate LPC whisper path.
+Use any of the 54 stock voice IDs as `JARVIS_KOKORO_VOICE` to use that voice
+without the custom whisper DSP. Use `bm_george` as the male base for British
+English.
 
-When Kokoro is selected as `JARVIS_TTS_PROVIDER`, TTSManager starts its
-preload thread at startup. The persistent Rust worker loads the quantized ONNX
-session and all voice packs once, runs a real short synthesis warmup, then
-stays resident. Subsequent chunks reuse the same model session. Other providers
-are not automatically loaded in parallel; this avoids needlessly keeping several
-large TTS engines resident on a low-memory tablet.
+## Persistent preload and memory
 
-Kokoro inference is CPU-only in this Termux integration. The worker returns
-24 kHz WAV chunks to the existing buffered mpv pipeline. Raw audio and temporary
-WAV files are removed after playback by the existing pipeline.
+When Kokoro is selected, TTSManager starts a background preload thread. A
+persistent Python worker loads the FP16 ONNX session and the full voice archive
+once, runs a real inference warmup, and stays resident. Sentence chunks reuse
+that session; they do not reload the model. CPU thread count defaults to 2 to
+limit contention on the Android tablet.
 
-## Runtime requirements / limitations
+The FP16 model file is about 156 MB, but this is not the peak-RAM requirement.
+ONNX Runtime's session, activations, voice vectors, and JARVIS services add
+memory overhead. The actual peak RSS and synthesis latency must be measured on
+the TB-X606V before keeping this provider enabled permanently. If memory
+pressure is excessive, switch `JARVIS_TTS_PROVIDER` back to the existing
+provider; the downloaded assets can remain on disk.
 
-The worker uses `kokoro-en` 0.1.5 with its Misaki-lean G2P feature and ONNX
-Runtime CPU execution. Its crate documents multiple languages/voices but notes
-that English is the most thoroughly tested language. Test each non-English
-language before relying on it for important speech. Peak RAM and synthesis
-speed must be measured on the actual TB-X606V; the 86 MB model file size is not
-a peak-RAM estimate.
-
-Model: `onnx-community/Kokoro-82M-v1.0-ONNX`, Apache-2.0. The model and
-voice assets are downloaded to the device and are not committed to this repo.
+Model release: `thewh1teagle/kokoro-onnx`, model-files-v1.1. The worker checks
+that the archive contains all 54 voices and that the embedded model vocabulary
+is present before advertising readiness.
