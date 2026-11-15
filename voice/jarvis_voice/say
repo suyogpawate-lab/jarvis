@@ -4,7 +4,7 @@ import os
 import socket
 import sys
 
-SOCKET_FILE = "/data/data/com.termux/files/usr/tmp/jarvis_tts.sock"
+SOCKET_FILE = "/data/data/com.termux/files/usr/tmp/jarvis_tts_v2.sock"
 VALID_MODELS = ["alan", "bryce"]
 
 args = sys.argv[1:]
