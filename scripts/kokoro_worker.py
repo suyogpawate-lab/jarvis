@@ -222,6 +222,7 @@ class PersistentKokoroEngine:
                 continue
             punct = parts[index + 1].strip() if index + 1 < len(parts) else "."
             mark = punct[0] if punct else "."
+            mark = {"。": ".", "！": "!", "？": "?", "；": ";", "：": ":", "，": ",", "、": ","}.get(mark, mark)
             if lang in ("cmn", "ja"):
                 phonemes, _ = self._g2p(phrase)
                 ipa = " ".join(str(phonemes).split())
