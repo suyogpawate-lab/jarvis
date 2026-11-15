@@ -2687,7 +2687,7 @@ class FastAgent:
             system_prompt=self._jarvis_base_system_prompt(),
             max_tokens=256,
             temperature=0.1,
-            timeout=30,
+            timeout=12,
         )
 
     @staticmethod
