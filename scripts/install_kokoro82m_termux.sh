@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-if [ -z "\${PREFIX:-}" ] || [ ! -d "$PREFIX" ]; then
+if [ -z "${PREFIX:-}" ] || [ ! -d "$PREFIX" ]; then
   echo "Run this installer inside Termux." >&2
   exit 1
 fi
