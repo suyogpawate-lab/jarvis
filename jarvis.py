@@ -896,11 +896,11 @@ def format_memory():
     return buf.getvalue().strip()
 
 
-def speak(text, quiet=False):
-    """Speak a JARVIS response through the configured TTS provider."""
+def speak(text, quiet=False, user_prompt=""):
+    """Speak a JARVIS response, selecting Kokoro's style from the user's request."""
     try:
         from voice.tts_manager import tts
-        tts.speak(text)
+        tts.speak(text, user_prompt=user_prompt)
         return True
     except Exception as exc:
         if not quiet:
@@ -1472,7 +1472,7 @@ def main():
             print()
 
             if should_speak:
-                speak(answer)
+                speak(answer, user_prompt=prompt)
 
         except KeyboardInterrupt:
             shutdown()
