@@ -300,6 +300,9 @@ def step_keys(env):
         env.save()
         info("Removed obsolete Gemini/Claude provider settings from .env.")
 
+    env.set("JARVIS_FAST_MODEL", "openai/gpt-oss-120b")
+    env.save()
+    info("FastAgent model set to Groq openai/gpt-oss-120b.")
     info("Groq is the fast-response and tool provider. Get a key at https://console.groq.com/keys")
 
     current = split_keys(env.get("GROQ_API_KEY")) + [
@@ -730,16 +733,19 @@ def step_voice(env):
         default_choice = "4"
     elif current_provider == "phonon":
         default_choice = "5"
+    elif current_provider == "kokoro":
+        default_choice = "6"
     else:
         default_choice = "1"
 
-    info("Choose a speech backend. Edge is online; Piper, Sherpa and Phonon run locally after setup.")
-    print("  1) Edge TTS — Ryan Neural (online, default)")
+    info("Choose a speech backend. Sherpa, Kokoro, Needle and Phonon assets are installed by install.sh; models load only when selected. Piper additionally needs its native C library.")
+    print("  1) Edge TTS — Ryan Neural (online)")
     print("  2) Alan — British English (local Sherpa voice)")
     print("  3) Bryce — American English (local Sherpa voice)")
-    print("  4) Piper — local Piper model")
-    print("  5) Phonon — local Rust TTS, compact q8 model (default voice: Edwin) << DEVELOPER'S PREFERRED. need atleast 500-700mb of RAM, Most Natural!")
-    choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon",
+    print("  4) Piper — local Piper model (requires its native library/assets)")
+    print("  5) Phonon — local Rust TTS (loads a compact q8 model into RAM)")
+    print("  6) Kokoro-82M — local FP16 ONNX, 54 stock voices + JARVIS whisper preset")
+    choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon, 6=Kokoro",
                  default=default_choice).strip().lower()
 
     if choice in ("2", "alan"):
@@ -762,6 +768,11 @@ def step_voice(env):
             warn("Unknown Phonon voice; using Edwin.")
             voice = "edwin"
         env.set("JARVIS_PHONON_VOICE", voice)
+    elif choice in ("6", "kokoro"):
+        env.set("JARVIS_TTS_PROVIDER", "kokoro")
+        env.set("JARVIS_KOKORO_VOICE_MODE", "auto")
+        env.set("JARVIS_KOKORO_NORMAL_VOICE", "am_eric")
+        env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
     else:
         env.set("JARVIS_TTS_PROVIDER", "edge")
     env.save()
@@ -769,6 +780,26 @@ def step_voice(env):
     provider = env.get("JARVIS_TTS_PROVIDER", "edge").strip().lower()
     if provider == "edge":
         ok("Edge TTS selected. JARVIS will use the online Ryan Neural voice.")
+        return
+
+    if provider == "kokoro":
+        model = ROOT / "models" / "kokoro82m" / "kokoro-v1.0.fp16.onnx"
+        voices = ROOT / "models" / "kokoro82m" / "voices-v1.0.bin"
+        if not (model.is_file() and voices.is_file()):
+            warn("Kokoro model assets are missing.")
+            if not yes_no("Download and checksum-verify the Kokoro model and all 54 voices now?", default=True):
+                info("To install later, run: bash scripts/install_kokoro82m_termux.sh")
+                return
+            result = subprocess.run(["bash", str(ROOT / "scripts" / "install_kokoro82m_termux.sh")], cwd=ROOT, check=False)
+            if result.returncode != 0:
+                warn("Kokoro installation failed. Retry: bash scripts/install_kokoro82m_termux.sh")
+                return
+        env.set("JARVIS_KOKORO_VOICE_MODE", "auto")
+        env.set("JARVIS_KOKORO_NORMAL_VOICE", env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric")
+        env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
+        env.save()
+        ok("Kokoro selected. Normal voice is the default; whisper activates only on explicit contextual cues.")
+        info("The model loads when the Kokoro provider starts; setup does not load it into RAM.")
         return
 
     if provider == "phonon":

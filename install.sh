@@ -1,15 +1,13 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# JARVIS installer for Termux.
+# JARVIS all-in-one installer for Termux.
 #
-#   bash install.sh                  core install, then the guided setup
-#   bash install.sh --with-voice     install Needle + Whistle STT and wake-word packages
-#   bash install.sh --with-phonon    build ptts and download the local Phonon model/voices
-#   bash install.sh --skip-osint     skip the OSINT tools
-#   bash install.sh --skip-setup     don't launch `python setup.py` at the end
+#   bash install.sh              install core runtime + speech engines/models + guided setup
+#   bash install.sh --skip-voice skip Sherpa, Kokoro, Needle/Whistle and wake clips
+#   bash install.sh --skip-phonon skip the Phonon Rust runtime/model
+#   bash install.sh --skip-osint skip optional OSINT tools
+#   bash install.sh --skip-setup don't launch the guided setup at the end
 #
-# Safe to re-run: it only installs what is missing and never touches your
-# .env, WhatsApp session, contacts or memory.
-
+# Re-runnable: preserves .env, WhatsApp sessions, contacts, and user data.
 echo "[*] Checking Device Environment..."
 
 # Read the native Android build property
@@ -30,14 +28,16 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-WITH_VOICE=0
-WITH_PHONON=0
+WITH_VOICE=1
+WITH_PHONON=1
 WITH_OSINT=1
 RUN_SETUP=1
 for arg in "$@"; do
     case "$arg" in
         --with-voice) WITH_VOICE=1 ;;
+        --skip-voice) WITH_VOICE=0; WITH_PHONON=0 ;;
         --with-phonon) WITH_PHONON=1 ;;
+        --skip-phonon) WITH_PHONON=0 ;;
         --skip-osint) WITH_OSINT=0 ;;
         --skip-setup) RUN_SETUP=0 ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
@@ -61,11 +61,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make
-
-if [ "$WITH_VOICE" -eq 1 ]; then
-    pkg install -y portaudio
-fi
+pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak-ng python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make cmake portaudio
 
 # ───────────────────────── python packages ─────────────────────────
 info "Installing Python packages..."
@@ -97,7 +93,7 @@ if [ "$WITH_OSINT" -eq 1 ]; then
 fi
 
 if [ "$WITH_VOICE" -eq 1 ]; then
-    pkg install -y espeak \
+    pkg install -y espeak-ng \
         || warn "Could not install eSpeak NG data; local Sherpa TTS may need JARVIS_ESPEAK_DATA configured manually."
     python -m pip install -r requirements-voice.txt \
         || warn "Voice packages failed; wake-word support may be unavailable on this device."
@@ -110,8 +106,7 @@ chmod +x "$ROOT/voice/jarvis_voice/say" 2>/dev/null || true
 chmod +x "$ROOT/setup" 2>/dev/null || true
 info "Preparing repository-local Piper assets..."
 python scripts/prepare_piper_assets.py || warn "Could not migrate existing Piper assets; run python scripts/prepare_piper_assets.py to retry."
-# Sherpa models and Python dependencies are installed only when selected in setup.py voice.
-# This keeps the core install small and avoids downloading unused voice models.
+# All supported local speech engines are provisioned below in this one-pass install.
 ok "Runtime and voice folders ready inside $ROOT."
 
 # ───────────────────────── Phonon TTS (optional, local/offline) ─────────────────────────
@@ -124,7 +119,7 @@ if [ "$WITH_PHONON" -eq 1 ]; then
         ok "Phonon ptts CLI already installed."
     else
         info "Building ptts with Cargo; the first build can take several minutes."
-        cargo install ptts --locked --features cli \
+        CARGO_BUILD_JOBS=1 CARGO_PROFILE_RELEASE_DEBUG=0 cargo install ptts --locked --features cli \
             || warn "Could not build ptts. Retry: cargo install ptts --locked --features cli"
     fi
     python "$ROOT/scripts/prepare_phonon_assets.py" \
@@ -134,7 +129,7 @@ if [ "$WITH_PHONON" -eq 1 ]; then
     if command -v cargo >/dev/null 2>&1 && [ -f "$ROOT/voice/phonon_worker/Cargo.toml" ]; then
         info "Building JARVIS persistent Phonon worker (one-time setup)..."
         CARGO_HTTP_TIMEOUT=180 CARGO_HTTP_LOW_SPEED_LIMIT=1 CARGO_NET_RETRY=3 \
-            cargo build --release --manifest-path "$ROOT/voice/phonon_worker/Cargo.toml" \
+            CARGO_BUILD_JOBS=1 CARGO_PROFILE_RELEASE_DEBUG=0 cargo build --release --manifest-path "$ROOT/voice/phonon_worker/Cargo.toml" \
             && ok "Persistent Phonon worker built; JARVIS can preload it at startup." \
             || warn "Persistent worker build failed; JARVIS will retry during startup and may use the slower CLI fallback."
     fi
@@ -143,6 +138,46 @@ if [ "$WITH_PHONON" -eq 1 ]; then
     else
         warn "Phonon assets may be present, but ptts is not installed yet."
     fi
+fi
+
+# ───────────────────────── complete voice asset installation ─────────────────────────
+if [ "$WITH_VOICE" -eq 1 ]; then
+    info "Installing local speech runtimes (Sherpa-ONNX, soundfile, microphone dependencies)..."
+    python -m pip install "${PIP_FLAGS[@]}" -r requirements-sherpa.txt \
+        || warn "Sherpa Python runtime could not be installed on this Termux/Python build."
+    python -m pip install "${PIP_FLAGS[@]}" -r requirements-voice.txt \
+        || warn "Optional microphone/wake packages failed; text and TTS remain available."
+
+    info "Downloading both local Sherpa voices (Alan + Bryce)..."
+    python scripts/prepare_sherpa_assets.py \
+        || warn "Sherpa voice assets incomplete. Retry: python scripts/prepare_sherpa_assets.py"
+
+    info "Downloading and checksum-verifying Kokoro FP16 + 54 voices..."
+    bash scripts/install_kokoro82m_termux.sh \
+        || warn "Kokoro assets incomplete. Retry: bash scripts/install_kokoro82m_termux.sh"
+
+    info "Installing Needle ARM64 runtime + Whistle speech model..."
+    python -m pip install "${PIP_FLAGS[@]}" --upgrade cactus-needle \
+        || warn "cactus-needle could not be installed."
+    mkdir -p "$ROOT/android-arm64"
+    if command -v needle >/dev/null 2>&1; then
+        needle download android-arm64 --out "$ROOT" \
+            || warn "Needle ARM64 runtime download failed."
+        needle download whistle --out "$ROOT" \
+            || warn "Whistle speech model download failed."
+    else
+        warn "Needle CLI missing; retry after installing cactus-needle: needle download android-arm64 --out \"$ROOT\" && needle download whistle --out \"$ROOT\""
+    fi
+    if [ -f "$ROOT/android-arm64/libneedle.a" ] && command -v clang++ >/dev/null 2>&1; then
+        clang++ -shared -o "$ROOT/libneedle.so" \
+            -Wl,--whole-archive "$ROOT/android-arm64/libneedle.a" \
+            -Wl,--no-whole-archive \
+            || warn "Optional libneedle.so build failed; the executable STT path may still work."
+    fi
+
+    info "Generating the 25 prerecorded wake acknowledgements..."
+    python scripts/generate_wake_responses.py \
+        || warn "Wake acknowledgements were not generated; run python setup.py wake later."
 fi
 
 # ───────────────────────── installed apps index ─────────────────────────
@@ -253,45 +288,6 @@ if [ "$WITH_OSINT" -eq 1 ]; then
     }
     clone_tool sigit  https://github.com/orthodoxenthusiastic/SIGIT.git
     clone_tool x-osint https://github.com/TermuxHackz/X-osint.git
-fi
-
-# ───────────────────────── voice (optional) ─────────────────────────
-if [ "$WITH_VOICE" -eq 1 ]; then
-    info "Setting up local speech recognition (Needle–Whistle)..."
-    # Install Needle and prepare the Android ARM64 runtime directory.
-    python -m pip install --upgrade cactus-needle \
-        || warn "Could not install the Needle downloader; check Python/pip."
-    mkdir -p "$ROOT/android-arm64"
-    if command -v needle >/dev/null 2>&1; then
-        needle download android-arm64 --out "$ROOT" \
-            || warn "Could not download the Android ARM64 Needle runner."
-        needle download whistle --out "$ROOT" \
-            || warn "Could not download Whistle speech weights."
-    else
-        warn "Needle CLI is unavailable. Install cactus-needle, then run: needle download android-arm64 --out \"$ROOT\" && needle download whistle --out \"$ROOT\""
-    fi
-    # Some Needle distributions provide a static library; build its shared
-    # companion when present. The normal executable-based STT path still works
-    # if the optional library is not included in the download.
-    if [ -f "$ROOT/android-arm64/libneedle.a" ]; then
-        if command -v clang++ >/dev/null 2>&1; then
-            if clang++ -shared -o "$ROOT/libneedle.so" \
-                -Wl,--whole-archive "$ROOT/android-arm64/libneedle.a" \
-                -Wl,--no-whole-archive; then
-                ok "Built optional libneedle.so."
-            else
-                warn "Could not build libneedle.so; continuing with the Needle executable."
-            fi
-        else
-            warn "clang++ unavailable; skipping optional libneedle.so build."
-        fi
-    fi
-
-    if [ -x "$ROOT/android-arm64/needle" ] && [ -f "$ROOT/whistle.cact" ]; then
-        ok "Whistle STT ready: android-arm64/needle + whistle.cact."
-    else
-        warn "Whistle files are incomplete. Retry: bash install.sh --with-voice --skip-setup"
-    fi
 fi
 
 # ───────────────────────── report ─────────────────────────

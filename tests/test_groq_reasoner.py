@@ -16,7 +16,7 @@ class FakeResponse:
 
 
 class GroqScreenReasonerTests(unittest.TestCase):
-    @patch.dict(os.environ, {"GROQ_API_KEYS": "key1,key2,key3", "JARVIS_FAST_MODEL": "openai/gpt-oss-20b"}, clear=True)
+    @patch.dict(os.environ, {"GROQ_API_KEYS": "key1,key2,key3", "JARVIS_FAST_MODEL": "openai/gpt-oss-120b"}, clear=True)
     @patch("intelligence.groq_reasoner.requests.post")
     def test_rotates_through_all_keys_until_success(self, post):
         post.side_effect = [
