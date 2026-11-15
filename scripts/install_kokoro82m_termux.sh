@@ -7,76 +7,47 @@ if [ -z "${PREFIX:-}" ] || [ ! -d "$PREFIX" ]; then
 fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODEL_DIR="$ROOT/models/kokoro82m"
-VOICE_DIR="$MODEL_DIR/voices"
-MODEL="$MODEL_DIR/model_q8f16.onnx"
-BASE="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main"
-mkdir -p "$VOICE_DIR"
+MODEL="$MODEL_DIR/kokoro-v1.0.fp16.onnx"
+VOICES="$MODEL_DIR/voices-v1.0.bin"
+BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
+mkdir -p "$MODEL_DIR"
 
-for cmd in curl cargo rustc python; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "Missing required command: $cmd" >&2; exit 1; }
+for cmd in curl python espeak-ng sox; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "Missing $cmd. Install Termux packages with: pkg install python curl espeak-ng sox" >&2
+    exit 1
+  }
 done
+python - <<'PY'
+import numpy, onnxruntime
+print("NumPy:", numpy.__version__)
+print("ONNX Runtime:", onnxruntime.__version__)
+if "CPUExecutionProvider" not in onnxruntime.get_available_providers():
+    raise SystemExit("ONNX Runtime CPUExecutionProvider is unavailable.")
+PY
 
 fetch() {
-  local url="$1" dest="$2" minimum="$3"
-  if [ -s "$dest" ] && [ "$(wc -c < "$dest")" -ge "$minimum" ]; then
-    echo "Present: $(basename "$dest")"
-    return
+  local url="$1" dest="$2" min="$3" sha="$4"
+  if [ -s "$dest" ] && [ "$(wc -c < "$dest")" -ge "$min" ]; then
+    local got
+    got="$(sha256sum "$dest" | awk '{print $1}')"
+    if [ "$got" = "$sha" ]; then
+      echo "Verified existing $(basename "$dest")"
+      return
+    fi
+    echo "Existing $(basename "$dest") has a different checksum; replacing it."
   fi
   rm -f "$dest.part"
-  echo "Downloading $(basename "$dest") ..."
+  echo "Downloading $(basename "$dest") (this is a large model file)..."
   curl --fail --location --retry 3 --retry-delay 2 "$url" -o "$dest.part"
-  [ "$(wc -c < "$dest.part")" -ge "$minimum" ] || { echo "Download too small: $dest" >&2; rm -f "$dest.part"; exit 1; }
+  [ "$(wc -c < "$dest.part")" -ge "$min" ] || { echo "Download too small: $dest" >&2; rm -f "$dest.part"; exit 1; }
+  echo "$sha  $dest.part" | sha256sum -c -
   mv "$dest.part" "$dest"
 }
-
-fetch "$BASE/onnx/model_q8f16.onnx" "$MODEL" 80000000
-
-VOICES=(
-  af_alloy af_aoede af_bella af_heart af_jessica af_kore af_nicole af_nova af_river af_sarah af_sky
-  am_adam am_echo am_eric am_fenrir am_liam am_michael am_onyx am_puck am_santa
-  bf_alice bf_emma bf_isabella bf_lily bm_daniel bm_fable bm_george bm_lewis
-  ef_dora em_alex em_santa ff_siwis
-  hf_alpha hf_beta hm_omega hm_psi
-  if_sara im_nicola
-  jf_alpha jf_gongitsune jf_nezumi jf_tebukuro jm_kumo
-  pf_dora pm_alex pm_santa
-  zf_xiaobei zf_xiaoni zf_xiaoxiao zf_xiaoyi zm_yunjian zm_yunxi zm_yunxia zm_yunyang
-)
-echo "Installing ${#VOICES[@]} Kokoro voices..."
-for voice in "${VOICES[@]}"; do
-  fetch "$BASE/voices/$voice.bin" "$VOICE_DIR/$voice.bin" 500000
-done
-
-python "$ROOT/scripts/build_kokoro_voice_blend.py" --voices "$VOICE_DIR" --base am_onyx --donor af_nicole --weight 0.30 --output jarvis_nicole30
-
-# Reuse Termux's installed ONNX Runtime shared library instead of downloading
-# a second runtime copy during the Rust build.
-ORT_LIB="$(python - <<'PY'
-from pathlib import Path
-try:
-    import onnxruntime
-    root = Path(onnxruntime.__file__).resolve().parent
-    candidates = [root / "capi" / "libonnxruntime.so", root.parent.parent / "lib" / "libonnxruntime.so"]
-    for candidate in candidates:
-        if candidate.is_file():
-            print(candidate)
-            break
-except Exception:
-    pass
-PY
-)"
-if [ -z "$ORT_LIB" ] || [ ! -f "$ORT_LIB" ]; then
-  echo "Could not locate Termux libonnxruntime.so. Install python-onnxruntime first." >&2
-  exit 1
-fi
-export ORT_STRATEGY=system
-export ORT_DYLIB_PATH="$ORT_LIB"
-
-echo "Building persistent Android/Termux Kokoro worker against $ORT_LIB ..."
-cargo build --release --manifest-path "$ROOT/voice/kokoro_worker/Cargo.toml"
+fetch "$BASE/kokoro-v1.0.fp16.onnx" "$MODEL" 150000000 "f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96"
+fetch "$BASE/voices-v1.0.bin" "$VOICES" 25000000 "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
 
 echo
-echo "Kokoro-82M assets and worker installed."
-echo "Model: $MODEL"
-echo "Voices: ${#VOICES[@]} original + jarvis_nicole30 blend"
-echo "Select it with: JARVIS_TTS_PROVIDER=kokoro"
+echo "Kokoro FP16 model and 54-voice archive verified."
+echo "The model loads into RAM only when JARVIS starts with JARVIS_TTS_PROVIDER=kokoro."
+echo "This installation does not modify your current TTS provider."
