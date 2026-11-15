@@ -738,7 +738,7 @@ def step_voice(env):
     else:
         default_choice = "1"
 
-    info("Choose a speech backend. All local voice assets are installed by install.sh; models load only when selected.")
+    info("Choose a speech backend. Sherpa, Kokoro, Needle and Phonon assets are installed by install.sh; models load only when selected. Piper additionally needs its native C library.")
     print("  1) Edge TTS — Ryan Neural (online)")
     print("  2) Alan — British English (local Sherpa voice)")
     print("  3) Bryce — American English (local Sherpa voice)")
