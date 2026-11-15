@@ -10,6 +10,11 @@ _WHISPER_CUES = re.compile(
     r"someone is sleeping|someone's asleep|people are sleeping|in a quiet room)\b",
     re.IGNORECASE,
 )
+_URGENT_CUES = re.compile(
+    r"\\b(?:urgent|emergency|life[- ]threatening|immediate danger|fire alarm|"
+    r"evacuate now|call emergency services|seek immediate help)\\b",
+    re.IGNORECASE,
+)
 _NORMAL_CUES = re.compile(
     r"\b(?:normal voice|regular voice|usual voice|speak normally|talk normally|"
     r"stop whispering|no more whispering|don't whisper|do not whisper)\b",
@@ -17,8 +22,8 @@ _NORMAL_CUES = re.compile(
 )
 
 
-def choose_kokoro_voice(user_prompt: str = "") -> str:
-    """Return one voice ID; auto mode whispers only on clear user-side cues."""
+def choose_kokoro_voice(user_prompt: str = "", response_text: str = "") -> str:
+    """Return one voice ID; urgent output stays clear, otherwise auto-whisper only on clear cues."""
     mode = os.environ.get("JARVIS_KOKORO_VOICE_MODE", "auto").strip().lower()
     normal = os.environ.get("JARVIS_KOKORO_NORMAL_VOICE", "").strip()
     if not normal:
@@ -26,6 +31,8 @@ def choose_kokoro_voice(user_prompt: str = "") -> str:
         normal = legacy if legacy and legacy != "jarvis_whisper" else "am_eric"
     whisper = os.environ.get("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper").strip()
 
+    if _URGENT_CUES.search(str(response_text or "")):
+        return normal
     if mode == "normal":
         return normal
     if mode == "whisper":
