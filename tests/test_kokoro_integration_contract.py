@@ -50,7 +50,10 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
         self.assertIn("zh.ZHG2P(version=None)", worker)
         self.assertIn("ja.JAG2P()", worker)
-        self.assertIn("misaki[", worker)
+        self.assertIn("self._g2p_available", worker)
+        self.assertIn('["espeak-ng", "-q", "--ipa", "-v", lang, phrase]', worker)
+        setup = (ROOT / "setup").read_text(encoding="utf-8")
+        self.assertIn("sys.version_info >= (3, 14)", setup)
 
     def test_client_passes_the_selected_voice_and_both_asset_packs(self):
         client = (ROOT / "voice" / "kokoro_tts.py").read_text(encoding="utf-8")
