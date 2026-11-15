@@ -12,7 +12,7 @@ from agents.groq_keys import get_groq_api_keys
 
 class FastAgent:
 
-    def __init__(self, search_hub=None, deep_search=None):
+    def __init__(self, search_hub=None, deep_search=None, enable_extensions=True):
         # Keep API keys outside source code. Set GROQ_API_KEYS or GROQ_API_KEY.
         self.api_keys = get_groq_api_keys()
         self.current_key_index = 0
@@ -31,13 +31,14 @@ class FastAgent:
         self.whatsapp_send_handler = None
         self._email_manager = None
 
-        # Skills + MCP extension tools (see tools/). MCP servers start in
-        # the background and register their tools when ready.
-        try:
-            jarvis_skills.register()
-            mcp_client.start_all_async()
-        except Exception as exc:
-            print(f"[JARVIS TOOLS] extension load failed: {exc}")
+        # Skills + MCP extension tools (see tools/). Background-only agents
+        # such as the notification summarizer must not start action extensions.
+        if enable_extensions:
+            try:
+                jarvis_skills.register()
+                mcp_client.start_all_async()
+            except Exception as exc:
+                print(f"[JARVIS TOOLS] extension load failed: {exc}")
 
     def _omniroute_request(self, messages, system_prompt=None, max_tokens=512, temperature=0.1, timeout=30):
         """Send complex reasoning requests exclusively through OmniRoute."""
@@ -2687,8 +2688,47 @@ class FastAgent:
             system_prompt=self._jarvis_base_system_prompt(),
             max_tokens=256,
             temperature=0.1,
-            timeout=30,
+            timeout=12,
         )
+
+    @staticmethod
+    def _local_tool_result_fallback(messages):
+        """Return a verified result for supported actions without another model call."""
+        tool_names = {}
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            for call in item.get("tool_calls") or []:
+                function = call.get("function") or {}
+                tool_names[str(call.get("id") or "")] = str(function.get("name") or "")
+
+        for item in reversed(messages):
+            if not isinstance(item, dict) or item.get("role") != "tool":
+                continue
+            call_id = str(item.get("tool_call_id") or "")
+            name = tool_names.get(call_id, str(item.get("name") or ""))
+            try:
+                result = json.loads(str(item.get("content") or ""))
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(result, dict):
+                continue
+            if result.get("ok") is False:
+                error = str(result.get("error") or "The operation failed.")
+                return f"I could not complete the operation. {error[:220]}"
+            if result.get("ok") is not True:
+                continue
+            if name == "email_mark_all_read":
+                try:
+                    count = int(result.get("marked_read"))
+                except (TypeError, ValueError):
+                    continue
+                if count == 0:
+                    return "Your Gmail inbox had no unread messages to mark as read."
+                return f"Done. I marked {count} unread messages in your Gmail inbox as read."
+            if name == "email_send":
+                return "The email tool confirmed that the message was sent successfully."
+        return None
 
     def _omniroute_tool_result_fallback(self, original_prompt, messages):
         """
@@ -2738,7 +2778,7 @@ class FastAgent:
             system_prompt=self._jarvis_system_prompt(),
             max_tokens=256,
             temperature=0.1,
-            timeout=30,
+            timeout=10,
         )
 
     @staticmethod
@@ -2819,8 +2859,8 @@ class FastAgent:
             return None
         return text
 
-    def _answer_simple_direct(self, prompt):
-        """One low-token Groq completion with no skill index or tool schemas."""
+    def _answer_simple_direct(self, prompt, allow_omniroute_fallback=True):
+        """One low-token, text-only Groq completion with no tool schemas."""
         payload = {
             "stream": False,
             "model": self.model,
@@ -2842,6 +2882,8 @@ class FastAgent:
             except (KeyError, IndexError, TypeError, ValueError):
                 return "[ERROR] Groq returned an invalid simple-answer response."
         if response.status_code == 429:
+            if not allow_omniroute_fallback:
+                return ""
             try:
                 print("[JARVIS ROUTER] Groq rate-limited simple answer -> OMNIROUTE", flush=True)
                 return self._omniroute_answer_fallback(prompt)
@@ -3140,9 +3182,16 @@ class FastAgent:
                     final_response = self._groq_post(final_payload, timeout=30)
 
                     if final_response.status_code in (413, 429):
-                        # The action tools have already run. Use OmniRoute only
-                        # to explain their recorded results; never restart the
-                        # action-capable Groq loop.
+                        # The action tools have already run. Prefer a deterministic
+                        # summary for supported results; never repeat the action.
+                        local_reply = self._local_tool_result_fallback(messages)
+                        if local_reply:
+                            print(
+                                "[JARVIS ROUTER] Using verified tool result; "
+                                "the action will not be repeated.",
+                                flush=True,
+                            )
+                            return local_reply
                         try:
                             return self._omniroute_tool_result_fallback(
                                 prompt, messages

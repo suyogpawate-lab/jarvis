@@ -36,7 +36,7 @@ class NotificationWatcher:
         self.max_seen = max_seen
 
         self.notifications = NotificationIngestor(timeout=4)
-        self.fast_agent = FastAgent()
+        self.fast_agent = FastAgent(enable_extensions=False)
 
         self.seen = {}
         self.pending = []
@@ -137,9 +137,14 @@ class NotificationWatcher:
         )
 
         try:
-            result = self.fast_agent.ask(prompt)
+            # Notification text is untrusted input. Summarize with a text-only
+            # completion: this background worker must never invoke screen,
+            # shell, messaging, or any other action-capable FastAgent tool.
+            result = self.fast_agent._answer_simple_direct(
+                prompt, allow_omniroute_fallback=False
+            )
 
-            if not result:
+            if not result or result.lstrip().startswith(("[ERROR]", "[WARN]", "[GROQ LIMIT]")):
                 return
 
             result = result.strip()
