@@ -36,8 +36,10 @@ WITH_OSINT=1
 RUN_SETUP=1
 for arg in "$@"; do
     case "$arg" in
-        --with-voice) WITH_VOICE=1 ;;\n        --skip-voice) WITH_VOICE=0 ;;
-        --with-phonon) WITH_PHONON=1 ;;\n        --skip-phonon) WITH_PHONON=0 ;;
+        --with-voice) WITH_VOICE=1 ;;
+        --skip-voice) WITH_VOICE=0 ;;
+        --with-phonon) WITH_PHONON=1 ;;
+        --skip-phonon) WITH_PHONON=0 ;;
         --skip-osint) WITH_OSINT=0 ;;
         --skip-setup) RUN_SETUP=0 ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
@@ -61,7 +63,7 @@ fi
 # ───────────────────────── system packages ─────────────────────────
 info "Installing system packages..."
 pkg update -y
-pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak-ng python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang clang++ make cmake portaudio
+pkg install -y python git curl jq tmux termux-api nodejs mpv sox espeak-ng python-onnxruntime libjpeg-turbo rust binutils python-numpy libxml2 libxslt clang make cmake portaudio
 
 if [ "$WITH_VOICE" -eq 1 ]; then
     pkg install -y portaudio
@@ -97,7 +99,7 @@ if [ "$WITH_OSINT" -eq 1 ]; then
 fi
 
 if [ "$WITH_VOICE" -eq 1 ]; then
-    pkg install -y espeak \
+    pkg install -y espeak-ng \
         || warn "Could not install eSpeak NG data; local Sherpa TTS may need JARVIS_ESPEAK_DATA configured manually."
     python -m pip install -r requirements-voice.txt \
         || warn "Voice packages failed; wake-word support may be unavailable on this device."
@@ -123,7 +125,7 @@ if [ "$WITH_PHONON" -eq 1 ]; then
         ok "Phonon ptts CLI already installed."
     else
         info "Building ptts with Cargo; the first build can take several minutes."
-        cargo install ptts --locked --features cli \
+        CARGO_BUILD_JOBS=1 CARGO_PROFILE_RELEASE_DEBUG=0 cargo install ptts --locked --features cli \
             || warn "Could not build ptts. Retry: cargo install ptts --locked --features cli"
     fi
     python "$ROOT/scripts/prepare_phonon_assets.py" \
