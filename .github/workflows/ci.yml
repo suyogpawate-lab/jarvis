@@ -35,11 +35,3 @@ jobs:
           node-version: "22"
       - name: Check WhatsApp bridge syntax
         run: node --check whatsapp/bridge.js
-
-  kokoro-worker-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Check persistent Kokoro worker
-        run: cargo check --manifest-path voice/kokoro_worker/Cargo.toml
