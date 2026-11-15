@@ -36,7 +36,7 @@ class NotificationWatcher:
         self.max_seen = max_seen
 
         self.notifications = NotificationIngestor(timeout=4)
-        self.fast_agent = FastAgent()
+        self.fast_agent = FastAgent(enable_extensions=False)
 
         self.seen = {}
         self.pending = []
