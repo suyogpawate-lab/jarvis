@@ -35,6 +35,18 @@ class KokoroVoicePolicyTests(unittest.TestCase):
             self.assertEqual(choose_kokoro_voice("Hello."), "bm_george")
             self.assertEqual(choose_kokoro_voice("Speak softly."), "jarvis_whisper")
 
+    def test_urgent_response_stays_on_normal_voice(self):
+        with patch.dict(os.environ, {"JARVIS_KOKORO_VOICE_MODE": "auto"}, clear=True):
+            self.assertEqual(
+                choose_kokoro_voice("Please whisper.", "URGENT: call emergency services now."),
+                "am_eric",
+            )
+        with patch.dict(os.environ, {"JARVIS_KOKORO_VOICE_MODE": "whisper"}, clear=True):
+            self.assertEqual(
+                choose_kokoro_voice("Please whisper.", "EMERGENCY: evacuate now."),
+                "am_eric",
+            )
+
     def test_legacy_whisper_default_does_not_force_whisper(self):
         with patch.dict(os.environ, {"JARVIS_KOKORO_VOICE": "jarvis_whisper"}, clear=True):
             self.assertEqual(choose_kokoro_voice("Hello."), "am_eric")
