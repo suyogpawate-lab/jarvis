@@ -12,7 +12,7 @@ from agents.groq_keys import get_groq_api_keys
 
 class FastAgent:
 
-    def __init__(self, search_hub=None, deep_search=None):
+    def __init__(self, search_hub=None, deep_search=None, enable_extensions=True):
         # Keep API keys outside source code. Set GROQ_API_KEYS or GROQ_API_KEY.
         self.api_keys = get_groq_api_keys()
         self.current_key_index = 0
@@ -31,13 +31,14 @@ class FastAgent:
         self.whatsapp_send_handler = None
         self._email_manager = None
 
-        # Skills + MCP extension tools (see tools/). MCP servers start in
-        # the background and register their tools when ready.
-        try:
-            jarvis_skills.register()
-            mcp_client.start_all_async()
-        except Exception as exc:
-            print(f"[JARVIS TOOLS] extension load failed: {exc}")
+        # Skills + MCP extension tools (see tools/). Background-only agents
+        # such as the notification summarizer must not start action extensions.
+        if enable_extensions:
+            try:
+                jarvis_skills.register()
+                mcp_client.start_all_async()
+            except Exception as exc:
+                print(f"[JARVIS TOOLS] extension load failed: {exc}")
 
     def _omniroute_request(self, messages, system_prompt=None, max_tokens=512, temperature=0.1, timeout=30):
         """Send complex reasoning requests exclusively through OmniRoute."""
