@@ -70,6 +70,7 @@ def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
         my_generation = _generation
 
     _enter()
+    delegated_cleanup = False
     try:
         with _lock:
             if _generation != my_generation:
@@ -92,6 +93,7 @@ def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
                             _proc = None
                     _exit()
             threading.Thread(target=_reap, daemon=True, name="JarvisRecordedAudio").start()
+            delegated_cleanup = True
             return True
 
         returncode = proc.wait()
@@ -101,7 +103,7 @@ def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
             interrupted = _generation != my_generation
         return interrupted or returncode == 0
     finally:
-        if wait:
+        if not delegated_cleanup:
             _exit()
 
 
