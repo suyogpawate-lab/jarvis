@@ -22,8 +22,7 @@ def _synthesize_local(provider: str, phrase: str, target: Path) -> None:
         warmup()
         generated = synth(phrase)
     elif provider == "piper":
-        from voice.piper_tts import _synthesize_to_wav, warmup
-        warmup()
+        from voice.piper_tts import _synthesize_to_wav
         generated = _synthesize_to_wav(phrase)
     elif provider == "phonon":
         from voice.phonon_tts import synth, warmup
