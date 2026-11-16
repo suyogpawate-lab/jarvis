@@ -822,7 +822,7 @@ def _prepare_wake_responses(env):
     for line in env.lines:
         parsed = parse_env_line(line)
         if parsed:
-            child_env[parsed[0]] = parsed[1]
+            child_env.setdefault(parsed[0], parsed[1])
     info("Pre-generating 10 wake-word greetings with the selected voice. This runs now, never after wake detection.")
     try:
         result = subprocess.run(
