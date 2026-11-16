@@ -277,6 +277,7 @@ class WhistleWakeListener:
         consecutive_speech_frames = 0
         max_consecutive_speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
+        pending_wake = False      # keep the wake session armed through its own greeting
         conversation_timeout = max(
             5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
         )
@@ -334,10 +335,26 @@ class WhistleWakeListener:
                         mute_until = time.time() + 0.8
                         if conversation_until:
                             conversation_until = time.time() + conversation_timeout
+                        # Do not disarm a freshly detected wake word while its
+                        # prerecorded acknowledgement is playing. Re-arm command
+                        # capture after playback and the acoustic tail finish.
                         continue
 
                     if time.time() < mute_until:
                         preroll.clear()
+                        continue
+
+                    if pending_wake:
+                        pending_wake = False
+                        capturing = True
+                        command_frames = []
+                        speech_started = False
+                        silent_frames = 0
+                        speech_frames = 0
+                        consecutive_speech_frames = 0
+                        max_consecutive_speech_frames = 0
+                        preroll.clear()
+                        self._log("[VOICE] Wake acknowledgement finished; listening for your command.", flush=True)
                         continue
 
                     if not capturing:
@@ -402,8 +419,12 @@ class WhistleWakeListener:
                             # opens continuous-conversation mode with no real user request.
                             # Wait through the acknowledgement/echo guard, then capture
                             # only fresh audio spoken after the wake detection.
+                            # Keep the command session armed while the
+                            # acknowledgement plays; _is_speaking() will mute
+                            # its audio, then pending_wake resumes capture.
+                            pending_wake = True
                             mute_until = time.time() + 0.8
-                            capturing = True
+                            capturing = False
                             command_frames = []
                             speech_started = False
                             silent_frames = 0
