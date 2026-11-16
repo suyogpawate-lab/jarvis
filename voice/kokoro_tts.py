@@ -12,10 +12,31 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / "models" / "kokoro82m"
-MODEL_V1 = MODEL_DIR / "kokoro-v1.0.fp16.onnx"
+MODEL_V1_FP16 = MODEL_DIR / "kokoro-v1.0.fp16.onnx"
+MODEL_V11_FP16 = MODEL_DIR / "kokoro-v1.1-zh.fp16.onnx"
 VOICES_V1 = MODEL_DIR / "voices-v1.0.bin"
-MODEL_V11 = MODEL_DIR / "kokoro-v1.1-zh.fp16.onnx"
 VOICES_V11 = MODEL_DIR / "voices-v1.1-zh.bin"
+
+def _model_path(family: str) -> Path:
+    """Prefer explicit model paths, then installed INT8 artifacts, then FP16."""
+    key = "JARVIS_KOKORO_MODEL_V1" if family == "v1.0" else "JARVIS_KOKORO_MODEL_V11"
+    configured = os.environ.get(key, "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(f"{key} points to a missing model: {path}")
+        return path
+    candidates = (
+        (MODEL_DIR / "kokoro-v1.0.int8.onnx", MODEL_DIR / "kokoro-v1.0.INT8.onnx",
+         MODEL_V1_FP16)
+        if family == "v1.0" else
+        (MODEL_DIR / "kokoro-v1.1-zh.int8.onnx", MODEL_DIR / "kokoro-v1.1-zh.INT8.onnx",
+         MODEL_V11_FP16)
+    )
+    return next((path for path in candidates if path.is_file()), candidates[-1])
+
+MODEL_V1 = _model_path("v1.0")
+MODEL_V11 = _model_path("v1.1-zh")
 WORKER = ROOT / "scripts" / "kokoro_worker.py"
 _LOCK = threading.RLock()
 _PROCESS = None
@@ -103,7 +124,8 @@ def warmup() -> bool:
         "[TTS] Kokoro-82M persistent worker ready; "
         f"{ready['voices_loaded']} voices available; selected={ready['selected_voice']}; "
         f"model={ready['model_family']}; normal + matching whisper styles preloaded; "
-        f"model load {ready.get('model_load_seconds')}s; inference warmup complete.",
+        f"model load {ready.get('model_load_seconds')}s; providers={ready.get('providers')}; "
+        "inference warmup complete.",
         flush=True,
     )
     return True
