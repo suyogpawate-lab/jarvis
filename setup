@@ -815,6 +815,30 @@ def _ensure_kokoro_g2p(voice):
             return False
 
 
+def _prepare_wake_responses(env):
+    """Pre-render ten wake acknowledgements with the selected speech backend."""
+    generator = ROOT / "scripts" / "generate_wake_responses.py"
+    child_env = os.environ.copy()
+    for line in env.lines:
+        parsed = parse_env_line(line)
+        if parsed:
+            child_env[parsed[0]] = parsed[1]
+    info("Pre-generating 10 wake-word greetings with the selected voice. This runs now, never after wake detection.")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(generator)],
+            cwd=ROOT, env=child_env, check=False,
+        )
+    except OSError as exc:
+        warn(f"Could not start wake-phrase generation: {exc}")
+        return False
+    if result.returncode == 0:
+        ok("10 wake-word greetings are cached for instant playback.")
+        return True
+    warn(f"Wake-phrase generation failed (exit {result.returncode}). Run: python setup.py wake")
+    return False
+
+
 def step_voice(env):
     heading("Speech output")
     current_provider = (env.get("JARVIS_TTS_PROVIDER", "edge") or "edge").strip().lower()
@@ -872,6 +896,7 @@ def step_voice(env):
     provider = env.get("JARVIS_TTS_PROVIDER", "edge").strip().lower()
     if provider == "edge":
         ok("Edge TTS selected. JARVIS will use the online Ryan Neural voice.")
+        _prepare_wake_responses(env)
         return
 
     if provider == "kokoro":
@@ -929,6 +954,7 @@ def step_voice(env):
             "Only the selected voice's matching ONNX model is loaded into RAM. "
             "The other model and all voice archives remain on disk."
         )
+        _prepare_wake_responses(env)
         return
 
     if provider == "phonon":
@@ -950,6 +976,7 @@ def step_voice(env):
         ) and voice_file.is_file()
         if ready:
             ok(f"Phonon is ready at {model_dir}; synthesis will run locally/offline.")
+            _prepare_wake_responses(env)
             return
         warn("Phonon needs the Rust CLI and local model/voice files before first use.")
         if not yes_no("Install the Phonon CLI and download its model assets now?", default=True):
@@ -981,6 +1008,7 @@ def step_voice(env):
         )
         if result.returncode == 0:
             ok("Phonon CLI and assets are ready.")
+            _prepare_wake_responses(env)
         else:
             warn("Phonon model setup did not finish. Retry: python scripts/prepare_phonon_assets.py")
         return
@@ -991,6 +1019,7 @@ def step_voice(env):
         result = subprocess.run([sys.executable, str(prepare)], cwd=ROOT, check=False)
         if result.returncode == 0:
             ok("Piper assets are ready.")
+            _prepare_wake_responses(env)
         else:
             warn("Piper model preparation did not finish. Retry: python scripts/prepare_piper_assets.py")
         return
@@ -1027,6 +1056,7 @@ def step_voice(env):
         prepare_layout()
         ok(f"ZIP say assets are ready for {env.get('JARVIS_SHERPA_VOICE', 'alan').title()}.")
         info("The persistent server starts when JARVIS launches.")
+        _prepare_wake_responses(env)
     except Exception as exc:
         warn(f"ZIP say layout is not ready yet: {exc}")
         info("Install the models and runtime, then rerun: python setup.py voice")
