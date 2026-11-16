@@ -56,12 +56,21 @@ def available_clips() -> list[Path]:
     return clips
 
 
-def play_random_wake_response() -> bool:
-    """Start a cached clip without blocking the microphone listener."""
-    clips = available_clips()
+def prepare_wake_response_player():
+    """Resolve and validate all ten clips before microphone wake detection starts."""
+    clips = tuple(available_clips())
     if len(clips) != len(PHRASES):
         raise RuntimeError(
             f"Wake acknowledgement cache incomplete for {selected_voice_key()}: "
             f"{len(clips)}/{len(PHRASES)} clips. Run: python setup.py voice"
         )
-    return play_recorded(random.choice(clips), wait=False)
+
+    def play() -> bool:
+        return play_recorded(random.choice(clips), wait=False)
+
+    return play
+
+
+def play_random_wake_response() -> bool:
+    """Compatibility helper; the listener should preload the player at startup."""
+    return prepare_wake_response_player()
