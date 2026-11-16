@@ -288,7 +288,7 @@ JARVIS keeps Edge TTS as the default and supports local Piper, Sherpa (Alan/Bryc
 python setup.py voice
 ```
 
-Choose **Edge** for the network-based en-GB-RyanNeural voice. **Piper** uses the configured local Piper model/runtime. **Alan/Bryce** use the persistent local Sherpa voice server. **Phonon** uses Gradium's compact English Phonon 31m q8 checkpoint through the Rust `ptts` CLI; Edwin is the default JARVIS voice.
+Choose **Edge** for the network-based en-GB-RyanNeural voice. **Piper** uses the configured local Piper model/runtime. **Alan/Bryce** use the persistent local Sherpa voice server. **Phonon** uses Gradium's compact English Phonon 31m q8 checkpoint through the Rust `ptts` CLI; Edwin is the default JARVIS voice. **Kokoro-82M** loads the model pack matching the selected one of 157 stock voices and preloads a matching LPC-whisper style. Normal-size replies are sent as one utterance: one phonemizer pass and one ONNX inference, with a context-limit split only when the 510-token window is exceeded. An optional `kokoro-v1.0.int8.onnx` / `kokoro-v1.1-zh.int8.onnx` placed in `models/kokoro82m/` is preferred over FP16; XNNPACK is attempted for INT8, with CPU fallback. No INT8 model is bundled or fabricated.
 
 Install Phonon explicitly (the model download and Rust compilation are optional and are not forced on core-only installs):
 
