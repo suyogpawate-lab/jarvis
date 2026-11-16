@@ -57,6 +57,7 @@ def is_speaking() -> bool:
     """True while any speech is being synthesized or played."""
     return _active > 0
 
+
 def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
     """Play a prerecorded clip; optionally return as soon as mpv has started."""
     global _proc
@@ -85,13 +86,18 @@ def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
 
         if not wait:
             def _reap():
+                # This assignment target is module state, not a closure local.
+                # Without global, Python raises UnboundLocalError at the check.
+                global _proc
                 try:
                     proc.wait()
                 finally:
                     with _lock:
+                        # Do not let an older reaper clear a newer playback proc.
                         if _proc is proc:
                             _proc = None
                     _exit()
+
             threading.Thread(target=_reap, daemon=True, name="JarvisRecordedAudio").start()
             delegated_cleanup = True
             return True
@@ -187,7 +193,6 @@ def speak(text: str, wait: bool = True) -> bool:
                         "--",
                         str(audio),
                     ],
-                    # mpv must not read the terminal, or it swallows keystrokes.
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -244,6 +249,7 @@ if __name__ == "__main__":
         "Good morning sir, I've completed the system analysis, "
         "all systems are ready."
     )
+
 
 class LocalTTS:
     """Compatibility adapter for the legacy VoiceEngine API."""
