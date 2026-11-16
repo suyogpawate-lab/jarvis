@@ -57,8 +57,8 @@ def is_speaking() -> bool:
     """True while any speech is being synthesized or played."""
     return _active > 0
 
-def play_recorded(audio_path: str | Path) -> bool:
-    """Play a prerecorded MP3 through mpv while marking voice output as active."""
+def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
+    """Play a prerecorded clip; optionally return as soon as mpv has started."""
     global _proc
     audio = Path(audio_path)
     if not audio.is_file():
@@ -82,6 +82,18 @@ def play_recorded(audio_path: str | Path) -> bool:
             )
             _proc = proc
 
+        if not wait:
+            def _reap():
+                try:
+                    proc.wait()
+                finally:
+                    with _lock:
+                        if _proc is proc:
+                            _proc = None
+                    _exit()
+            threading.Thread(target=_reap, daemon=True, name="JarvisRecordedAudio").start()
+            return True
+
         returncode = proc.wait()
         with _lock:
             if _proc is proc:
@@ -89,7 +101,8 @@ def play_recorded(audio_path: str | Path) -> bool:
             interrupted = _generation != my_generation
         return interrupted or returncode == 0
     finally:
-        _exit()
+        if wait:
+            _exit()
 
 
 def strip_markdown(text: str) -> str:
