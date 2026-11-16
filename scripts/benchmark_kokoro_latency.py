@@ -35,9 +35,9 @@ def main() -> int:
 
     started = time.perf_counter()
     engine = PersistentKokoroEngine(
-        MODEL_DIR / "kokoro-v1.0.fp16.onnx",
+        Path(os.environ.get("JARVIS_KOKORO_MODEL_V1", str(MODEL_DIR / "kokoro-v1.0.fp16.onnx"))),
         MODEL_DIR / "voices-v1.0.bin",
-        MODEL_DIR / "kokoro-v1.1-zh.fp16.onnx",
+        Path(os.environ.get("JARVIS_KOKORO_MODEL_V11", str(MODEL_DIR / "kokoro-v1.1-zh.fp16.onnx"))),
         MODEL_DIR / "voices-v1.1-zh.bin",
         VOICE,
     )
