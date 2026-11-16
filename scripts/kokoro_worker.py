@@ -406,6 +406,13 @@ def main() -> int:
                 raise ValueError("Text is empty.")
             output.parent.mkdir(parents=True, exist_ok=True)
             info = engine.synthesize(text, voice, speed, output)
+            print(
+                "[KOKORO] "
+                f"phonemize={info['phonemize_ms']}ms inference={info['inference_ms']}ms "
+                f"write={info['write_ms']}ms calls={info['inference_calls']} "
+                f"tokens={info['token_count']} mode={info['mode']}",
+                file=sys.stderr, flush=True,
+            )
             print(json.dumps({"ok": True, **info}), flush=True)
         except Exception as exc:
             print(json.dumps({"ok": False, "error": str(exc)}), flush=True)
