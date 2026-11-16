@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import wave
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -102,6 +103,8 @@ class PersistentKokoroEngine:
         self._g2p = None
         self._g2p_lang = None
         self._g2p_available = False
+        self._phoneme_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
+        self._phoneme_cache_limit = 128
         self.voice_catalog: dict[str, str] = {}
 
         self._scan_voice_catalog()
@@ -174,14 +177,36 @@ class PersistentKokoroEngine:
         options.intra_op_num_threads = self.threads
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        options.enable_cpu_mem_arena = False
-        options.enable_mem_pattern = False
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        options.enable_cpu_mem_arena = True
+        options.enable_mem_pattern = True
         options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        requested_ep = os.environ.get("JARVIS_KOKORO_EP", "auto").strip().lower()
+        quantized_int8 = any(tag in model_path.name.lower() for tag in ("int8", "q8"))
+        available = ort.get_available_providers()
+        if requested_ep == "auto":
+            requested_ep = "xnnpack" if quantized_int8 else "cpu"
+        if requested_ep == "xnnpack" and "XnnpackExecutionProvider" in available:
+            providers = ["XnnpackExecutionProvider", "CPUExecutionProvider"]
+        elif requested_ep == "nnapi" and "NnapiExecutionProvider" in available:
+            providers = ["NnapiExecutionProvider", "CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
         started = time.monotonic()
-        self.session = ort.InferenceSession(
-            str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
-        )
+        try:
+            self.session = ort.InferenceSession(
+                str(model_path), sess_options=options, providers=providers
+            )
+        except Exception as exc:
+            print(
+                f"[KOKORO] {requested_ep} provider rejected {model_path.name}; "
+                f"falling back to CPU ({type(exc).__name__}).",
+                file=sys.stderr, flush=True,
+            )
+            self.session = ort.InferenceSession(
+                str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
+            )
+        self.active_providers = self.session.get_providers()
         metadata = self.session.get_modelmeta().custom_metadata_map
         config = metadata.get("kokoro_config")
         if not config:
@@ -198,6 +223,14 @@ class PersistentKokoroEngine:
         self.model_load_seconds = time.monotonic() - started
 
     def _phonemize(self, text: str, lang: str) -> list[tuple[str, float]]:
+        """Phonemize a complete utterance in one frontend call and cache the result."""
+        text = " ".join(str(text).replace("--", "—").split())
+        cache_key = (lang, text)
+        cached = self._phoneme_cache.get(cache_key)
+        if cached is not None:
+            self._phoneme_cache.move_to_end(cache_key)
+            return [(cached, 0.0)]
+
         if lang in ("cmn", "ja") and self._g2p_lang != lang:
             self._g2p = None
             self._g2p_available = False
@@ -210,39 +243,31 @@ class PersistentKokoroEngine:
                     self._g2p = ja.JAG2P()
                 self._g2p_available = True
             except (ImportError, OSError):
-                # Misaki currently excludes Python 3.14; keep the voice usable
-                # through the same eSpeak NG path used by the supplied script.
                 self._g2p = None
             self._g2p_lang = lang
 
-        text = text.replace("--", "—")
-        parts = re.split(r"([.,!?;:—。！？；：，、]+)", text)
-        clauses = []
-        for index in range(0, len(parts), 2):
-            phrase = parts[index].strip()
-            if not phrase:
-                continue
-            punct = parts[index + 1].strip() if index + 1 < len(parts) else "."
-            mark = punct[0] if punct else "."
-            mark = {"。": ".", "！": "!", "？": "?", "；": ";", "：": ":", "，": ",", "、": ","}.get(mark, mark)
-            if self._g2p_available and lang in ("cmn", "ja"):
-                phonemes, _ = self._g2p(phrase)
-                ipa = " ".join(str(phonemes).split())
-            else:
-                result = subprocess.run(
-                    ["espeak-ng", "-q", "--ipa", "-v", lang, phrase],
-                    capture_output=True, text=True, timeout=20,
+        if self._g2p_available and lang in ("cmn", "ja"):
+            phonemes, _ = self._g2p(text)
+            ipa = " ".join(str(phonemes).split())
+        else:
+            # One eSpeak process for the whole utterance, not one process per clause.
+            result = subprocess.run(
+                ["espeak-ng", "-q", "--ipa", "-v", lang, text],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode:
+                raise RuntimeError(
+                    f"espeak-ng phonemization failed for language {lang}: {result.stderr.strip()}"
                 )
-                if result.returncode:
-                    raise RuntimeError(
-                        f"espeak-ng phonemization failed for language {lang}: {result.stderr.strip()}"
-                    )
-                ipa = " ".join(result.stdout.strip().split())
-            if ipa:
-                if mark in self.vocab:
-                    ipa += mark
-                clauses.append((ipa, PAUSE_MAP.get(mark, 0.20)))
-        return clauses
+            ipa = " ".join(result.stdout.strip().split())
+
+        if not ipa:
+            raise RuntimeError(f"Phonemizer returned no phonemes for language {lang}.")
+        self._phoneme_cache[cache_key] = ipa
+        self._phoneme_cache.move_to_end(cache_key)
+        if len(self._phoneme_cache) > self._phoneme_cache_limit:
+            self._phoneme_cache.popitem(last=False)
+        return [(ipa, 0.0)]
 
     def _trim(self, audio: np.ndarray, threshold: float = 0.008) -> np.ndarray:
         mask = np.abs(audio) > threshold
@@ -287,30 +312,60 @@ class PersistentKokoroEngine:
             "choose another voice in setup and restart JARVIS."
         )
 
+    def _bounded_token_runs(self, tokens: list[int], limit: int = 510) -> list[list[int]]:
+        """Use one inference for normal replies; split only beyond Kokoro's token window."""
+        if len(tokens) <= limit:
+            return [tokens]
+        punctuation = {self.vocab[ch] for ch in ".!?;:," if ch in self.vocab}
+        runs = []
+        current = []
+        for token in tokens:
+            current.append(token)
+            if len(current) >= limit:
+                boundary = max(
+                    (i + 1 for i, value in enumerate(current) if value in punctuation),
+                    default=len(current),
+                )
+                runs.append(current[:boundary])
+                current = current[boundary:]
+        if current:
+            runs.append(current)
+        return [run for run in runs if run]
+
     def synthesize(self, text: str, voice: str, speed: float, output: Path) -> dict:
         style, lang, mode = self._voice_style(voice)
         speed = max(0.5, min(2.0, float(speed)))
+        started = time.monotonic()
         clauses = self._phonemize(text, lang)
-        segments = []
-        for index, (phonemes, pause) in enumerate(clauses):
-            tokens = [self.vocab[p] for p in phonemes if p in self.vocab][:510]
-            if tokens:
-                segments.append(self._infer(tokens, style, speed))
-                if index < len(clauses) - 1 and pause > 0:
-                    segments.append(np.zeros(int(pause * SAMPLE_RATE), dtype=np.float32))
-        if not segments:
+        phonemized = time.monotonic()
+        ipa = " ".join(phonemes for phonemes, _ in clauses)
+        tokens = [self.vocab[p] for p in ipa if p in self.vocab]
+        if not tokens:
             raise RuntimeError("Kokoro produced no phoneme tokens for this text.")
-        audio = np.concatenate(segments).astype(np.float32)
+
+        token_runs = self._bounded_token_runs(tokens)
+        segments = [self._infer(run, style, speed) for run in token_runs]
+        audio = segments[0] if len(segments) == 1 else np.concatenate(segments)
+        audio = np.asarray(audio, dtype=np.float32)
+        inferred = time.monotonic()
+
         if mode == "whisper":
             breath_mix = float(os.environ.get("JARVIS_KOKORO_BREATH_MIX", "0.82"))
             audio = apply_lpc_whisper(audio, breath_mix)
         write_wav(output, audio)
+        written = time.monotonic()
         return {
             "samples": int(len(audio)),
             "sample_rate": SAMPLE_RATE,
             "mode": mode,
             "voice": self.selected_voice,
             "model_family": self.model_family,
+            "phonemize_ms": round((phonemized - started) * 1000, 1),
+            "inference_ms": round((inferred - phonemized) * 1000, 1),
+            "write_ms": round((written - inferred) * 1000, 1),
+            "inference_calls": len(token_runs),
+            "token_count": len(tokens),
+            "providers": self.active_providers,
         }
 
 
@@ -334,6 +389,7 @@ def main() -> int:
         "normal_style_preloaded": True,
         "whisper_style_preloaded": True,
         "model_load_seconds": round(engine.model_load_seconds, 3),
+        "providers": engine.active_providers,
         "sample_rate": SAMPLE_RATE,
     }), flush=True)
 
