@@ -3,6 +3,10 @@ import os
 import random
 from pathlib import Path
 
+from jarvis_env import load_env
+
+load_env()
+
 from voice.tts import play_recorded
 
 PHRASES = (
