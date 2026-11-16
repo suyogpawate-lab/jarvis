@@ -15,10 +15,12 @@ import statistics
 import tempfile
 import time
 from pathlib import Path
-
-from scripts.kokoro_worker import PersistentKokoroEngine
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.kokoro_worker import PersistentKokoroEngine
 MODEL_DIR = ROOT / "models" / "kokoro82m"
 VOICE = os.environ.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric").strip() or "am_eric"
 TEXT = "Hello. This is a Kokoro latency benchmark. I am measuring phonemization, neural inference, and total audio generation time."
