@@ -215,10 +215,14 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen, voice=None):
-        # Local engines share the same buffered policy: no split up to 50
-        # words, a ~50-word first chunk, then ~15-word chunks. The producer
-        # synthesizes ahead into a two-item queue while mpv plays one stream.
-        sentences = phonon_chunk_text(text)
+        # Kokoro prioritizes time-to-first-audio: keep sentence boundaries where
+        # possible, but cap its first synthesis unit at roughly 12 words. The
+        # generic local-engine policy retains its larger lead chunk.
+        if provider == "kokoro":
+            sentences = chunk_text(text, target_words=12, threshold_words=12)
+        else:
+            sentences = phonon_chunk_text(text)
+
 
         q = queue.Queue(maxsize=2)  # two ready-ahead chunks while one chunk plays
         errors = []
