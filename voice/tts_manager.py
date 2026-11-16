@@ -218,7 +218,11 @@ class TTSManager:
         # Local engines share the same buffered policy: no split up to 50
         # words, a ~50-word first chunk, then ~15-word chunks. The producer
         # synthesizes ahead into a two-item queue while mpv plays one stream.
-        sentences = phonon_chunk_text(text)
+        # Kokoro receives the complete reply in one worker request. Its worker
+        # phonemizes once and uses one model inference for normal-length replies;
+        # it only splits internally if the 510-token model window is exceeded.
+        # Other local engines retain their existing sentence-streaming policy.
+        sentences = [text] if provider == "kokoro" else phonon_chunk_text(text)
 
         q = queue.Queue(maxsize=2)  # two ready-ahead chunks while one chunk plays
         errors = []
