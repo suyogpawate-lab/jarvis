@@ -50,6 +50,12 @@ class WhistleWakeListener:
         self.needle = self.project_root / "android-arm64" / "needle"
         self._wake_model = None
         self.log_path = self.runtime / "listener.log"
+        self._wake_response_player = None
+        try:
+            from voice.wake_responses import prepare_wake_response_player
+            self._wake_response_player = prepare_wake_response_player()
+        except Exception as exc:
+            self._log(f"[VOICE] Wake greeting cache is not ready: {exc}", flush=True)
 
         # Use the provider-neutral manager so Edge and Piper playback are
         # both covered, including speech queued but not yet playing.
@@ -384,13 +390,13 @@ class WhistleWakeListener:
                                 self._wake_model.reset()
                             except Exception:
                                 pass
-                            # Play a short random prerecorded acknowledgement, if prepared.
-                            # Playback is tracked by voice.tts so its audio is never transcribed.
+                            # Clip paths are preloaded before the microphone loop;
+                            # this only starts mpv with an already-rendered audio file.
                             try:
-                                from voice.wake_responses import play_random_wake_response
-                                play_random_wake_response()
+                                if self._wake_response_player is not None:
+                                    self._wake_response_player()
                             except Exception as exc:
-                                self._log(f"[VOICE] Wake acknowledgement unavailable: {exc}", flush=True)
+                                self._log(f"[VOICE] Wake acknowledgement playback failed: {exc}", flush=True)
                             # The preroll contains the wake phrase itself. Never feed it
                             # to command STT, or "Hey Jarvis" becomes a fake command and
                             # opens continuous-conversation mode with no real user request.
