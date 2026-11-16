@@ -30,7 +30,7 @@ def _synthesize_local(provider: str, phrase: str, target: Path) -> None:
         generated = synth(phrase)
     elif provider in ("say", "sherpa"):
         import soundfile as sf
-        from voice.sherpa_tts import _engine, _paths
+        from voice.sherpa_tts import _engine
         voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
         voice = voice if voice in ("alan", "bryce") else "alan"
         engine = _engine(voice)
