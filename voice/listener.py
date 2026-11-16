@@ -59,7 +59,12 @@ class WhistleWakeListener:
             self._tts_manager = _tts_manager
             def _tts_active():
                 status = _tts_manager.status()
-                return bool(status.get("active_playback")) or bool(status.get("queue_pending"))
+                manager_active = bool(status.get("active_playback")) or bool(status.get("queue_pending"))
+                try:
+                    from voice.tts import is_speaking as _recorded_audio_active
+                    return manager_active or _recorded_audio_active()
+                except Exception:
+                    return manager_active
             self._is_speaking = _tts_active
         except Exception:
             try:
