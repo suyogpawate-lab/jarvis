@@ -58,8 +58,10 @@ def is_speaking() -> bool:
     return _active > 0
 
 
-def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
-    """Play a prerecorded clip; optionally return as soon as mpv has started."""
+def play_recorded(
+    audio_path: str | Path, wait: bool = True, volume: int = 100
+) -> bool:
+    """Play a prerecorded clip at a chosen mpv volume (0-100)."""
     global _proc
     audio = Path(audio_path)
     if not audio.is_file():
@@ -77,7 +79,10 @@ def play_recorded(audio_path: str | Path, wait: bool = True) -> bool:
             if _generation != my_generation:
                 return True
             proc = subprocess.Popen(
-                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(audio)],
+                [
+                    "mpv", "--no-video", "--no-terminal", "--really-quiet",
+                    f"--volume={max(0, min(100, int(volume)))}", "--", str(audio),
+                ],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
