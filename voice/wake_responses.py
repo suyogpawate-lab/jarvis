@@ -21,7 +21,7 @@ PHRASES = (
     "Yes? How can I help?",
     "I'm listening. Proceed.",
 )
-FOLLOWUP_PHRASE = "Still there, sir? What would you like me to do next?"
+TIMEOUT_PHRASE = "I'll switch off voice conversation now. Say Hey Jarvis whenever you need me."
 
 BASE_AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
 
@@ -82,17 +82,23 @@ def followup_clip() -> Path | None:
     return None
 
 
-def prepare_followup_response_player():
-    """Preload the single follow-up clip before the microphone loop starts."""
-    clip = followup_clip()
+def prepare_timeout_response_player():
+    """Preload the final quiet timeout clip before the microphone loop starts."""
+    directory = audio_dir()
+    clip = next(
+        (directory / f"timeout{suffix}" for suffix in (".wav", ".mp3")
+         if (directory / f"timeout{suffix}").is_file()
+         and (directory / f"timeout{suffix}").stat().st_size > 1024),
+        None,
+    )
     if clip is None:
         raise RuntimeError(
-            f"Follow-up audio is missing for {selected_voice_key()}. "
-            "Run: python setup.py voice"
+            f"Timeout audio is missing for {selected_voice_key()}. "
+            "Run: python scripts/generate_wake_responses.py"
         )
 
     def play() -> bool:
-        return play_recorded(clip, wait=False)
+        return play_recorded(clip, wait=False, volume=22)
 
     return play
 
