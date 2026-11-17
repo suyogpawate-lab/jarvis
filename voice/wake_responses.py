@@ -21,6 +21,7 @@ PHRASES = (
     "Yes? How can I help?",
     "I'm listening. Proceed.",
 )
+FOLLOWUP_PHRASE = "Still there, sir? What would you like me to do next?"
 
 BASE_AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
 
@@ -67,6 +68,31 @@ def prepare_wake_response_player():
 
     def play() -> bool:
         return play_recorded(random.choice(clips), wait=False)
+
+    return play
+
+
+def followup_clip() -> Path | None:
+    """Return the selected voice's pre-rendered conversation follow-up, if ready."""
+    directory = audio_dir()
+    for suffix in (".wav", ".mp3"):
+        path = directory / f"followup{suffix}"
+        if path.is_file() and path.stat().st_size > 1024:
+            return path
+    return None
+
+
+def prepare_followup_response_player():
+    """Preload the single follow-up clip before the microphone loop starts."""
+    clip = followup_clip()
+    if clip is None:
+        raise RuntimeError(
+            f"Follow-up audio is missing for {selected_voice_key()}. "
+            "Run: python setup.py voice"
+        )
+
+    def play() -> bool:
+        return play_recorded(clip, wait=False)
 
     return play
 
