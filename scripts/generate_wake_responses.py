@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from jarvis_env import load_env
 load_env()
 
-from voice.wake_responses import PHRASES, audio_dir, selected_voice_key
+from voice.wake_responses import FOLLOWUP_PHRASE, PHRASES, audio_dir, selected_voice_key
 
 
 def _synthesize_local(provider: str, phrase: str, target: Path) -> None:
@@ -71,7 +71,19 @@ def main() -> int:
         if not target.is_file() or target.stat().st_size <= 1024:
             raise RuntimeError(f"Failed to create valid wake clip {target.name}")
         print(f"[{index:02d}/10] Generated: {phrase}")
-    print(f"All 10 wake greetings are ready in {directory}")
+    followup_suffix = ".mp3" if provider == "edge" else ".wav"
+    followup_target = directory / f"followup{followup_suffix}"
+    if followup_target.is_file() and followup_target.stat().st_size > 1024:
+        print(f"Follow-up prompt cached: {followup_target.name}")
+    else:
+        if provider == "edge":
+            asyncio.run(_synthesize_edge(FOLLOWUP_PHRASE, followup_target))
+        else:
+            _synthesize_local(provider, FOLLOWUP_PHRASE, followup_target)
+        if not followup_target.is_file() or followup_target.stat().st_size <= 1024:
+            raise RuntimeError(f"Failed to create valid follow-up clip {followup_target.name}")
+        print(f"Generated follow-up prompt: {FOLLOWUP_PHRASE}")
+    print(f"All wake and follow-up audio is ready in {directory}")
     return 0
 
 
