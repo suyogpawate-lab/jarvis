@@ -865,11 +865,15 @@ class WhatsAppAutoReplyWorker:
                 "max_tokens": 600,
                 "reasoning_effort": "low",
                 "stream": False,
-                "response_format": {"type": "json_object"},
             }
             if tools:
+                # Groq rejects JSON response mode when function calling is enabled.
+                # Keep tool calling enabled and enforce the JSON decision schema via
+                # the system prompt; use provider JSON mode only for tool-free calls.
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
+            else:
+                payload["response_format"] = {"type": "json_object"}
 
             response = agent._groq_post(payload, timeout=25)
             if response.status_code != 200:
