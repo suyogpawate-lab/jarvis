@@ -57,12 +57,12 @@ class WhistleWakeListener:
         except Exception as exc:
             self._log(f"[VOICE] Wake greeting cache is not ready: {exc}", flush=True)
 
-        self._followup_response_player = None
+        self._timeout_response_player = None
         try:
-            from voice.wake_responses import prepare_followup_response_player
-            self._followup_response_player = prepare_followup_response_player()
+            from voice.wake_responses import prepare_timeout_response_player
+            self._timeout_response_player = prepare_timeout_response_player()
         except Exception as exc:
-            self._log(f"[VOICE] Conversation follow-up cache is not ready: {exc}", flush=True)
+            self._log(f"[VOICE] Quiet timeout cache is not ready: {exc}", flush=True)
 
         # Use the provider-neutral manager so Edge and Piper playback are
         # both covered, including speech queued but not yet playing.
@@ -289,7 +289,6 @@ class WhistleWakeListener:
             5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
         )
         conversation_until = 0.0
-        followup_prompted = False
         max_frames = int(self.MAX_COMMAND_SECONDS * self.RATE / self.FRAME)
         silence_limit = int(self.SILENCE_SECONDS * self.RATE / self.FRAME)
         # End the voice conversation locally; never forward farewell/stop phrases to the LLM.
@@ -385,41 +384,30 @@ class WhistleWakeListener:
                             continue
                         elif conversation_until:
                             conversation_until = 0.0
-                            if not followup_prompted:
-                                followup_prompted = True
-                                try:
-                                    played = (
-                                        self._followup_response_player is not None
-                                        and self._followup_response_player()
-                                    )
-                                except Exception as exc:
-                                    played = False
-                                    self._log(
-                                        f"[VOICE] Conversation follow-up playback failed: {exc}",
-                                        flush=True,
-                                    )
-                                if played:
-                                    # _is_speaking() refreshes this deadline while the
-                                    # nonblocking clip plays, including its acoustic tail.
-                                    conversation_until = time.time() + conversation_timeout
-                                    self._log(
-                                        "[VOICE] 20-second idle follow-up played; listening for a reply.",
-                                        flush=True,
-                                    )
-                                else:
-                                    self._log(
-                                        "[VOICE] Follow-up clip unavailable; conversation ended. "
-                                        "Run: python setup.py voice",
-                                        flush=True,
-                                    )
-                                    self._log(
-                                        "[VOICE] Conversation timed out; say Hey Jarvis to resume.",
-                                        flush=True,
-                                    )
+                            # One idle window only: play a quiet sign-off, then
+                            # immediately return to wake-word standby.
+                            try:
+                                played = (
+                                    self._timeout_response_player is not None
+                                    and self._timeout_response_player()
+                                )
+                            except Exception as exc:
+                                played = False
+                                self._log(
+                                    f"[VOICE] Quiet timeout playback failed: {exc}",
+                                    flush=True,
+                                )
+                            if played:
+                                self._log(
+                                    "[VOICE] Idle timeout: quiet sign-off played; "
+                                    "conversation mode is off. Say Hey Jarvis to resume.",
+                                    flush=True,
+                                )
                             else:
                                 self._log(
-                                    "[VOICE] Conversation timed out after its one follow-up; "
-                                    "say Hey Jarvis to resume.",
+                                    "[VOICE] Idle timeout: conversation mode is off. "
+                                    "Timeout clip missing; run "
+                                    "python scripts/generate_wake_responses.py",
                                     flush=True,
                                 )
 
@@ -466,8 +454,7 @@ class WhistleWakeListener:
                             # Keep the command session armed while the
                             # acknowledgement plays; _is_speaking() will mute
                             # its audio, then pending_wake resumes capture.
-                            followup_prompted = False
-                            pending_wake = True
+                                                pending_wake = True
                             mute_until = time.time() + 0.8
                             capturing = False
                             command_frames = []
@@ -540,8 +527,7 @@ class WhistleWakeListener:
                         if text:
                             if exit_phrase.fullmatch(text.strip()):
                                 conversation_until = 0.0
-                                followup_prompted = False
-                                self._log("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
+                                                        self._log("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
                             else:
                                 # Keep listening for follow-ups without another wake phrase.
                                 conversation_until = time.time() + conversation_timeout
