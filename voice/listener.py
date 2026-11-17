@@ -454,7 +454,7 @@ class WhistleWakeListener:
                             # Keep the command session armed while the
                             # acknowledgement plays; _is_speaking() will mute
                             # its audio, then pending_wake resumes capture.
-                                                pending_wake = True
+                            pending_wake = True
                             mute_until = time.time() + 0.8
                             capturing = False
                             command_frames = []
@@ -527,7 +527,7 @@ class WhistleWakeListener:
                         if text:
                             if exit_phrase.fullmatch(text.strip()):
                                 conversation_until = 0.0
-                                                        self._log("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
+                                self._log("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
                             else:
                                 # Keep listening for follow-ups without another wake phrase.
                                 conversation_until = time.time() + conversation_timeout
