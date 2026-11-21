@@ -539,7 +539,7 @@ class EmailManager:
             if status != "OK":
                 raise RuntimeError(f"Unable to open mailbox: {mailbox}")
             flag = "+FLAGS" if read else "-FLAGS"
-            status, _ = mail.uid("store", self._uid_bytes(uid), flag, r"(\\Seen)")
+            status, _ = mail.uid("store", self._uid_bytes(uid), flag, r"(\Seen)")
             if status != "OK":
                 raise RuntimeError("Gmail did not confirm the read-status update.")
             return {"status": "OK", "account": account["email"], "mailbox": mailbox,
@@ -602,7 +602,7 @@ class EmailManager:
                 raise RuntimeError(f"Unable to open mailbox: {mailbox}")
             # Gmail's IMAP extension removes only the INBOX label; the message
             # remains in All Mail and can be restored later.
-            status, _ = mail.uid("store", self._uid_bytes(uid), "-X-GM-LABELS", r"(\\Inbox)")
+            status, _ = mail.uid("store", self._uid_bytes(uid), "-X-GM-LABELS", r"(\Inbox)")
             if status != "OK":
                 raise RuntimeError("Gmail did not confirm the archive operation.")
             return {"status": "OK", "account": account["email"], "uid": str(uid), "archived": True}
