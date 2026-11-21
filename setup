@@ -2,10 +2,10 @@
 """
 JARVIS first-run setup.
 
-    python setup.py                 # full guided setup
-    python setup.py gmail           # just one part: keys | gmail | whatsapp | contacts | apps
-    python setup.py wake            # generate/cache prerecorded wake acknowledgements
-    python setup.py --status        # show what is configured (secrets are masked)
+    jarvis-setup                 # full guided setup
+    jarvis-setup gmail           # just one part: keys | gmail | whatsapp | contacts | apps
+    jarvis-setup wake            # generate/cache prerecorded wake acknowledgements
+    jarvis-setup --status        # show what is configured (secrets are masked)
 
 What it configures
     keys      AI provider keys (Groq and OmniRoute; search keys optional)
@@ -571,7 +571,7 @@ def step_whatsapp(env):
 
     if bridge_status() is not None:
         warn("A WhatsApp bridge is already running on port %d." % WA_PORT)
-        warn('Stop it first (pkill -f "node bridge.js") and run `python setup.py whatsapp` again.')
+        warn('Stop it first (pkill -f "node bridge.js") and run `jarvis-setup whatsapp` again.')
         return
 
     if whatsapp_linked():
@@ -612,7 +612,7 @@ def step_whatsapp(env):
         info("Start the bridge any time with:  bash whatsapp_daemon.sh")
         info("Keep it running in the background:  tmux new -d -s wa 'bash whatsapp_daemon.sh'")
     else:
-        fail("Linking did not complete. Re-run:  python setup.py whatsapp")
+        fail("Linking did not complete. Re-run:  jarvis-setup whatsapp")
 
 
 # ───────────────────────────── 4. Contacts ─────────────────────────────
@@ -715,7 +715,7 @@ def step_apps(env):
     ok(f"Saved {result['count']} apps to apps.json in {time.time() - started:.0f}s "
        f"({result['labelled']} with real names).")
     if not result["aapt"]:
-        warn("Names came from package IDs only. Install aapt and rerun: python setup.py apps")
+        warn("Names came from package IDs only. Install aapt and rerun: jarvis-setup apps")
     ensure_gitignored("apps.json")
     info("New apps are picked up automatically the first time you ask for one that is missing.")
 
@@ -1081,7 +1081,7 @@ def step_voice(env):
         info("The persistent server starts when JARVIS launches.")
     except Exception as exc:
         warn(f"ZIP say layout is not ready yet: {exc}")
-        info("Install the models and runtime, then rerun: python setup.py voice")
+        info("Install the models and runtime, then rerun: jarvis-setup voice")
 
 
 # ─────────────────────── wake acknowledgements ───────────────────────
@@ -1110,7 +1110,7 @@ def step_wake(env):
     if result.returncode == 0:
         ok("Wake-word acknowledgements are ready.")
     else:
-        warn(f"Clip generation exited with status {result.returncode}. Run later: python setup.py wake")
+        warn(f"Clip generation exited with status {result.returncode}. Run later: jarvis-setup wake")
 
 
 # ───────────────────────── message style profile ─────────────────────────
@@ -1155,7 +1155,7 @@ def show_status():
         mode = oct(ENV_PATH.stat().st_mode & 0o777)
         (ok if mode == "0o600" else warn)(f".env present (permissions {mode})")
     else:
-        warn(".env not found - run `python setup.py`")
+        warn(".env not found - run `jarvis-setup`")
 
     groq = split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY"))
     (ok if groq else warn)(f"Groq keys: {len(groq)}")
@@ -1194,9 +1194,9 @@ def show_status():
             named = sum(1 for a in apps if a.get("label"))
             ok(f"Apps: {len(apps)} indexed ({named} with real names), scanned {data.get('generated', '?')}")
         except ValueError:
-            warn("apps.json is unreadable - run: python setup.py apps")
+            warn("apps.json is unreadable - run: jarvis-setup apps")
     else:
-        warn("Apps: not scanned - run: python setup.py apps")
+        warn("Apps: not scanned - run: jarvis-setup apps")
 
     style = (env.get("JARVIS_MESSAGE_STYLE", "mirror") or "mirror").strip().lower()
     language = (env.get("JARVIS_MESSAGE_LANGUAGE", "match") or "match").strip()
@@ -1240,7 +1240,7 @@ def main():
         return 0
 
     if not sys.stdin.isatty():
-        fail("Setup is interactive. Run it from a terminal:  python setup.py")
+        fail("Setup is interactive. Run it from a terminal:  jarvis-setup")
         return 2
 
     chosen = list(STEPS) if "all" in args.sections else args.sections
@@ -1264,7 +1264,7 @@ def main():
     show_status()
     print()
     info("Start JARVIS:   python jarvis_ui.py")
-    info("Change anything later with:   python setup.py <keys|gmail|whatsapp|contacts|apps|voice|wake|message_style>")
+    info("Change anything later with:   jarvis-setup <keys|gmail|whatsapp|contacts|apps|voice|wake|message_style>")
     return 0
 
 

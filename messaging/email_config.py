@@ -6,7 +6,7 @@ import os
 
 from jarvis_env import load_env
 
-# Credentials live in <project root>/.env (written by `python setup.py`).
+# Credentials live in <project root>/.env (written by `jarvis-setup`).
 load_env()
 
 
@@ -77,7 +77,7 @@ def resolve_account(requested=None):
         return {
             "error": (
                 "No email account is configured. "
-                "Run `python setup.py` to add a Gmail account."
+                "Run `jarvis-setup` to add a Gmail account."
             )
         }
 

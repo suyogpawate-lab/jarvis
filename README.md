@@ -31,20 +31,22 @@ The optional voice setup downloads the Android ARM64 Needle runner and Whistle s
 
 ## First-time setup and configuration
 
+The installer places `jarvis-setup` in Termux's command path, so it works from any directory. Run the guided setup with:
+
 Run the guided setup from the project directory:
 
 ```bash
-python setup.py
+jarvis-setup
 ```
 
 You can also configure one part at a time or inspect configuration status:
 
 ```bash
-python setup.py keys
-python setup.py gmail
-python setup.py whatsapp
-python setup.py contacts
-python setup.py --status
+jarvis-setup keys
+jarvis-setup gmail
+jarvis-setup whatsapp
+jarvis-setup contacts
+jarvis-setup --status
 ```
 
 | Setup section | What to configure |
@@ -53,7 +55,7 @@ python setup.py --status
 | `gmail` | Gmail account(s) and a Google [App Password](https://myaccount.google.com/apppasswords), not your normal account password. Enable 2-Step Verification and ensure IMAP access is available. |
 | `whatsapp` | Link WhatsApp with a pairing code or QR code. Pairing code is convenient when WhatsApp is on the same phone. |
 | `contacts` | Optionally sync Android contacts and maintain a priority-people list. Android may ask for permission. |
-| `voice` | Select Edge TTS, local Sherpa (Alan/Bryce), Piper, Phonon, Kokoro, or KittenTTS Pico (30 voices across 8 languages). You can change this later with `python setup.py voice` or `./voice-config`. |
+| `voice` | Select Edge TTS, local Sherpa (Alan/Bryce), Piper, Phonon, Kokoro, or KittenTTS Pico (30 voices across 8 languages). You can change this later with `jarvis-setup voice` or `./voice-config`. |
 
 Press Enter to keep existing values or skip optional questions. Completed sections are saved as you go.
 
@@ -138,7 +140,7 @@ wa-reply <review-id> skip
 
 Review the draft before approving it. `skip` sends nothing. Messages that need no response are silently skipped. Auto-replies are direct-message only; group messages are not auto-replied to. Replies that require Knowledge Hub attachments are restricted to phone numbers listed in `JARVIS_WA_FILE_CONTACTS` (comma-separated numbers including country code) so private files are not sent to arbitrary contacts. Set `JARVIS_WA_AUTOREPLY=0` to disable the worker.
 
-To link or relink WhatsApp, use `python setup.py whatsapp`. Start the bridge separately if it is not already running:
+To link or relink WhatsApp, use `jarvis-setup whatsapp`. Start the bridge separately if it is not already running:
 
 ```bash
 wa
@@ -150,7 +152,7 @@ The main JARVIS runtime also attempts to start the bridge when needed. Do not ru
 
 ### Gmail
 
-After configuring Gmail with `python setup.py gmail`, ask JARVIS in natural language to search or summarize recent email, find messages, or send an email. Gmail uses IMAP/SMTP and a Google App Password. If several accounts are configured, setup can select a default account. Email access will not work until valid credentials and network connectivity are available.
+After configuring Gmail with `jarvis-setup gmail`, ask JARVIS in natural language to search or summarize recent email, find messages, or send an email. Gmail uses IMAP/SMTP and a Google App Password. If several accounts are configured, setup can select a default account. Email access will not work until valid credentials and network connectivity are available.
 
 ### Memory and multi-agent discussion
 
@@ -285,7 +287,7 @@ JARVIS keeps Edge TTS as the default and supports local Piper, Sherpa (Alan/Bryc
 
 ```bash
 ./voice-config
-python setup.py voice
+jarvis-setup voice
 ```
 
 Choose **Edge** for the network-based en-GB-RyanNeural voice. **Piper** uses the configured local Piper model/runtime. **Alan/Bryce** use the persistent local Sherpa voice server. **Phonon** uses Gradium's compact English Phonon 31m q8 checkpoint through the Rust `ptts` CLI; Edwin is the default JARVIS voice. **Kokoro-82M** loads the model pack matching the selected one of 157 stock voices and preloads a matching LPC-whisper style. Normal-size replies are sent as one utterance: one phonemizer pass and one ONNX inference, with a context-limit split only when the 510-token window is exceeded. An optional `kokoro-v1.0.int8.onnx` / `kokoro-v1.1-zh.int8.onnx` placed in `models/kokoro82m/` is preferred over FP16; XNNPACK is attempted for INT8, with CPU fallback. No INT8 model is bundled or fabricated. Voice setup pre-renders ten wake-word greetings plus a final idle-timeout sign-off with the selected speech provider and voice. After 20 seconds of inactivity, JARVIS plays the sign-off once at 22% playback volume and immediately exits continuous-conversation mode; there is no second listening window. The quiet playback mode works with every selected TTS provider while retaining its voice. It is a low-volume whisper-style effect, not a separately trained breathy-whisper model.
@@ -294,7 +296,7 @@ Install Phonon explicitly (the model download and Rust compilation are optional 
 
 ```bash
 bash install.sh --with-phonon
-python setup.py voice
+jarvis-setup voice
 ```
 
 The installer builds `ptts` with Cargo and downloads the checkpoint files to `~/phonon-model` by default: `config.json`, `tokenizer.json`, `model.q8.gguf`, the original `default-voice.safetensors`, and the supported voice embeddings under `voices/`. It preserves the model's original default-voice file and selects Edwin explicitly. The English q8 weights are about 64.5 MB; Rust compilation needs additional temporary storage and can take several minutes. After the first download, Phonon synthesis works offline. To use another model directory, set `JARVIS_PHONON_DIR`; select the voice with `JARVIS_PHONON_VOICE` (Edwin, Toby, Aldric, Trevor, Hugh, Spencer, Bramwell, or `default`). Optional CPU tuning is available with `JARVIS_PHONON_THREADS`.
@@ -410,7 +412,7 @@ The repository is organized as a Python application with optional Android/Termux
 | `tools/` | Tool registry with argument-contract validation, skill loading, progress reporting, and MCP client integration. |
 | `skills/` | Bundled operational and interface-design skill instructions. |
 | `scripts/` | Voice test, app-inventory capture, and publishing checks. |
-| `install.sh`, `setup.py`, `jarvis_env.py` | Termux installation, guided configuration, and environment loading. |
+| `install.sh`, `setup`, `jarvis_env.py` | Termux installation, guided configuration, and environment loading. |
 | `requirements*.txt`, `packages/` | Core and optional Python dependency lists plus Node package metadata. |
 
 ### Request and service flow
@@ -427,7 +429,7 @@ The repository is organized as a Python application with optional Android/Termux
 - **Voice:** `requirements-voice.txt` lists optional wake-word/audio packages. The installer’s `--with-voice` option downloads the Needle ARM64 runner and Whistle model. Python audio dependencies can be platform-sensitive on Android; voice is not required for typed interaction.
 - **OSINT:** `requirements-osint.txt` contains additional optional packages for selected OSINT integrations; some adapters may have their own external tool/runtime requirements.
 - **WhatsApp:** `whatsapp/package.json` and its lockfile define the Node.js Baileys bridge dependencies.
-- **Configuration:** `.env.example` documents provider and integration variables. Use `python setup.py` for guided setup; the real `.env`, account credentials, contact lists, authentication sessions, and runtime databases must remain local.
+- **Configuration:** `.env.example` documents provider and integration variables. Use `jarvis-setup` for guided setup; the real `.env`, account credentials, contact lists, authentication sessions, and runtime databases must remain local.
 
 ### Review and verification scope
 
@@ -450,14 +452,14 @@ These checks are local-only: they do not call Groq, OmniRoute, or other provider
 Check the current configuration and required tools:
 
 ```bash
-python setup.py --status
+jarvis-setup --status
 ```
 
 Useful checks:
 
-- **Missing API keys:** run `python setup.py keys`.
-- **Gmail login fails:** use a Google App Password, confirm 2-Step Verification and IMAP access, and rerun `python setup.py gmail`.
-- **WhatsApp is offline:** check `http://127.0.0.1:23841/status`, then run `python setup.py whatsapp` if linking is needed. Inspect `data/whatsapp_bridge.log` if present.
+- **Missing API keys:** run `jarvis-setup keys`.
+- **Gmail login fails:** use a Google App Password, confirm 2-Step Verification and IMAP access, and rerun `jarvis-setup gmail`.
+- **WhatsApp is offline:** check `http://127.0.0.1:23841/status`, then run `jarvis-setup whatsapp` if linking is needed. Inspect `data/whatsapp_bridge.log` if present.
 - **OmniRoute is offline:** run `omni` and inspect `~/jarvis/omniroute.log`.
 - **A port is not responding:** confirm the service is running and listening on the documented port.
 - **Termux API actions fail:** install the Termux:API Android app and Termux package, grant the requested Android permissions, and test the relevant `termux-*` command directly.
@@ -508,7 +510,7 @@ Saving a skill requires a completed task. Running one creates a fresh task and u
 Configure the wording JARVIS uses for WhatsApp drafts and automatic replies:
 
 ```bash
-python setup.py message_style
+jarvis-setup message_style
 ```
 
 Choose **mirror**, **casual**, **Gen Z**, **friendly**, or **formal**; set a preferred language such as English or Hinglish; and optionally give examples of your normal phrasing (for example, `damnnn, gng`). These preferences are stored in the local `.env` file. The style is a default, not a blind rule: when you explicitly request professional wording or the context calls for a teacher/employer/official message, serious matter, apology, or formal request, JARVIS switches to respectful formal language. It should not force slang into every message. The same policy is used by outbound WhatsApp drafting and the direct-message auto-reply worker.

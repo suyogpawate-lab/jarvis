@@ -5,7 +5,7 @@ Reads <project root>/.env and puts its KEY=VALUE pairs into os.environ.
 Variables that are already set in the real environment always win, so
 `export GROQ_API_KEYS=...` in your shell still overrides the file.
 
-`python setup.py` writes this file for you.
+`jarvis-setup` writes this file for you.
 """
 
 import os

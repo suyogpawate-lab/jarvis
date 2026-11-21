@@ -117,7 +117,7 @@ function storeIncomingMessage(message, { historical = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// First-time linking. `python setup.py` sets JARVIS_WHATSAPP_PAIR_NUMBER so the
+// First-time linking. `python setup` sets JARVIS_WHATSAPP_PAIR_NUMBER so the
 // account can be linked with an 8-character code (works on a single phone,
 // where you cannot scan your own screen). Without it a QR code is printed.
 // ---------------------------------------------------------------------------

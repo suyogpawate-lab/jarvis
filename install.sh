@@ -104,6 +104,10 @@ mkdir -p data logs voice/models lib/piper models/piper voice/data cache/piper ca
 chmod +x "$ROOT/voice-config" 2>/dev/null || true
 chmod +x "$ROOT/voice/jarvis_voice/say" 2>/dev/null || true
 chmod +x "$ROOT/setup" 2>/dev/null || true
+SETUP_BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+mkdir -p "$SETUP_BIN_DIR"
+ln -sfn "$ROOT/setup" "$SETUP_BIN_DIR/jarvis-setup"
+ok "Installed global setup command: jarvis-setup"
 info "Preparing repository-local Piper assets..."
 python scripts/prepare_piper_assets.py || warn "Could not migrate existing Piper assets; run python scripts/prepare_piper_assets.py to retry."
 # All supported local speech engines are provisioned below in this one-pass install.
@@ -134,7 +138,7 @@ if [ "$WITH_PHONON" -eq 1 ]; then
             || warn "Persistent worker build failed; JARVIS will retry during startup and may use the slower CLI fallback."
     fi
     if command -v ptts >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/ptts" ]; then
-        ok "Phonon CLI installed. Select it with: python setup.py voice"
+        ok "Phonon CLI installed. Select it with: jarvis-setup voice"
     else
         warn "Phonon assets may be present, but ptts is not installed yet."
     fi
@@ -177,7 +181,7 @@ if [ "$WITH_VOICE" -eq 1 ]; then
 
     info "Generating the 25 prerecorded wake acknowledgements..."
     python scripts/generate_wake_responses.py \
-        || warn "Wake acknowledgements were not generated; run python setup.py wake later."
+        || warn "Wake acknowledgements were not generated; run jarvis-setup wake later."
 fi
 
 # ───────────────────────── installed apps index ─────────────────────────
@@ -302,9 +306,9 @@ warn "For notifications, contacts and battery info install the 'Termux:API' app 
 # ───────────────────────── guided setup ─────────────────────────
 if [ "$RUN_SETUP" -eq 1 ] && [ -t 0 ]; then
     info "Starting guided setup (API keys, Gmail, WhatsApp, contacts, speech output)..."
-    python setup.py
+    jarvis-setup
 else
-    info "Install finished. Run the guided setup with:  python setup.py"
+    info "Install finished. Run the guided setup with:  jarvis-setup"
 fi
 
 echo

@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Inventory of installed apps (package, label, common names). Built by
-# `python setup.py apps` and refreshed automatically when an app is missing.
+# `jarvis-setup apps` and refreshed automatically when an app is missing.
 APPS_JSON = Path(jarvis_env.__file__).resolve().parent / "apps.json"
 
 

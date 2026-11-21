@@ -28,7 +28,7 @@ archives remain on local storage.
 Run the guided setup:
 
 \`\`\`bash
-python setup.py
+jarvis-setup
 \`\`\`
 
 Choose option 6 (Kokoro). Setup reads the installed voice archives and prints
