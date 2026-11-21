@@ -60,7 +60,7 @@ def _load():
     cfg = _settings()
     for key in ("library", "model", "config"):
         if not cfg[key].is_file():
-            raise RuntimeError(f"Piper {key} file not found: {cfg[key]}. Run python setup.py voice.")
+            raise RuntimeError(f"Piper {key} file not found: {cfg[key]}. Run jarvis-setup voice.")
     if not cfg["espeak"].is_dir() or not any(cfg["espeak"].iterdir()):
         raise RuntimeError(f"eSpeak NG data directory missing or empty: {cfg['espeak']}. Install/copy eSpeak NG data first.")
     try:
