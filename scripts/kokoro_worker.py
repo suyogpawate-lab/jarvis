@@ -170,18 +170,45 @@ class PersistentKokoroEngine:
     def _init_session(self, model_path: Path) -> None:
         if not model_path.is_file():
             raise FileNotFoundError(f"Kokoro model is missing: {model_path}")
+        requested_ep = os.environ.get("JARVIS_KOKORO_EP", "cpu").strip().lower()
+        ep_threads = max(1, min(4, int(os.environ.get("JARVIS_KOKORO_EP_THREADS", str(self.threads)))))
+        available = set(ort.get_available_providers())
         options = ort.SessionOptions()
         options.intra_op_num_threads = self.threads
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        options.enable_cpu_mem_arena = False
-        options.enable_mem_pattern = False
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        options.enable_cpu_mem_arena = True
+        options.enable_mem_pattern = True
         options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+
+        if requested_ep == "cpu":
+            providers = ["CPUExecutionProvider"]
+        elif requested_ep == "xnnpack":
+            ep = "XnnpackExecutionProvider"
+            if ep not in available:
+                raise RuntimeError(f"Requested Kokoro XNNPACK EP is unavailable; installed: {sorted(available)}")
+            # XNNPACK owns its own thread pool; avoid competing ORT intra-op workers.
+            options.intra_op_num_threads = 1
+            providers = [(ep, {"intra_op_num_threads": str(ep_threads)}), "CPUExecutionProvider"]
+        elif requested_ep == "nnapi":
+            ep = "NnapiExecutionProvider"
+            if ep not in available:
+                raise RuntimeError(f"Requested Kokoro NNAPI EP is unavailable; installed: {sorted(available)}")
+            # Android API 29 supports FP16 relaxation and disabling NNAPI's slow CPU reference fallback.
+            providers = [
+                (ep, {"use_fp16": "1", "cpu_disabled": "1"}),
+                "CPUExecutionProvider",
+            ]
+        else:
+            raise ValueError("JARVIS_KOKORO_EP must be cpu, xnnpack, or nnapi")
+
         started = time.monotonic()
         self.session = ort.InferenceSession(
-            str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
+            str(model_path), sess_options=options, providers=providers
         )
+        self.execution_providers = self.session.get_providers()
+        self.requested_execution_provider = requested_ep
         metadata = self.session.get_modelmeta().custom_metadata_map
         config = metadata.get("kokoro_config")
         if not config:
@@ -334,6 +361,8 @@ def main() -> int:
         "normal_style_preloaded": True,
         "whisper_style_preloaded": True,
         "model_load_seconds": round(engine.model_load_seconds, 3),
+        "requested_execution_provider": engine.requested_execution_provider,
+        "execution_providers": engine.execution_providers,
         "sample_rate": SAMPLE_RATE,
     }), flush=True)
 
