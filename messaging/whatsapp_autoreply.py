@@ -1134,36 +1134,7 @@ class WhatsAppAutoReplyWorker:
             flush=True,
         )
 
-        # Greetings are deterministic and do not need a 120B inference call.
-        # This also avoids spending Groq TPM on the most common one-word DMs.
-        greeting_key = re.sub(r"[.!?,\s]+", " ", incoming.lower()).strip()
-        greeting_replies = {
-            "hi": "Hi!",
-            "hello": "Hello!",
-            "hey": "Hey!",
-            "hiya": "Hey!",
-            "heyy": "Hey!",
-            "good morning": "Good morning!",
-            "good afternoon": "Good afternoon!",
-            "good evening": "Good evening!",
-        }
-        if greeting_key in greeting_replies:
-            reply = greeting_replies[greeting_key]
-            try:
-                self.whatsapp.send(chat_jid, reply)
-                self._remember(chat_jid, "outgoing", "JARVIS", reply)
-                self._sent_times.setdefault(chat_jid, []).append(time.time())
-                print(f"[WHATSAPP AUTO] Sent simple greeting: {reply}", flush=True)
-                self._failures.pop(ids[0], None)
-                for message_id in ids:
-                    self._retry_after_by_message.pop(message_id, None)
-                self._finish(ids)
-                return True
-            except Exception as exc:
-                print(f"[WHATSAPP AUTO ERROR] Greeting send failed: {exc}", flush=True)
-                # Continue through the ordinary failure handler below.
-                self._last_groq_retry_at = 0.0
-
+        # Every eligible incoming message, including greetings, is evaluated by Groq.
         # A previous 429 schedules a retry without consuming a failure attempt.
         retry_deadline = max(
             (self._retry_after_by_message.get(message_id, 0.0) for message_id in ids),
