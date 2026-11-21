@@ -57,8 +57,11 @@ def is_speaking() -> bool:
     """True while any speech is being synthesized or played."""
     return _active > 0
 
-def play_recorded(audio_path: str | Path) -> bool:
-    """Play a prerecorded MP3 through mpv while marking voice output as active."""
+
+def play_recorded(
+    audio_path: str | Path, wait: bool = True, volume: int = 100
+) -> bool:
+    """Play a prerecorded clip at a chosen mpv volume (0-100)."""
     global _proc
     audio = Path(audio_path)
     if not audio.is_file():
@@ -70,17 +73,39 @@ def play_recorded(audio_path: str | Path) -> bool:
         my_generation = _generation
 
     _enter()
+    delegated_cleanup = False
     try:
         with _lock:
             if _generation != my_generation:
                 return True
             proc = subprocess.Popen(
-                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--", str(audio)],
+                [
+                    "mpv", "--no-video", "--no-terminal", "--really-quiet",
+                    f"--volume={max(0, min(100, int(volume)))}", "--", str(audio),
+                ],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             _proc = proc
+
+        if not wait:
+            def _reap():
+                # This assignment target is module state, not a closure local.
+                # Without global, Python raises UnboundLocalError at the check.
+                global _proc
+                try:
+                    proc.wait()
+                finally:
+                    with _lock:
+                        # Do not let an older reaper clear a newer playback proc.
+                        if _proc is proc:
+                            _proc = None
+                    _exit()
+
+            threading.Thread(target=_reap, daemon=True, name="JarvisRecordedAudio").start()
+            delegated_cleanup = True
+            return True
 
         returncode = proc.wait()
         with _lock:
@@ -89,7 +114,8 @@ def play_recorded(audio_path: str | Path) -> bool:
             interrupted = _generation != my_generation
         return interrupted or returncode == 0
     finally:
-        _exit()
+        if not delegated_cleanup:
+            _exit()
 
 
 def strip_markdown(text: str) -> str:
@@ -172,7 +198,6 @@ def speak(text: str, wait: bool = True) -> bool:
                         "--",
                         str(audio),
                     ],
-                    # mpv must not read the terminal, or it swallows keystrokes.
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -229,6 +254,7 @@ if __name__ == "__main__":
         "Good morning sir, I've completed the system analysis, "
         "all systems are ready."
     )
+
 
 class LocalTTS:
     """Compatibility adapter for the legacy VoiceEngine API."""

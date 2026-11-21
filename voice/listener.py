@@ -50,6 +50,19 @@ class WhistleWakeListener:
         self.needle = self.project_root / "android-arm64" / "needle"
         self._wake_model = None
         self.log_path = self.runtime / "listener.log"
+        self._wake_response_player = None
+        try:
+            from voice.wake_responses import prepare_wake_response_player
+            self._wake_response_player = prepare_wake_response_player()
+        except Exception as exc:
+            self._log(f"[VOICE] Wake greeting cache is not ready: {exc}", flush=True)
+
+        self._timeout_response_player = None
+        try:
+            from voice.wake_responses import prepare_timeout_response_player
+            self._timeout_response_player = prepare_timeout_response_player()
+        except Exception as exc:
+            self._log(f"[VOICE] Quiet timeout cache is not ready: {exc}", flush=True)
 
         # Use the provider-neutral manager so Edge and Piper playback are
         # both covered, including speech queued but not yet playing.
@@ -59,7 +72,12 @@ class WhistleWakeListener:
             self._tts_manager = _tts_manager
             def _tts_active():
                 status = _tts_manager.status()
-                return bool(status.get("active_playback")) or bool(status.get("queue_pending"))
+                manager_active = bool(status.get("active_playback")) or bool(status.get("queue_pending"))
+                try:
+                    from voice.tts import is_speaking as _recorded_audio_active
+                    return manager_active or _recorded_audio_active()
+                except Exception:
+                    return manager_active
             self._is_speaking = _tts_active
         except Exception:
             try:
@@ -266,6 +284,7 @@ class WhistleWakeListener:
         consecutive_speech_frames = 0
         max_consecutive_speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
+        pending_wake = False      # keep the wake session armed through its own greeting
         conversation_timeout = max(
             5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
         )
@@ -323,10 +342,26 @@ class WhistleWakeListener:
                         mute_until = time.time() + 0.8
                         if conversation_until:
                             conversation_until = time.time() + conversation_timeout
+                        # Do not disarm a freshly detected wake word while its
+                        # prerecorded acknowledgement is playing. Re-arm command
+                        # capture after playback and the acoustic tail finish.
                         continue
 
                     if time.time() < mute_until:
                         preroll.clear()
+                        continue
+
+                    if pending_wake:
+                        pending_wake = False
+                        capturing = True
+                        command_frames = []
+                        speech_started = False
+                        silent_frames = 0
+                        speech_frames = 0
+                        consecutive_speech_frames = 0
+                        max_consecutive_speech_frames = 0
+                        preroll.clear()
+                        self._log("[VOICE] Wake acknowledgement finished; listening for your command.", flush=True)
                         continue
 
                     if not capturing:
@@ -349,7 +384,32 @@ class WhistleWakeListener:
                             continue
                         elif conversation_until:
                             conversation_until = 0.0
-                            self._log("[VOICE] Conversation timed out; say Hey Jarvis to resume.", flush=True)
+                            # One idle window only: play a quiet sign-off, then
+                            # immediately return to wake-word standby.
+                            try:
+                                played = (
+                                    self._timeout_response_player is not None
+                                    and self._timeout_response_player()
+                                )
+                            except Exception as exc:
+                                played = False
+                                self._log(
+                                    f"[VOICE] Quiet timeout playback failed: {exc}",
+                                    flush=True,
+                                )
+                            if played:
+                                self._log(
+                                    "[VOICE] Idle timeout: quiet sign-off played; "
+                                    "conversation mode is off. Say Hey Jarvis to resume.",
+                                    flush=True,
+                                )
+                            else:
+                                self._log(
+                                    "[VOICE] Idle timeout: conversation mode is off. "
+                                    "Timeout clip missing; run "
+                                    "python scripts/generate_wake_responses.py",
+                                    flush=True,
+                                )
 
                         try:
                             # OpenWakeWord requires 16 kHz mono signed int16 PCM.
@@ -379,20 +439,24 @@ class WhistleWakeListener:
                                 self._wake_model.reset()
                             except Exception:
                                 pass
-                            # Play a short random prerecorded acknowledgement, if prepared.
-                            # Playback is tracked by voice.tts so its audio is never transcribed.
+                            # Clip paths are preloaded before the microphone loop;
+                            # this only starts mpv with an already-rendered audio file.
                             try:
-                                from voice.wake_responses import play_random_wake_response
-                                play_random_wake_response()
+                                if self._wake_response_player is not None:
+                                    self._wake_response_player()
                             except Exception as exc:
-                                self._log(f"[VOICE] Wake acknowledgement unavailable: {exc}", flush=True)
+                                self._log(f"[VOICE] Wake acknowledgement playback failed: {exc}", flush=True)
                             # The preroll contains the wake phrase itself. Never feed it
                             # to command STT, or "Hey Jarvis" becomes a fake command and
                             # opens continuous-conversation mode with no real user request.
                             # Wait through the acknowledgement/echo guard, then capture
                             # only fresh audio spoken after the wake detection.
+                            # Keep the command session armed while the
+                            # acknowledgement plays; _is_speaking() will mute
+                            # its audio, then pending_wake resumes capture.
+                            pending_wake = True
                             mute_until = time.time() + 0.8
-                            capturing = True
+                            capturing = False
                             command_frames = []
                             speech_started = False
                             silent_frames = 0

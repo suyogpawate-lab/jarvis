@@ -1,48 +1,120 @@
-"""Random prerecorded voice acknowledgements for the JARVIS wake word."""
+"""Ten pre-rendered, voice-matched wake acknowledgements."""
+import os
 import random
 from pathlib import Path
+
+from jarvis_env import load_env
+
+load_env()
 
 from voice.tts import play_recorded
 
 PHRASES = (
-    "Listening, sir.",
-    "Yes, sir?",
-    "Go ahead, sir.",
-    "I'm listening, sir.",
-    "Ready when you are, sir.",
+    "Yes, sir. I'm listening.",
     "At your service, sir.",
-    "Online, sir.",
-    "I'm here, sir.",
-    "Proceed, sir.",
-    "How can I help, sir?",
-    "Yes? Go ahead.",
-    "Listening now, sir.",
-    "Ready, sir.",
-    "I'm all ears, sir.",
-    "Speak, sir.",
-    "What do you need, sir?",
-    "Standing by, sir.",
-    "I'm listening.",
-    "Go on, sir.",
-    "Awaiting your command, sir.",
-    "Ready for your instructions, sir.",
-    "Here and listening, sir.",
-    "At your command, sir.",
-    "Yes. I'm listening.",
-    "What's the task, sir?",
+    "Go ahead. I'm ready.",
+    "I'm here. What's the task?",
+    "Ready when you are, sir.",
+    "Online and listening.",
+    "Of course, sir. Go ahead.",
+    "Standing by for your instructions.",
+    "Yes? How can I help?",
+    "I'm listening. Proceed.",
 )
+TIMEOUT_PHRASE = "I'll switch off voice conversation now. Say Hey Jarvis whenever you need me."
 
-AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
+BASE_AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
+# Legacy flat cache location retained for callers of play_random_wake_response().
+AUDIO_DIR = BASE_AUDIO_DIR
+
+
+def selected_voice_key() -> str:
+    provider = os.environ.get("JARVIS_TTS_PROVIDER", "edge").strip().lower() or "edge"
+    voices = {
+        "say": os.environ.get("JARVIS_SHERPA_VOICE", "alan"),
+        "sherpa": os.environ.get("JARVIS_SHERPA_VOICE", "alan"),
+        "kokoro": os.environ.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric"),
+        "phonon": os.environ.get("JARVIS_PHONON_VOICE", "edwin"),
+        "piper": os.environ.get("JARVIS_PIPER_VOICE", "alan"),
+        "edge": os.environ.get("JARVIS_EDGE_VOICE", "en-GB-RyanNeural"),
+    }
+    voice = str(voices.get(provider, "default")).strip() or "default"
+    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in voice)
+    return f"{provider}_{safe}"
+
+
+def audio_dir() -> Path:
+    return BASE_AUDIO_DIR / selected_voice_key()
+
+
+def available_clips() -> list[Path]:
+    directory = audio_dir()
+    clips = []
+    for index in range(1, len(PHRASES) + 1):
+        for suffix in (".wav", ".mp3"):
+            path = directory / f"wake_{index:02d}{suffix}"
+            if path.is_file() and path.stat().st_size > 1024:
+                clips.append(path)
+                break
+    return clips
+
+
+def prepare_wake_response_player():
+    """Resolve and validate all ten clips before microphone wake detection starts."""
+    clips = tuple(available_clips())
+    if len(clips) != len(PHRASES):
+        raise RuntimeError(
+            f"Wake acknowledgement cache incomplete for {selected_voice_key()}: "
+            f"{len(clips)}/{len(PHRASES)} clips. Run: python setup.py voice"
+        )
+
+    def play() -> bool:
+        return play_recorded(random.choice(clips), wait=False)
+
+    return play
+
+
+def followup_clip() -> Path | None:
+    """Return the selected voice's pre-rendered conversation follow-up, if ready."""
+    directory = audio_dir()
+    for suffix in (".wav", ".mp3"):
+        path = directory / f"followup{suffix}"
+        if path.is_file() and path.stat().st_size > 1024:
+            return path
+    return None
+
+
+def prepare_timeout_response_player():
+    """Preload the final quiet timeout clip before the microphone loop starts."""
+    directory = audio_dir()
+    clip = next(
+        (directory / f"timeout{suffix}" for suffix in (".wav", ".mp3")
+         if (directory / f"timeout{suffix}").is_file()
+         and (directory / f"timeout{suffix}").stat().st_size > 1024),
+        None,
+    )
+    if clip is None:
+        raise RuntimeError(
+            f"Timeout audio is missing for {selected_voice_key()}. "
+            "Run: python scripts/generate_wake_responses.py"
+        )
+
+    def play() -> bool:
+        return play_recorded(clip, wait=False, volume=22)
+
+    return play
 
 
 def play_random_wake_response() -> bool:
-    """Play a pre-generated acknowledgement only; never synthesize on the wake path."""
-    available = [AUDIO_DIR / f"wake_{i:02d}.mp3" for i in range(1, len(PHRASES) + 1)]
+    """Play one clip from the legacy flat cache (compatibility API)."""
+    available = [
+        AUDIO_DIR / f"wake_{index:02d}.mp3"
+        for index in range(1, len(PHRASES) + 1)
+    ]
     available = [path for path in available if path.is_file()]
     if len(available) != len(PHRASES):
-        missing = len(PHRASES) - len(available)
         raise RuntimeError(
-            f"Wake acknowledgement cache incomplete: {len(available)}/{len(PHRASES)} clips; "
-            f"{missing} missing. Run the wake-response preparation command."
+            f"Wake acknowledgement cache incomplete: "
+            f"{len(available)}/{len(PHRASES)} clips."
         )
-    return play_recorded(str(random.choice(available)))
+    return play_recorded(random.choice(available))
