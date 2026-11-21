@@ -902,7 +902,7 @@ class FastAgent:
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["get", "mark_read", "mark_unread", "reply", "reply_all", "forward", "download_attachments", "send_attachments", "archive", "delete", "list_mailboxes", "create_label", "delete_label"]},
+                            "action": {"type": "string", "enum": ["get", "mark_read", "mark_unread", "reply", "reply_all", "forward", "download_attachments", "send_attachments", "archive", "delete", "list_mailboxes", "create_label", "delete_label", "add_label", "remove_label"]},
                             "uid": {"type": "string", "description": "Message UID from a previous Gmail result; required for message-specific actions."},
                             "mailbox": {"type": "string", "description": "Mailbox/label containing the message; default INBOX."},
                             "account": {"type": "string", "description": "Configured Gmail account; omit for default."},
@@ -1200,6 +1200,14 @@ class FastAgent:
                         return {"ok": False, "error": "A label name is required."}
                     return {"ok": True, **mgr.manage_label(action.replace("_label", ""), label,
                                                             requested_account=account)}
+                if action in ("add_label", "remove_label"):
+                    label = arguments.get("label")
+                    if not isinstance(label, str) or not label.strip():
+                        return {"ok": False, "error": "A label name is required."}
+                    if not isinstance(uid, (str, int)) or not str(uid).isdigit():
+                        return {"ok": False, "error": "A valid message UID from a previous email result is required."}
+                    return {"ok": True, **mgr.set_label(uid, label, add=(action == "add_label"),
+                                                        requested_account=account, mailbox=mailbox)}
                 if action == "send_attachments":
                     to, subject, body = arguments.get("to"), arguments.get("subject"), arguments.get("body")
                     paths = arguments.get("paths")
