@@ -24,6 +24,8 @@ PHRASES = (
 TIMEOUT_PHRASE = "I'll switch off voice conversation now. Say Hey Jarvis whenever you need me."
 
 BASE_AUDIO_DIR = Path.home() / ".cache" / "jarvis" / "wake_responses"
+# Legacy flat cache location retained for callers of play_random_wake_response().
+AUDIO_DIR = BASE_AUDIO_DIR
 
 
 def selected_voice_key() -> str:
@@ -104,5 +106,15 @@ def prepare_timeout_response_player():
 
 
 def play_random_wake_response() -> bool:
-    """Compatibility helper; the listener should preload the player at startup."""
-    return prepare_wake_response_player()
+    """Play one clip from the legacy flat cache (compatibility API)."""
+    available = [
+        AUDIO_DIR / f"wake_{index:02d}.mp3"
+        for index in range(1, len(PHRASES) + 1)
+    ]
+    available = [path for path in available if path.is_file()]
+    if len(available) != len(PHRASES):
+        raise RuntimeError(
+            f"Wake acknowledgement cache incomplete: "
+            f"{len(available)}/{len(PHRASES)} clips."
+        )
+    return play_recorded(random.choice(available))
