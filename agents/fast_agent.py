@@ -888,6 +888,37 @@ class FastAgent:
             {
                 "type": "function",
                 "function": {
+                    "name": "email_manage",
+                    "description": (
+                        "Manage Gmail messages and labels. Use only for an explicit email-management request. "
+                        "Actions: get (read one message by UID), mark_read, mark_unread, reply, reply_all, "
+                        "forward, download_attachments, send_attachments, archive, delete (moves to Gmail Trash; "
+                        "never permanently deletes), list_mailboxes, create_label, delete_label. "
+                        "For message actions provide the UID returned by email_list_recent, email_list_unread, "
+                        "or email_search, and the same mailbox. Never guess a UID. Sending, forwarding, replying, "
+                        "archiving, trashing, or changing labels requires a clear user request. "
+                        "For send_attachments, paths must be existing local file paths explicitly selected by the user."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": {"type": "string", "enum": ["get", "mark_read", "mark_unread", "reply", "reply_all", "forward", "download_attachments", "send_attachments", "archive", "delete", "list_mailboxes", "create_label", "delete_label"]},
+                            "uid": {"type": "string", "description": "Message UID from a previous Gmail result; required for message-specific actions."},
+                            "mailbox": {"type": "string", "description": "Mailbox/label containing the message; default INBOX."},
+                            "account": {"type": "string", "description": "Configured Gmail account; omit for default."},
+                            "body": {"type": "string", "description": "Reply/forward/new message body."},
+                            "to": {"type": "string", "description": "Recipient for forwarding or attachment email; comma-separated addresses allowed."},
+                            "subject": {"type": "string", "description": "Subject for attachment email."},
+                            "paths": {"type": "array", "items": {"type": "string"}, "description": "Existing local file paths to attach to a new email."},
+                            "label": {"type": "string", "description": "Gmail label name for create_label/delete_label."}
+                        },
+                        "required": ["action"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "prepare_google_form",
                     "description": "Read a Google Form from its link and draft answers to all its questions. Does NOT submit anything. Always use this first when the user asks to fill or submit a Google Form.",
                     "parameters": {
@@ -1156,6 +1187,54 @@ class FastAgent:
                 limit = max(1, min(int(arguments.get("limit", 5)), 15))
             except (TypeError, ValueError):
                 limit = 5
+
+            if name == "email_manage":
+                action = str(arguments.get("action") or "").strip().lower()
+                uid = arguments.get("uid")
+                mailbox = arguments.get("mailbox") or "INBOX"
+                if action == "list_mailboxes":
+                    return {"ok": True, **mgr.list_mailboxes(requested_account=account)}
+                if action in ("create_label", "delete_label"):
+                    label = arguments.get("label")
+                    if not isinstance(label, str) or not label.strip():
+                        return {"ok": False, "error": "A label name is required."}
+                    return {"ok": True, **mgr.manage_label(action.replace("_label", ""), label,
+                                                            requested_account=account)}
+                if action == "send_attachments":
+                    to, subject, body = arguments.get("to"), arguments.get("subject"), arguments.get("body")
+                    paths = arguments.get("paths")
+                    if not isinstance(to, str) or not to.strip() or not isinstance(subject, str) or not subject.strip():
+                        return {"ok": False, "error": "Recipients and subject are required."}
+                    if not isinstance(body, str) or not body.strip() or not isinstance(paths, list) or not paths:
+                        return {"ok": False, "error": "A message body and at least one attachment path are required."}
+                    return {"ok": True, **mgr.send_with_attachments(to, subject, body, paths,
+                                                                     requested_account=account)}
+                if not isinstance(uid, (str, int)) or not str(uid).isdigit():
+                    return {"ok": False, "error": "A valid message UID from a recent/search result is required."}
+                if action == "get":
+                    return {"ok": True, **mgr.get_email(uid, requested_account=account, mailbox=mailbox)}
+                if action == "mark_read":
+                    return {"ok": True, **mgr.set_read(uid, True, requested_account=account, mailbox=mailbox)}
+                if action == "mark_unread":
+                    return {"ok": True, **mgr.set_read(uid, False, requested_account=account, mailbox=mailbox)}
+                if action == "download_attachments":
+                    return {"ok": True, **mgr.download_attachments(uid, requested_account=account, mailbox=mailbox)}
+                if action == "archive":
+                    return {"ok": True, **mgr.archive(uid, requested_account=account, mailbox=mailbox)}
+                if action == "delete":
+                    return {"ok": True, **mgr.delete(uid, requested_account=account, mailbox=mailbox)}
+                if action in ("reply", "reply_all"):
+                    body = arguments.get("body")
+                    if not isinstance(body, str) or not body.strip():
+                        return {"ok": False, "error": "A non-empty reply body is required."}
+                    return {"ok": True, **mgr.reply(uid, body, requested_account=account,
+                                                    mailbox=mailbox, reply_all=(action == "reply_all"))}
+                if action == "forward":
+                    to, body = arguments.get("to"), arguments.get("body") or ""
+                    if not isinstance(to, str) or not to.strip():
+                        return {"ok": False, "error": "A forwarding recipient is required."}
+                    return {"ok": True, **mgr.forward(uid, to, body, requested_account=account, mailbox=mailbox)}
+                return {"ok": False, "error": f"Unsupported email management action: {action}"}
 
             if name == "email_list_recent":
                 items = mgr.list_recent(requested_account=account, limit=limit)
@@ -1538,7 +1617,7 @@ class FastAgent:
         if name in ("set_alarm", "set_timer"):
             return self._tool_alarm(name, arguments)
 
-        if name in ("email_list_recent", "email_list_unread", "email_mark_all_read", "email_search", "email_send"):
+        if name in ("email_list_recent", "email_list_unread", "email_mark_all_read", "email_search", "email_send", "email_manage"):
             return self._tool_email(name, arguments)
 
         if name == "whatsapp_send":
