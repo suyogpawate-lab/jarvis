@@ -53,7 +53,7 @@ python setup.py --status
 | `gmail` | Gmail account(s) and a Google [App Password](https://myaccount.google.com/apppasswords), not your normal account password. Enable 2-Step Verification and ensure IMAP access is available. |
 | `whatsapp` | Link WhatsApp with a pairing code or QR code. Pairing code is convenient when WhatsApp is on the same phone. |
 | `contacts` | Optionally sync Android contacts and maintain a priority-people list. Android may ask for permission. |
-| `voice` | Select Edge TTS, local Sherpa (Alan/Bryce), Piper, Phonon, Kokoro, or KittenTTS Pico (Otis). You can change this later with `python setup.py voice` or `./voice-config`. |
+| `voice` | Select Edge TTS, local Sherpa (Alan/Bryce), Piper, Phonon, Kokoro, or KittenTTS Pico (30 voices across 8 languages). You can change this later with `python setup.py voice` or `./voice-config`. |
 
 Press Enter to keep existing values or skip optional questions. Completed sections are saved as you go.
 
