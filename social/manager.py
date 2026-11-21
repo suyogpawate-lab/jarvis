@@ -45,8 +45,8 @@ def _connected_accounts():
         "github": bool(_env("JARVIS_GITHUB_TOKEN")),
         "reddit": bool(_env("JARVIS_REDDIT_ACCESS_TOKEN")),
         "youtube": bool(_env("JARVIS_YOUTUBE_ACCESS_TOKEN")),
-        "facebook_page": bool(_env("JARVIS_META_ACCESS_TOKEN") and _env("JARVIS_FACEBOOK_PAGE_ID")),
-        "instagram_professional": bool(_env("JARVIS_META_ACCESS_TOKEN") and _env("JARVIS_INSTAGRAM_USER_ID")),
+        "facebook_page": bool((_env("JARVIS_FACEBOOK_PAGE_ACCESS_TOKEN") or _env("JARVIS_META_ACCESS_TOKEN")) and _env("JARVIS_FACEBOOK_PAGE_ID")),
+        "instagram_professional": bool((_env("JARVIS_INSTAGRAM_ACCESS_TOKEN") or _env("JARVIS_META_ACCESS_TOKEN")) and _env("JARVIS_INSTAGRAM_USER_ID")),
         "linkedin": bool(_env("JARVIS_LINKEDIN_ACCESS_TOKEN")),
     }
 
@@ -121,7 +121,7 @@ def _collect_reddit(limit):
 
 
 def _collect_instagram(limit):
-    token, user_id = _env("JARVIS_META_ACCESS_TOKEN"), _env("JARVIS_INSTAGRAM_USER_ID")
+    token, user_id = (_env("JARVIS_INSTAGRAM_ACCESS_TOKEN") or _env("JARVIS_META_ACCESS_TOKEN")), _env("JARVIS_INSTAGRAM_USER_ID")
     if not token or not user_id:
         return []
     host = _env("JARVIS_INSTAGRAM_API_HOST") or "https://graph.instagram.com"
@@ -133,7 +133,7 @@ def _collect_instagram(limit):
 
 
 def _collect_facebook(limit):
-    token, page_id = _env("JARVIS_META_ACCESS_TOKEN"), _env("JARVIS_FACEBOOK_PAGE_ID")
+    token, page_id = (_env("JARVIS_FACEBOOK_PAGE_ACCESS_TOKEN") or _env("JARVIS_META_ACCESS_TOKEN")), _env("JARVIS_FACEBOOK_PAGE_ID")
     if not token or not page_id:
         return []
     data = _request("GET", "https://graph.facebook.com/%s/%s/feed" % (GRAPH_VERSION, quote(page_id, safe="")),
@@ -168,7 +168,7 @@ def _collect_youtube(limit):
     headers = {"Accept": "application/json"}
     subs = _request("GET", "https://www.googleapis.com/youtube/v3/subscriptions",
                     token=token, params={"part": "snippet,contentDetails", "mine": "true",
-                                          "maxResults": min(limit, 25), "order": "relevance"},
+                                          "maxResults": min(limit, 25)},
                     headers=headers)
     channels = []
     for row in subs.get("items", []):
@@ -278,6 +278,27 @@ def _manage(args):
                           token=token, json_body={"message": text})
         return {"ok": True, "result": result}
 
+    if platform == "linkedin" and action == "publish":
+        token, author = _env("JARVIS_LINKEDIN_ACCESS_TOKEN"), _env("JARVIS_LINKEDIN_PERSON_URN")
+        if not token or not author:
+            return {"ok": False, "error": "Configure JARVIS_LINKEDIN_ACCESS_TOKEN and JARVIS_LINKEDIN_PERSON_URN."}
+        if not text:
+            return {"ok": False, "error": "text is required for LinkedIn publishing."}
+        version = _env("JARVIS_LINKEDIN_VERSION") or "202610"
+        response = requests.post(
+            "https://api.linkedin.com/rest/posts",
+            headers={"Authorization": "Bearer " + token, "LinkedIn-Version": version,
+                     "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"},
+            json={"author": author, "commentary": text, "visibility": "PUBLIC",
+                  "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [],
+                                   "thirdPartyDistributionChannels": []},
+                  "lifecycleState": "PUBLISHED", "isReshareDisabledByAuthor": False},
+            timeout=TIMEOUT,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError("LinkedIn HTTP %s: %s" % (response.status_code, response.text[:300]))
+        return {"ok": True, "result": {"id": response.headers.get("x-restli-id") or response.text[:300]}}
+
     if platform == "instagram" and action == "publish_image":
         token, user_id = _env("JARVIS_META_ACCESS_TOKEN"), _env("JARVIS_INSTAGRAM_USER_ID")
         media_url = str(args.get("media_url") or "").strip()
@@ -298,7 +319,7 @@ def _manage(args):
 
     if platform == "reddit" and action in ("upvote", "downvote", "vote"):
         return {"ok": False, "error": "JARVIS will not automate Reddit voting. Choose votes yourself in Reddit."}
-    return {"ok": False, "error": "Unsupported platform/action combination. Available actions: GitHub star/unstar, YouTube like/unlike, Facebook Page publish, Instagram professional image publish."}
+    return {"ok": False, "error": "Unsupported platform/action combination. Available actions: GitHub star/unstar, YouTube like/unlike, Facebook Page publish, LinkedIn member publish, Instagram professional image publish."}
 
 
 def register():
@@ -322,10 +343,10 @@ def register():
     )
     registry.register(
         "social_manage",
-        "Perform a specifically requested social-account action. Only use when the user directly asks to perform the exact action; set confirmed=true only for that explicit request. Supported: GitHub star/unstar a repository; YouTube like/unlike a video; publish text to a Facebook Page; publish an image with caption to an Instagram professional account. Do not infer a desire to engage from feed content. Never automate Reddit votes.",
+        "Perform a specifically requested social-account action. Only use when the user directly asks to perform the exact action; set confirmed=true only for that explicit request. Supported: GitHub star/unstar a repository; YouTube like/unlike a video; publish text to a Facebook Page or LinkedIn member profile; publish an image with caption to an Instagram professional account. Do not infer a desire to engage from feed content. Never automate Reddit votes.",
         {"type": "object", "properties": {
-            "platform": {"type": "string", "enum": ["github", "youtube", "facebook", "instagram"]},
-            "action": {"type": "string", "enum": ["star", "unstar", "like", "unlike", "publish", "publish_image", "upvote", "downvote", "vote"]},
+            "platform": {"type": "string", "enum": ["github", "youtube", "facebook", "linkedin", "instagram"]},
+            "action": {"type": "string", "enum": ["star", "unstar", "like", "unlike", "publish", "publish_image"]},
             "target": {"type": "string", "description": "GitHub owner/repository or YouTube video URL/ID."},
             "text": {"type": "string", "description": "Post text or caption for publishing."},
             "media_url": {"type": "string", "description": "Public HTTPS image URL for Instagram image publishing."},
