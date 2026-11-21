@@ -257,7 +257,7 @@ def _manage(args):
         return {"ok": True, "result": "Repository %s: %s" % (target, action + "red" if action == "star" else "unstarred")}
 
     if platform == "youtube" and action in ("like", "unlike"):
-        match = re.search(r"(?:v=|youtu\.be/([A-Za-z0-9_-]{11})", target)
+        match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", target)
         video_id = match.group(1) if match else target
         if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
             return {"ok": False, "error": "target must be a YouTube video URL or 11-character video ID."}
