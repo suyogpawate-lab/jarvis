@@ -65,6 +65,10 @@ class WhatsAppAutoReplyWorker:
 
         self._sent_times = {}
         self._failures = {}
+        # Per-message retry deadlines keep provider throttling from consuming
+        # the normal failure budget or causing a hot retry loop.
+        self._retry_after_by_message = {}
+        self._last_groq_retry_at = 0.0
 
         self.whatsapp = WhatsAppManager()
         self.fast_agent = FastAgent()
@@ -837,7 +841,14 @@ class WhatsAppAutoReplyWorker:
             "acknowledgement to the contact. For skip, reply must be empty."
         )
         system_prompt += " " + style_instructions("auto_reply")
-        tools = self._reply_tools(files_enabled=files_enabled)
+        # Link-inspection tools are only relevant when the incoming text
+        # actually contains a URL. A plain greeting must never expose tools
+        # to the model; GPT-OSS can otherwise mis-emit a phantom `json` tool.
+        has_public_link = bool(re.search(r"https?://", incoming, re.IGNORECASE))
+        tools = (
+            self._reply_tools(files_enabled=files_enabled)
+            if has_public_link or files_enabled else []
+        )
         if files_enabled:
             system_prompt += (
                 " You can search and attach a matching item from the owner's Knowledge Hub. "
@@ -877,6 +888,14 @@ class WhatsAppAutoReplyWorker:
 
             response = agent._groq_post(payload, timeout=25)
             if response.status_code != 200:
+                if response.status_code == 429:
+                    # Groq TPM is commonly model/organization scoped; rotating
+                    # API keys will not clear it. Defer this message until reset.
+                    try:
+                        wait, _kind = agent._groq_rate_info(response)
+                    except Exception:
+                        wait = 10.0
+                    self._last_groq_retry_at = time.time() + max(2.0, float(wait)) + 1.0
                 raise RuntimeError(
                     f"Groq HTTP {response.status_code}: {response.text[:200]}"
                 )
@@ -1115,6 +1134,46 @@ class WhatsAppAutoReplyWorker:
             flush=True,
         )
 
+        # Greetings are deterministic and do not need a 120B inference call.
+        # This also avoids spending Groq TPM on the most common one-word DMs.
+        greeting_key = re.sub(r"[.!?,\\s]+", " ", incoming.lower()).strip()
+        greeting_replies = {
+            "hi": "Hi!",
+            "hello": "Hello!",
+            "hey": "Hey!",
+            "hiya": "Hey!",
+            "heyy": "Hey!",
+            "good morning": "Good morning!",
+            "good afternoon": "Good afternoon!",
+            "good evening": "Good evening!",
+        }
+        if greeting_key in greeting_replies:
+            reply = greeting_replies[greeting_key]
+            try:
+                self.whatsapp.send(chat_jid, reply)
+                self._remember(chat_jid, "outgoing", "JARVIS", reply)
+                self._sent_times.setdefault(chat_jid, []).append(time.time())
+                print(f"[WHATSAPP AUTO] Sent simple greeting: {reply}", flush=True)
+                self._failures.pop(ids[0], None)
+                for message_id in ids:
+                    self._retry_after_by_message.pop(message_id, None)
+                self._finish(ids)
+                return True
+            except Exception as exc:
+                print(f"[WHATSAPP AUTO ERROR] Greeting send failed: {exc}", flush=True)
+                # Continue through the ordinary failure handler below.
+                self._last_groq_retry_at = 0.0
+
+        # A previous 429 schedules a retry without consuming a failure attempt.
+        retry_deadline = max(
+            (self._retry_after_by_message.get(message_id, 0.0) for message_id in ids),
+            default=0.0,
+        )
+        if retry_deadline > time.time():
+            return False
+        for message_id in ids:
+            self._retry_after_by_message.pop(message_id, None)
+
         try:
             decision, attachments = self._generate_reply(
                 sender,
@@ -1189,12 +1248,31 @@ class WhatsAppAutoReplyWorker:
                 self._send_attachments(chat_jid, attachments)
 
             self._sent_times.setdefault(chat_jid, []).append(time.time())
+            for message_id in ids:
+                self._failures.pop(message_id, None)
+                self._retry_after_by_message.pop(message_id, None)
             self._finish(ids)
             return True
 
         except Exception as exc:
             print(f"[WHATSAPP AUTO ERROR] {exc}", flush=True)
 
+            # Provider throttling is temporary. Keep the message unacknowledged
+            # and defer it until Groq's reported reset instead of counting it
+            # toward the permanent-failure cutoff.
+            if self._last_groq_retry_at > time.time():
+                deadline = self._last_groq_retry_at
+                for message_id in ids:
+                    self._retry_after_by_message[message_id] = deadline
+                print(
+                    f"[WHATSAPP AUTO] Groq rate-limited; preserving {len(ids)} message(s) "
+                    f"for retry in about {deadline - time.time():.0f}s.",
+                    flush=True,
+                )
+                self._last_groq_retry_at = 0.0
+                return False
+
+            self._last_groq_retry_at = 0.0
             # Leave unacknowledged for a retry, but give up after 3 tries
             # so a persistent failure cannot hammer Groq every poll.
             tries = max(self._failures.get(i, 0) for i in ids) + 1
