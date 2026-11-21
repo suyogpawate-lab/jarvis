@@ -23,7 +23,7 @@ def _request(method, url, *, token=None, params=None, json_body=None, headers=No
     if token:
         h["Authorization"] = "Bearer " + token
     response = requests.request(
-        method, url, headers=h, params=params, json=json_body, timeout=TIMEOUT
+        method, url, headers=h, params=params, data=json_body, timeout=TIMEOUT
     )
     if response.status_code >= 400:
         try:
@@ -75,7 +75,7 @@ def _item(platform, title, text, url, created=None, source=None):
     return {
         "platform": platform,
         "title": str(title or "(untitled)")[:180],
-        "summary": re.sub(r"\\s+", " ", str(text or "")).strip()[:500],
+        "summary": re.sub(r"\s+", " ", str(text or "")).strip()[:500],
         "url": str(url or ""),
         "created": created,
         "source": source or platform,
@@ -127,7 +127,7 @@ def _collect_instagram(limit):
     host = _env("JARVIS_INSTAGRAM_API_HOST") or "https://graph.instagram.com"
     data = _request("GET", "%s/%s/%s/media" % (host.rstrip("/"), GRAPH_VERSION, quote(user_id, safe="")),
                     token=token, params={"fields": "id,caption,media_type,permalink,timestamp", "limit": min(limit, 50)})
-    return [_item("instagram", (x.get("caption") or x.get("media_type") or "Instagram media").split("\\n")[0],
+    return [_item("instagram", (x.get("caption") or x.get("media_type") or "Instagram media").split("\n")[0],
                   x.get("caption"), x.get("permalink"), x.get("timestamp"), x.get("media_type"))
             for x in data.get("data", [])]
 
@@ -257,7 +257,7 @@ def _manage(args):
         return {"ok": True, "result": "Repository %s: %s" % (target, action + "red" if action == "star" else "unstarred")}
 
     if platform == "youtube" and action in ("like", "unlike"):
-        match = re.search(r"(?:v=|youtu\\.be/)([A-Za-z0-9_-]{11})", target)
+        match = re.search(r"(?:v=|youtu\.be/([A-Za-z0-9_-]{11})", target)
         video_id = match.group(1) if match else target
         if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
             return {"ok": False, "error": "target must be a YouTube video URL or 11-character video ID."}
