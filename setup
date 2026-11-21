@@ -827,6 +827,8 @@ def step_voice(env):
         default_choice = "5"
     elif current_provider == "kokoro":
         default_choice = "6"
+    elif current_provider == "kitten":
+        default_choice = "7"
     else:
         default_choice = "1"
 
@@ -837,7 +839,8 @@ def step_voice(env):
     print("  4) Piper — local Piper model (requires its native library/assets)")
     print("  5) Phonon — local Rust TTS (loads a compact q8 model into RAM)")
     print("  6) Kokoro-82M — local FP16 ONNX, 157 voices + matching-voice whisper")
-    choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon, 6=Kokoro",
+    print("  7) KittenTTS Pico — Otis (local ONNX, Misaki + NLTK)")
+    choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon, 6=Kokoro, 7=KittenTTS",
                  default=default_choice).strip().lower()
 
     if choice in ("2", "alan"):
@@ -865,6 +868,11 @@ def step_voice(env):
         env.set("JARVIS_KOKORO_VOICE_MODE", "auto")
         env.set("JARVIS_KOKORO_NORMAL_VOICE", env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric")
         env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
+    elif choice in ("7", "kitten", "kitten-tts", "otis"):
+        kitten_home = Path(env.get("JARVIS_KITTEN_HOME") or Path.home() / "KittenTTS").expanduser()
+        env.set("JARVIS_TTS_PROVIDER", "kitten")
+        env.set("JARVIS_KITTEN_HOME", str(kitten_home))
+        env.set("JARVIS_KITTEN_SPEED", env.get("JARVIS_KITTEN_SPEED", "0.88") or "0.88")
     else:
         env.set("JARVIS_TTS_PROVIDER", "edge")
     env.save()
@@ -872,6 +880,18 @@ def step_voice(env):
     provider = env.get("JARVIS_TTS_PROVIDER", "edge").strip().lower()
     if provider == "edge":
         ok("Edge TTS selected. JARVIS will use the online Ryan Neural voice.")
+        return
+
+    if provider == "kitten":
+        kitten_home = Path(env.get("JARVIS_KITTEN_HOME") or Path.home() / "KittenTTS").expanduser()
+        worker = kitten_home / "kitten_worker.py"
+        if not worker.is_file():
+            warn(f"KittenTTS worker not found: {worker}")
+            info("Set JARVIS_KITTEN_HOME to the KittenTTS project directory containing kitten_worker.py.")
+            return
+        ok("KittenTTS Pico selected: Otis, British English, local ONNX.")
+        info("JARVIS will launch the persistent worker automatically and reuse its loaded model.")
+        info("The worker uses the installed Misaki + NLTK frontend; no duplicate model is loaded.")
         return
 
     if provider == "kokoro":
