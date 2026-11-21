@@ -165,6 +165,12 @@ The feed reviewer creates a finite digest, deduplicates items, ranks them agains
 
 Configure tokens in the private `.env` file; see [social/README.md](social/README.md) for variables, supported actions, and setup limitations. This initial release reads pre-authorized tokens; it does not yet include an in-app OAuth login/refresh wizard. A configured token is not proof of valid permissions.
 
+#### Optional Composio integration
+
+JARVIS can optionally connect to Composio Sessions through its hosted Streamable HTTP MCP endpoint. This is separate from the existing stdio MCP client and requires no additional Python package; it uses the existing `requests` dependency. Set `COMPOSIO_API_KEY` in the private `.env` file, optionally set `JARVIS_COMPOSIO_USER_ID`, then restart JARVIS. The default session allowlist is Instagram, GitHub, YouTube, Reddit, LinkedIn, and Facebook; change it with `JARVIS_COMPOSIO_TOOLKITS`. The session ID is stored in `data/composio_session.json` with restrictive file permissions and reused on later starts. Ask JARVIS: `check Composio status` or `which Composio tools are available?`.
+
+The initial adapter exposes read-only app tools plus Composio tool search and connection management. App write actions are deliberately excluded from the MCP allowlist until JARVIS has a local approval-aware execution path; this prevents an MCP client without elicitation support from silently sending messages, publishing posts, or changing account data. Instagram's Composio toolkit supports Business and Creator accounts, not Personal accounts. Reel understanding still requires JARVIS's separate video/audio perception pipeline; the toolkit does not itself watch or interpret Reels.
+
 **Platform boundaries:** Instagram's official API is for Business/Creator accounts, not ordinary personal consumer accounts ([Meta API documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)). Facebook personal-profile feed access is not included; Facebook Page access is used instead. LinkedIn member-feed reading requires restricted access, while posting permissions differ from reading permissions ([LinkedIn permissions](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-04)). YouTube rating actions use the official OAuth-protected rating endpoint ([YouTube Data API](https://developers.google.com/youtube/data/reference/rest/v3/videos/rate)).
 
 ## Gmail
