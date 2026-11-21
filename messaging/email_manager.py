@@ -626,14 +626,15 @@ class EmailManager:
             status, _ = mail.select(mailbox, readonly=False)
             if status != "OK":
                 raise RuntimeError(f"Unable to open mailbox: {mailbox}")
-            # Soft-delete only: copy to Gmail Trash before removing the original.
-            status, _ = mail.uid("copy", self._uid_bytes(uid), '"[Gmail]/Trash"')
+            # Soft-delete only: apply Gmail's Trash label and remove Inbox.
+            # Avoid EXPUNGE because it could permanently remove other messages
+            # that were already flagged Deleted in the same mailbox.
+            status, _ = mail.uid("store", self._uid_bytes(uid), "+X-GM-LABELS", r"(\\Trash)")
             if status != "OK":
-                raise RuntimeError("Gmail could not move the message to Trash.")
-            status, _ = mail.uid("store", self._uid_bytes(uid), "+FLAGS", r"(\Deleted)")
+                raise RuntimeError("Gmail could not apply the Trash label.")
+            status, _ = mail.uid("store", self._uid_bytes(uid), "-X-GM-LABELS", r"(\\Inbox)")
             if status != "OK":
-                raise RuntimeError("Message was copied to Trash but original cleanup failed.")
-            mail.expunge()
+                raise RuntimeError("Message was moved to Trash, but Inbox label removal failed.")
             return {"status": "OK", "account": account["email"], "uid": str(uid), "moved_to_trash": True}
         finally:
             if mail:
