@@ -326,26 +326,35 @@ def _boot():
         _log(f"startup failed: {type(exc).__name__}: {str(exc)[:260]}")
 
 
+def _is_enabled():
+    return os.getenv("JARVIS_ENABLE_COMPOSIO", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
 def start_all_async():
-    """Start Composio only when an API key is explicitly configured."""
-    if not os.getenv("COMPOSIO_API_KEY", "").strip():
+    """Start Composio only after explicit opt-in and API-key configuration."""
+    if not _is_enabled() or not os.getenv("COMPOSIO_API_KEY", "").strip():
         return
     threading.Thread(target=_boot, name="jarvis-composio-mcp", daemon=True).start()
 
 
 def register_status_tool():
-    """Expose a harmless status check even when Composio is not configured."""
+    """Expose a harmless status check even when Composio is disabled."""
     def status(_arguments):
+        enabled = _is_enabled()
         configured = bool(os.getenv("COMPOSIO_API_KEY", "").strip())
         return {
             "ok": True,
+            "enabled": enabled,
             "configured": configured,
             "user_id": os.getenv("JARVIS_COMPOSIO_USER_ID", "jarvis-local"),
             "toolkits": _toolkits(),
             "session_file_exists": SESSION_FILE.is_file(),
             "note": (
-                "Composio startup is asynchronous; inspect logs/mcp.log for connection status."
-                if configured else "Set COMPOSIO_API_KEY in the private .env to enable Composio."
+                "Composio is explicitly enabled; startup is asynchronous. Inspect logs/mcp.log."
+                if enabled and configured else
+                "Composio is disabled by default. Set JARVIS_ENABLE_COMPOSIO=1 and COMPOSIO_API_KEY in the private .env to opt in."
             ),
         }
 
