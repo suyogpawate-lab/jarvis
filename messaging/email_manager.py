@@ -810,7 +810,7 @@ class EmailManager:
             if status != "OK":
                 raise RuntimeError(f"Unable to open mailbox: {mailbox}")
             operation = "+X-GM-LABELS" if add else "-X-GM-LABELS"
-            status, _ = mail.uid(operation.split("-")[0] if False else "store",
+            status, _ = mail.uid("store", self._uid_bytes(uid), operation, f'("{label}")')
                                  self._uid_bytes(uid), operation, f'("{label}")')
             if status != "OK":
                 raise RuntimeError(f"Gmail did not confirm label update: {label}")
