@@ -66,13 +66,15 @@ def _load_or_create_session(api_key, user_id):
     SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     saved_id = ""
+    saved_user_id = ""
     try:
         saved = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
         saved_id = str(saved.get("session_id") or "").strip()
+        saved_user_id = str(saved.get("user_id") or "").strip()
     except (OSError, ValueError, AttributeError):
         pass
 
-    if saved_id:
+    if saved_id and saved_user_id == user_id:
         response = requests.get(
             f"{API_BASE}/api/v3.1/tool_router/session/{saved_id}",
             headers=headers,
@@ -119,7 +121,10 @@ def _load_or_create_session(api_key, user_id):
         raise RuntimeError("Composio did not return a valid hosted MCP session.")
 
     temp = SESSION_FILE.with_suffix(".tmp")
-    temp.write_text(json.dumps({"session_id": session_id}), encoding="utf-8")
+    temp.write_text(
+        json.dumps({"session_id": session_id, "user_id": user_id}),
+        encoding="utf-8",
+    )
     try:
         temp.chmod(0o600)
     except OSError:
@@ -148,6 +153,7 @@ class ComposioHTTPMCP:
         self._request_id = 0
         self._protocol = _PROTOCOL_VERSION
         self._mcp_session_id = None
+        self._tools_cache = None
 
     def _next_id(self):
         self._request_id += 1
@@ -246,6 +252,8 @@ class ComposioHTTPMCP:
         self.notify("notifications/initialized")
 
     def list_tools(self, timeout=API_TIMEOUT):
+        if self._tools_cache is not None:
+            return self._tools_cache
         tools = []
         cursor = None
         for _ in range(10):
@@ -255,6 +263,7 @@ class ComposioHTTPMCP:
             cursor = result.get("nextCursor")
             if not cursor:
                 break
+        self._tools_cache = tools
         return tools
 
     def call_tool(self, tool_name, arguments):
