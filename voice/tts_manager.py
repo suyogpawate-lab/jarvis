@@ -68,6 +68,8 @@ class TTSManager:
             threading.Thread(target=self._warm_phonon, daemon=True, name="PhononWarmup").start()
         elif _provider() == "kokoro":
             threading.Thread(target=self._warm_kokoro, daemon=True, name="KokoroWarmup").start()
+        elif _provider() == "kitten":
+            threading.Thread(target=self._warm_kitten, daemon=True, name="KittenWarmup").start()
 
     def _warm_piper(self):
         try:
@@ -104,6 +106,15 @@ class TTSManager:
             self.last_error = str(exc)
             print(f"[TTS ERROR] Kokoro preload failed: {exc}", flush=True)
 
+    def _warm_kitten(self):
+        try:
+            from voice.kitten_tts import warmup
+            warmup()
+            print("[TTS] KittenTTS Pico worker ready; Otis model preloaded.", flush=True)
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"[TTS ERROR] KittenTTS worker startup failed: {exc}", flush=True)
+
     def _run_provider(self, text, speed=1.0, gen=None, voice=None):
         gen = self._gen if gen is None else gen
         provider = _provider()
@@ -126,8 +137,11 @@ class TTSManager:
         elif provider == "kokoro":
             # Reuse the preloaded Kokoro worker and the common buffered playback pipeline.
             result = self._play_pipeline(provider, text, speed, gen, voice=voice)
+        elif provider == "kitten":
+            # Use KittenTTS's persistent ONNX worker and JARVIS's interruptible player.
+            result = self._play_pipeline(provider, text, speed, gen, voice=voice)
         else:
-            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, phonon, or kokoro.")
+            raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, phonon, kokoro, or kitten.")
         if not result:
             raise RuntimeError(f"{provider} TTS playback failed")
         return provider
@@ -142,8 +156,8 @@ class TTSManager:
                 return True
             except Exception as exc:
                 primary_error = str(exc)
-                if _provider() == "say" and self._gen == gen:
-                    print(f"[TTS WARN] ZIP voice unavailable; falling back to Edge TTS: {primary_error}", flush=True)
+                if _provider() in ("say", "kitten") and self._gen == gen:
+                    print(f"[TTS WARN] Local voice unavailable; falling back to Edge TTS: {primary_error}", flush=True)
                     if edge_speak(text, wait=True):
                         self.last_provider = "edge-fallback"
                         self.last_error = ""
@@ -191,6 +205,12 @@ class TTSManager:
             from voice.kokoro_tts import synth
             selected_voice = (voice or _normal_kokoro_voice()).strip()
             return synth(sentence, voice=selected_voice, speed=speed)
+        if provider == "kitten":
+            from voice.kitten_tts import synth
+            base_speed = float(os.environ.get("JARVIS_KITTEN_SPEED", "0.88"))
+            effective_speed = max(0.5, min(2.0, base_speed * float(speed)))
+            selected_voice = voice or os.environ.get("JARVIS_KITTEN_VOICE", "otis_en")
+            return synth(sentence, speed=effective_speed, voice=selected_voice)
         from voice import sherpa_tts as st
         import soundfile as sf
         voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
@@ -442,7 +462,8 @@ class TTSManager:
             return False
         self.last_spoken_text = text
         self.last_started = time.monotonic()
-        return self._speak_with_fallbacks(text, speed, self._gen, voice=_normal_kokoro_voice())
+        voice = _normal_kokoro_voice() if _provider() == "kokoro" else None
+        return self._speak_with_fallbacks(text, speed, self._gen, voice=voice)
 
     def interrupt(self):
         self._gen += 1
@@ -530,6 +551,10 @@ class TTSManager:
             except Exception:
                 model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/kokoro-v1.0.fp16.onnx")
             primary = f"kokoro82m/{voice} (normal + matching whisper)"
+        elif provider == "kitten":
+            model = str(Path(os.environ.get("JARVIS_KITTEN_HOME", str(Path.home() / "KittenTTS"))).expanduser())
+            selected_voice = os.environ.get("JARVIS_KITTEN_VOICE", "otis_en").strip().lower()
+            primary = f"kitten-tts-2-pico/{selected_voice} (Misaki + NLTK, ONNX worker)"
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model
@@ -547,6 +572,7 @@ class TTSManager:
             "fish_available": False,
             "sherpa_available": provider in ("sherpa", "say"),
             "kokoro_available": provider == "kokoro",
+            "kitten_available": provider == "kitten",
             "android_tts_available": False,
             "socket": None,
             "model": model,

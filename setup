@@ -815,64 +815,55 @@ def _ensure_kokoro_g2p(voice):
             return False
 
 
-def _prepare_wake_responses(env):
-    """Pre-render ten wake acknowledgements with the selected speech backend."""
-    generator = ROOT / "scripts" / "generate_wake_responses.py"
-    child_env = os.environ.copy()
-    for line in env.lines:
-        parsed = parse_env_line(line)
-        if parsed:
-            child_env.setdefault(parsed[0], parsed[1])
-    info("Pre-generating 10 wake-word greetings with the selected voice. This runs now, never after wake detection.")
-    try:
-        result = subprocess.run(
-            [sys.executable, str(generator)],
-            cwd=ROOT, env=child_env, check=False,
-        )
-    except OSError as exc:
-        warn(f"Could not start wake-phrase generation: {exc}")
-        return False
-    if result.returncode == 0:
-        ok("10 wake-word greetings are cached for instant playback.")
-        return True
-    warn(f"Wake-phrase generation failed (exit {result.returncode}). Run: python setup.py wake")
-    return False
+KITTEN_PICO_VOICES = {
+    "en": (("eleanor_en", "Eleanor"), ("edith_en", "Edith"), ("otis_en", "Otis"), ("frank_en", "Frank")),
+    "de": (("anna_de", "Anna"), ("mia_de", "Mia"), ("lukas_de", "Lukas"), ("paul_de", "Paul")),
+    "es": (("sofia_es", "Sofia"), ("elena_es", "Elena"), ("pablo_es", "Pablo"), ("mateo_es", "Mateo")),
+    "it": (("francesca_it", "Francesca"), ("alessandro_it", "Alessandro"), ("giorgio_it", "Giorgio"), ("davide_it", "Davide")),
+    "pt": (("juliana_pt", "Juliana"), ("larissa_pt", "Larissa"), ("gustavo_pt", "Gustavo"), ("caio_pt", "Caio")),
+    "ru": (("olga_ru", "Olga"), ("tatiana_ru", "Tatiana"), ("sergei_ru", "Sergei"), ("alexei_ru", "Alexei")),
+    "hi": (("priya_hi", "Priya"), ("arjun_hi", "Arjun")),
+    "fr": (("amelie_fr", "Amelie"), ("lea_fr", "Lea"), ("theo_fr", "Theo"), ("baptiste_fr", "Baptiste")),
+}
+
+
+def _show_kitten_pico_voices():
+    print("\n  KittenTTS Pico voices:")
+    for language, entries in KITTEN_PICO_VOICES.items():
+        print(f"    {language.upper()}: " + ", ".join(f"{name} ({voice_id})" for voice_id, name in entries))
 
 
 def step_voice(env):
     heading("Speech output")
     current_provider = (env.get("JARVIS_TTS_PROVIDER", "edge") or "edge").strip().lower()
     current_voice = (env.get("JARVIS_SHERPA_VOICE", "alan") or "alan").strip().lower()
-    if current_provider == "say":
-        default_choice = "3" if current_voice == "bryce" else "2"
-    elif current_provider == "piper":
-        default_choice = "4"
+    if current_provider in ("say", "sherpa", "piper"):
+        default_choice = "2"
     elif current_provider == "phonon":
-        default_choice = "5"
+        default_choice = "3"
     elif current_provider == "kokoro":
-        default_choice = "6"
+        default_choice = "4"
+    elif current_provider == "kitten":
+        default_choice = "5"
     else:
         default_choice = "1"
 
-    info("Choose a speech backend. Sherpa, Kokoro, Needle and Phonon assets are installed by install.sh; models load only when selected. Piper additionally needs its native C library.")
+    info("Choose a speech backend. The local English ZIP/Sherpa voice is one option; Kokoro, Needle and Phonon assets are installed by install.sh.")
     print("  1) Edge TTS — Ryan Neural (online)")
-    print("  2) Alan — British English (local Sherpa voice)")
-    print("  3) Bryce — American English (local Sherpa voice)")
-    print("  4) Piper — local Piper model (requires its native library/assets)")
-    print("  5) Phonon — local Rust TTS (loads a compact q8 model into RAM)")
-    print("  6) Kokoro-82M — local FP16 ONNX, 157 voices + matching-voice whisper")
-    choice = ask("Choose voice: 1=Edge, 2=Alan, 3=Bryce, 4=Piper, 5=Phonon, 6=Kokoro",
+    print("  2) Local English — ZIP/Sherpa voice")
+    print("  3) Phonon — local Rust TTS (loads a compact q8 model into RAM)")
+    print("  4) Kokoro-82M — local FP16 ONNX, 157 voices + matching-voice whisper")
+    print("  5) KittenTTS Pico — 30 voices, 8 languages (local ONNX)")
+    choice = ask("Choose voice: 1=Edge, 2=Local English, 3=Phonon, 4=Kokoro, 5=KittenTTS",
                  default=default_choice).strip().lower()
 
-    if choice in ("2", "alan"):
+    if choice in ("2", "local", "english", "alan", "bryce", "say", "sherpa"):
         env.set("JARVIS_TTS_PROVIDER", "say")
         env.set("JARVIS_SHERPA_VOICE", "alan")
-    elif choice in ("3", "bryce"):
-        env.set("JARVIS_TTS_PROVIDER", "say")
-        env.set("JARVIS_SHERPA_VOICE", "bryce")
-    elif choice in ("4", "piper"):
+    elif choice == "piper":
+        # Retain the legacy typed selection without advertising a duplicate menu entry.
         env.set("JARVIS_TTS_PROVIDER", "piper")
-    elif choice in ("5", "phonon"):
+    elif choice in ("3", "phonon"):
         env.set("JARVIS_TTS_PROVIDER", "phonon")
         voice = (env.get("JARVIS_PHONON_VOICE", "edwin") or "edwin").strip().lower()
         voices = {"edwin", "toby", "aldric", "trevor", "hugh", "spencer", "bramwell", "default"}
@@ -884,11 +875,17 @@ def step_voice(env):
             warn("Unknown Phonon voice; using Edwin.")
             voice = "edwin"
         env.set("JARVIS_PHONON_VOICE", voice)
-    elif choice in ("6", "kokoro"):
+    elif choice in ("4", "kokoro"):
         env.set("JARVIS_TTS_PROVIDER", "kokoro")
         env.set("JARVIS_KOKORO_VOICE_MODE", "auto")
         env.set("JARVIS_KOKORO_NORMAL_VOICE", env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric")
         env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
+    elif choice in ("5", "kitten", "kitten-tts", "otis"):
+        kitten_home = Path(env.get("JARVIS_KITTEN_HOME") or Path.home() / "KittenTTS").expanduser()
+        env.set("JARVIS_TTS_PROVIDER", "kitten")
+        env.set("JARVIS_KITTEN_HOME", str(kitten_home))
+        env.set("JARVIS_KITTEN_SPEED", env.get("JARVIS_KITTEN_SPEED", "0.88") or "0.88")
+        env.set("JARVIS_KITTEN_VOICE", env.get("JARVIS_KITTEN_VOICE", "otis_en") or "otis_en")
     else:
         env.set("JARVIS_TTS_PROVIDER", "edge")
     env.save()
@@ -896,7 +893,37 @@ def step_voice(env):
     provider = env.get("JARVIS_TTS_PROVIDER", "edge").strip().lower()
     if provider == "edge":
         ok("Edge TTS selected. JARVIS will use the online Ryan Neural voice.")
-        _prepare_wake_responses(env)
+        return
+
+    if provider == "kitten":
+        kitten_home = Path(env.get("JARVIS_KITTEN_HOME") or Path.home() / "KittenTTS").expanduser()
+        worker = kitten_home / "kitten_worker.py"
+        if not worker.is_file():
+            warn(f"KittenTTS worker not found: {worker}")
+            info("Set JARVIS_KITTEN_HOME to the KittenTTS project directory containing kitten_worker.py.")
+            return
+        _show_kitten_pico_voices()
+        valid_voices = {
+            voice_id
+            for entries in KITTEN_PICO_VOICES.values()
+            for voice_id, _name in entries
+        }
+        current_voice = (env.get("JARVIS_KITTEN_VOICE", "otis_en") or "otis_en").strip().lower()
+        if current_voice not in valid_voices:
+            current_voice = "otis_en"
+        selected_voice = ask(
+            "Select KittenTTS Pico voice ID (30 voices across 8 languages)",
+            default=current_voice,
+        ).strip().lower()
+        if selected_voice not in valid_voices:
+            warn(f"Unknown KittenTTS Pico voice {selected_voice!r}; keeping {current_voice}.")
+            selected_voice = current_voice
+        env.set("JARVIS_KITTEN_VOICE", selected_voice)
+        env.save()
+        language = selected_voice.rsplit("_", 1)[-1]
+        ok(f"KittenTTS Pico selected: {selected_voice} ({language.upper()}).")
+        info("JARVIS launches one persistent ONNX worker and reuses its loaded model.")
+        info("The selected voice is generated locally through KittenTTS's Misaki + NLTK frontend.")
         return
 
     if provider == "kokoro":
@@ -954,7 +981,6 @@ def step_voice(env):
             "Only the selected voice's matching ONNX model is loaded into RAM. "
             "The other model and all voice archives remain on disk."
         )
-        _prepare_wake_responses(env)
         return
 
     if provider == "phonon":
@@ -976,7 +1002,6 @@ def step_voice(env):
         ) and voice_file.is_file()
         if ready:
             ok(f"Phonon is ready at {model_dir}; synthesis will run locally/offline.")
-            _prepare_wake_responses(env)
             return
         warn("Phonon needs the Rust CLI and local model/voice files before first use.")
         if not yes_no("Install the Phonon CLI and download its model assets now?", default=True):
@@ -1008,7 +1033,6 @@ def step_voice(env):
         )
         if result.returncode == 0:
             ok("Phonon CLI and assets are ready.")
-            _prepare_wake_responses(env)
         else:
             warn("Phonon model setup did not finish. Retry: python scripts/prepare_phonon_assets.py")
         return
@@ -1019,7 +1043,6 @@ def step_voice(env):
         result = subprocess.run([sys.executable, str(prepare)], cwd=ROOT, check=False)
         if result.returncode == 0:
             ok("Piper assets are ready.")
-            _prepare_wake_responses(env)
         else:
             warn("Piper model preparation did not finish. Retry: python scripts/prepare_piper_assets.py")
         return
@@ -1056,7 +1079,6 @@ def step_voice(env):
         prepare_layout()
         ok(f"ZIP say assets are ready for {env.get('JARVIS_SHERPA_VOICE', 'alan').title()}.")
         info("The persistent server starts when JARVIS launches.")
-        _prepare_wake_responses(env)
     except Exception as exc:
         warn(f"ZIP say layout is not ready yet: {exc}")
         info("Install the models and runtime, then rerun: python setup.py voice")
@@ -1070,7 +1092,25 @@ def step_wake(env):
     if not generator.is_file():
         warn("Wake-response generator is missing; skipping.")
         return
-    _prepare_wake_responses(env)
+    cache_dir = Path.home() / ".cache" / "jarvis" / "wake_responses"
+    existing = sum(
+        1 for index in range(1, 26)
+        if (cache_dir / f"wake_{index:02d}.mp3").is_file()
+        and (cache_dir / f"wake_{index:02d}.mp3").stat().st_size > 1024
+    )
+    info(f"Prerecorded clips available: {existing}/25.")
+    if existing == 25:
+        ok("All wake acknowledgements are already generated.")
+        return
+    info("Generating missing clips requires internet access for Edge TTS.")
+    if not yes_no("Generate the 25 wake-word acknowledgements now?", default=True):
+        info("Skipped. JARVIS can use its speech synthesizer as a fallback.")
+        return
+    result = subprocess.run([sys.executable, str(generator)], cwd=ROOT, check=False)
+    if result.returncode == 0:
+        ok("Wake-word acknowledgements are ready.")
+    else:
+        warn(f"Clip generation exited with status {result.returncode}. Run later: python setup.py wake")
 
 
 # ───────────────────────── message style profile ─────────────────────────
