@@ -519,12 +519,19 @@ class EmailManager:
         mail = None
         try:
             mail = self._imap(account)
-            status, _ = mail.select(mailbox, readonly=True)
+            status, _ = mail.select(mailbox, readonly=False)
             if status != "OK":
                 raise RuntimeError(f"Unable to open mailbox: {mailbox}")
             raw = self._fetch_raw(mail, uid)
             message = email.message_from_bytes(raw)
-            return self._message_details(message, uid, account["email"])
+            # Opening an individual email is the explicit read action: mark it
+            # Seen only after its content has been retrieved successfully.
+            status, _ = mail.uid("store", self._uid_bytes(uid), "+FLAGS", r"(\Seen)")
+            if status != "OK":
+                raise RuntimeError("Email was fetched, but Gmail did not confirm marking it as read.")
+            details = self._message_details(message, uid, account["email"])
+            details["is_read"] = True
+            return details
         finally:
             if mail:
                 try: mail.logout()
@@ -789,3 +796,27 @@ class EmailManager:
                                        filename=self._decode(filename or "forwarded-attachment.bin"))
         self._send_message(account, message)
         return {"status": "SENT", "from": account["email"], "to": recipients, "subject": subject}
+
+
+    def set_label(self, uid, label, add=True, requested_account=None, mailbox="INBOX"):
+        account = self._account(requested_account)
+        label = str(label or "").strip()
+        if not label or len(label) > 120 or any(ch in label for ch in "\\r\\n"):
+            raise ValueError("A valid Gmail label name is required.")
+        mail = None
+        try:
+            mail = self._imap(account)
+            status, _ = mail.select(mailbox, readonly=False)
+            if status != "OK":
+                raise RuntimeError(f"Unable to open mailbox: {mailbox}")
+            operation = "+X-GM-LABELS" if add else "-X-GM-LABELS"
+            status, _ = mail.uid(operation.split("-")[0] if False else "store",
+                                 self._uid_bytes(uid), operation, f'("{label}")')
+            if status != "OK":
+                raise RuntimeError(f"Gmail did not confirm label update: {label}")
+            return {"status": "OK", "account": account["email"], "uid": str(uid),
+                    "label": label, "applied": bool(add)}
+        finally:
+            if mail:
+                try: mail.logout()
+                except Exception: pass
