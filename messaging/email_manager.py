@@ -630,7 +630,7 @@ class EmailManager:
             status, _ = mail.uid("copy", self._uid_bytes(uid), '"[Gmail]/Trash"')
             if status != "OK":
                 raise RuntimeError("Gmail could not move the message to Trash.")
-            status, _ = mail.uid("store", self._uid_bytes(uid), "+FLAGS", r"(\\Deleted)")
+            status, _ = mail.uid("store", self._uid_bytes(uid), "+FLAGS", r"(\Deleted)")
             if status != "OK":
                 raise RuntimeError("Message was copied to Trash but original cleanup failed.")
             mail.expunge()
