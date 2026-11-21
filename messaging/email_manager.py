@@ -352,7 +352,7 @@ class EmailManager:
                 status, fetched = mail.uid(
                     "fetch",
                     uid,
-                    "(RFC822)",
+                    "(BODY.PEEK[])",
                 )
 
                 if status != "OK":
@@ -774,5 +774,18 @@ class EmailManager:
             f"Subject: {subject}\n\n{original_body}"
         )
         message.set_content(forwarded)
+        # Preserve original file attachments when forwarding.
+        if original.is_multipart():
+            for part in original.walk():
+                filename = part.get_filename()
+                disposition = str(part.get("Content-Disposition", "")).lower()
+                if not filename and "attachment" not in disposition:
+                    continue
+                payload = part.get_payload(decode=True)
+                if payload is None:
+                    continue
+                maintype, subtype = (part.get_content_type() or "application/octet-stream").split("/", 1)
+                message.add_attachment(payload, maintype=maintype, subtype=subtype,
+                                       filename=self._decode(filename or "forwarded-attachment.bin"))
         self._send_message(account, message)
         return {"status": "SENT", "from": account["email"], "to": recipients, "subject": subject}
