@@ -127,7 +127,7 @@ def _collect_instagram(limit):
     host = _env("JARVIS_INSTAGRAM_API_HOST") or "https://graph.instagram.com"
     data = _request("GET", "%s/%s/%s/media" % (host.rstrip("/"), GRAPH_VERSION, quote(user_id, safe="")),
                     token=token, params={"fields": "id,caption,media_type,permalink,timestamp", "limit": min(limit, 50)})
-    return [_item("instagram", (x.get("caption") or x.get("media_type") or "Instagram media").split("\n")[0],
+    return [_item("instagram", (x.get("caption") or x.get("media_type") or "Instagram media").splitlines()[0],
                   x.get("caption"), x.get("permalink"), x.get("timestamp"), x.get("media_type"))
             for x in data.get("data", [])]
 
@@ -138,7 +138,7 @@ def _collect_facebook(limit):
         return []
     data = _request("GET", "https://graph.facebook.com/%s/%s/feed" % (GRAPH_VERSION, quote(page_id, safe="")),
                     token=token, params={"fields": "message,permalink_url,created_time,from", "limit": min(limit, 50)})
-    return [_item("facebook_page", (x.get("message") or "Facebook Page post").split("\\n")[0],
+    return [_item("facebook_page", (x.get("message") or "Facebook Page post").splitlines()[0],
                   x.get("message"), x.get("permalink_url"), x.get("created_time"),
                   (x.get("from") or {}).get("name")) for x in data.get("data", [])]
 
