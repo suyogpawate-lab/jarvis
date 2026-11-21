@@ -583,8 +583,10 @@ class EmailManager:
     def manage_label(self, action, label, requested_account=None):
         account = self._account(requested_account)
         label = str(label or "").strip()
-        if not label or len(label) > 120 or any(ch in label for ch in "\r\n\\"):
+        if not label or len(label) > 120 or '"' in label or any(ch in label for ch in "\r\n\\"):
             raise ValueError("A valid Gmail label name (1–120 characters) is required.")
+        if action == "delete" and (label.upper() == "INBOX" or label.startswith("[Gmail]")):
+            raise ValueError("Built-in Gmail system folders cannot be deleted through JARVIS.")
         if action not in ("create", "delete"):
             raise ValueError("Label action must be create or delete.")
         mail = None
@@ -802,7 +804,7 @@ class EmailManager:
     def set_label(self, uid, label, add=True, requested_account=None, mailbox="INBOX"):
         account = self._account(requested_account)
         label = str(label or "").strip()
-        if not label or len(label) > 120 or any(ch in label for ch in "\r\n\\"):
+        if not label or len(label) > 120 or '"' in label or any(ch in label for ch in "\r\n\\"):
             raise ValueError("A valid Gmail label name is required.")
         mail = None
         try:
