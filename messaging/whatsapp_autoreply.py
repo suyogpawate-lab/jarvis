@@ -1136,7 +1136,7 @@ class WhatsAppAutoReplyWorker:
 
         # Greetings are deterministic and do not need a 120B inference call.
         # This also avoids spending Groq TPM on the most common one-word DMs.
-        greeting_key = re.sub(r"[.!?,\\s]+", " ", incoming.lower()).strip()
+        greeting_key = re.sub(r"[.!?,\s]+", " ", incoming.lower()).strip()
         greeting_replies = {
             "hi": "Hi!",
             "hello": "Hello!",
