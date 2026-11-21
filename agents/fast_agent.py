@@ -2815,6 +2815,33 @@ class FastAgent:
                 return f"Done. I marked {count} unread messages in your Gmail inbox as read."
             if name == "email_send":
                 return "The email tool confirmed that the message was sent successfully."
+            if name == "email_manage":
+                action = str(result.get("action") or "")
+                if result.get("status") == "SENT":
+                    return f"Gmail confirmed the {action.replace('_', ' ')} operation was sent successfully."
+                if action == "get":
+                    return f"I retrieved the email titled {result.get('subject') or '(no subject)'} from {result.get('from') or 'the sender'} and marked it as read."
+                if action == "mark_read":
+                    return "The selected email is now marked as read."
+                if action == "mark_unread":
+                    return "The selected email is now marked as unread."
+                if action == "download_attachments":
+                    files = result.get("attachments") or []
+                    return f"I downloaded {len(files)} attachment(s) to {result.get('directory') or 'the JARVIS email attachments folder'}."
+                if action == "archive":
+                    return "The selected email was archived and remains in All Mail."
+                if action == "delete":
+                    return "The selected email was moved to Gmail Trash. It was not permanently deleted."
+                if action in ("add_label", "remove_label", "create_label", "delete_label"):
+                    return f"Gmail confirmed the {action.replace('_', ' ')} operation for label {result.get('label') or '(unspecified)'}."
+                if action == "list_mailboxes":
+                    return f"I found {len(result.get('mailboxes') or [])} Gmail labels or mailboxes."
+                if action == "forward":
+                    return "Gmail confirmed that the forwarded email was sent."
+                if action in ("reply", "reply_all"):
+                    return "Gmail confirmed that your reply was sent."
+                if action == "send_attachments":
+                    return "Gmail confirmed that the email with attachments was sent."
         return None
 
     def _omniroute_tool_result_fallback(self, original_prompt, messages):
