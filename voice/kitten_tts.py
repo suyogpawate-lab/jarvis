@@ -125,12 +125,32 @@ def warmup() -> dict:
     return ensure_server()
 
 
-def synth(text: str, speed: float = 0.88) -> Path:
-    """Generate one Otis WAV and return a private copy for JARVIS playback."""
+PICO_VOICES = {
+    "eleanor_en": "en", "edith_en": "en", "otis_en": "en", "frank_en": "en",
+    "anna_de": "de", "mia_de": "de", "lukas_de": "de", "paul_de": "de",
+    "sofia_es": "es", "elena_es": "es", "pablo_es": "es", "mateo_es": "es",
+    "francesca_it": "it", "alessandro_it": "it", "giorgio_it": "it", "davide_it": "it",
+    "juliana_pt": "pt", "larissa_pt": "pt", "gustavo_pt": "pt", "caio_pt": "pt",
+    "olga_ru": "ru", "tatiana_ru": "ru", "sergei_ru": "ru", "alexei_ru": "ru",
+    "priya_hi": "hi", "arjun_hi": "hi",
+    "amelie_fr": "fr", "lea_fr": "fr", "theo_fr": "fr", "baptiste_fr": "fr",
+}
+
+
+def synth(text: str, speed: float = 0.88, voice: str | None = None) -> Path:
+    """Generate a WAV with a selected built-in Pico voice for JARVIS playback."""
     text = str(text).strip()
     if not text:
         raise ValueError("KittenTTS text cannot be empty.")
     speed = max(0.5, min(2.0, float(speed)))
+    voice_id = (voice or os.environ.get("JARVIS_KITTEN_VOICE", "otis_en")).strip().lower()
+    if voice_id not in PICO_VOICES:
+        raise ValueError(
+            f"Unsupported KittenTTS Pico voice {voice_id!r}; choose one of: "
+            + ", ".join(PICO_VOICES)
+        )
+    language = PICO_VOICES[voice_id]
+    voice_name = voice_id.rsplit("_", 1)[0]
     ensure_server()
 
     with _request_lock:
@@ -138,8 +158,8 @@ def synth(text: str, speed: float = 0.88) -> Path:
             {
                 "action": "generate",
                 "text": text,
-                "voice": "otis",
-                "language": "en",
+                "voice": voice_name,
+                "language": language,
                 "speed": speed,
             },
             timeout=180.0,
