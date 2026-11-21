@@ -2819,6 +2819,49 @@ class FastAgent:
                 return f"I could not complete the operation. {error[:220]}"
             if result.get("ok") is not True:
                 continue
+            if name == "social_accounts":
+                accounts = result.get("accounts") or []
+                configured = [
+                    str(row.get("platform") or "account")
+                    for row in accounts
+                    if isinstance(row, dict) and row.get("connected")
+                ]
+                missing = [
+                    str(row.get("platform") or "account")
+                    for row in accounts
+                    if isinstance(row, dict) and not row.get("connected")
+                ]
+                lines = ["Social account configuration (credentials present, not provider-validated):"]
+                lines.append("Configured: " + (", ".join(configured) if configured else "none"))
+                lines.append("Not configured: " + (", ".join(missing) if missing else "none"))
+                if result.get("note"):
+                    lines.append(str(result["note"])[:260])
+                return " ".join(lines)
+            if name == "composio_status":
+                if not result.get("enabled"):
+                    return (
+                        "Composio is currently disabled in JARVIS. "
+                        "It will not create sessions or make Composio API calls. "
+                        "Enable it explicitly with JARVIS_ENABLE_COMPOSIO=1 and a private API key."
+                    )
+                return (
+                    "Composio is enabled. "
+                    + ("An API key is configured. " if result.get("configured") else "No API key is configured. ")
+                    + ("A local session file exists." if result.get("session_file_exists") else "No local session file exists yet.")
+                )
+            if name == "social_review":
+                items = result.get("items") or []
+                errors = result.get("errors") or []
+                preview = [
+                    str(row.get("platform", "social")) + ": " + str(row.get("title", "(untitled)"))
+                    for row in items[:5] if isinstance(row, dict)
+                ]
+                summary = f"Social review returned {len(items)} item(s)."
+                if preview:
+                    summary += " " + "; ".join(preview)
+                if errors:
+                    summary += f" {len(errors)} platform(s) reported access errors."
+                return summary
             if name == "email_mark_all_read":
                 try:
                     count = int(result.get("marked_read"))
@@ -2900,12 +2943,14 @@ class FastAgent:
               "tool call, do not repeat any action, and do not claim success unless "
               "the returned result confirms it."
         )
+        timeout = int(os.getenv("JARVIS_OMNIROUTE_SYNTHESIS_TIMEOUT", "30"))
+        timeout = max(10, min(timeout, 90))
         return self._omniroute_request(
             [{"role": "user", "content": synthesis}],
             system_prompt=self._jarvis_system_prompt(),
             max_tokens=256,
             temperature=0.1,
-            timeout=10,
+            timeout=timeout,
         )
 
     @staticmethod
