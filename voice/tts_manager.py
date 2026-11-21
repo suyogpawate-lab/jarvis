@@ -139,7 +139,7 @@ class TTSManager:
             result = self._play_pipeline(provider, text, speed, gen, voice=voice)
         elif provider == "kitten":
             # Use KittenTTS's persistent ONNX worker and JARVIS's interruptible player.
-            result = self._play_pipeline(provider, text, speed, gen)
+            result = self._play_pipeline(provider, text, speed, gen, voice=voice)
         else:
             raise RuntimeError(f"Unknown JARVIS_TTS_PROVIDER {provider!r}; choose say, edge, piper, sherpa, phonon, kokoro, or kitten.")
         if not result:
@@ -209,7 +209,8 @@ class TTSManager:
             from voice.kitten_tts import synth
             base_speed = float(os.environ.get("JARVIS_KITTEN_SPEED", "0.88"))
             effective_speed = max(0.5, min(2.0, base_speed * float(speed)))
-            return synth(sentence, speed=effective_speed)
+            selected_voice = voice or os.environ.get("JARVIS_KITTEN_VOICE", "otis_en")
+            return synth(sentence, speed=effective_speed, voice=selected_voice)
         from voice import sherpa_tts as st
         import soundfile as sf
         voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()
@@ -547,7 +548,8 @@ class TTSManager:
             primary = f"kokoro82m/{voice} (normal + matching whisper)"
         elif provider == "kitten":
             model = str(Path(os.environ.get("JARVIS_KITTEN_HOME", str(Path.home() / "KittenTTS"))).expanduser())
-            primary = "kitten-tts-2-pico/otis (Misaki + NLTK, ONNX worker)"
+            selected_voice = os.environ.get("JARVIS_KITTEN_VOICE", "otis_en").strip().lower()
+            primary = f"kitten-tts-2-pico/{selected_voice} (Misaki + NLTK, ONNX worker)"
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model
