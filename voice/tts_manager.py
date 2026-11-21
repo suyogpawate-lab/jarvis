@@ -458,7 +458,8 @@ class TTSManager:
             return False
         self.last_spoken_text = text
         self.last_started = time.monotonic()
-        return self._speak_with_fallbacks(text, speed, self._gen, voice=_normal_kokoro_voice())
+        voice = _normal_kokoro_voice() if _provider() == "kokoro" else None
+        return self._speak_with_fallbacks(text, speed, self._gen, voice=voice)
 
     def interrupt(self):
         self._gen += 1
