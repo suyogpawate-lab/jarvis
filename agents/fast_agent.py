@@ -7,6 +7,7 @@ from android.android_tools import AndroidTools
 from tools.registry import registry as tool_registry
 from tools import skills as jarvis_skills
 from tools import mcp_client
+from tools import composio_mcp
 from social import manager as social_manager
 from tools import progress
 from agents.groq_keys import get_groq_api_keys
@@ -38,7 +39,9 @@ class FastAgent:
             try:
                 jarvis_skills.register()
                 social_manager.register()
+                composio_mcp.register_status_tool()
                 mcp_client.start_all_async()
+                composio_mcp.start_all_async()
             except Exception as exc:
                 print(f"[JARVIS TOOLS] extension load failed: {exc}")
 

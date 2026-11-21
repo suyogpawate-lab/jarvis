@@ -38,6 +38,7 @@ def make_worker():
     worker.whatsapp = FakeWhatsApp()
     worker.handled_ids = set()
     worker.pending_ack_ids = set()
+    worker._retry_after_by_message = {}
     worker._save_state = lambda: None
     return worker
 
@@ -50,6 +51,7 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         worker.handled_ids = set()
         worker.file_contacts = set()
         worker._failures = {}
+        worker._retry_after_by_message = {}
         worker.max_age_seconds = 600
         worker._rate_limited = lambda chat: False
         worker._remember = lambda *args, **kwargs: None
