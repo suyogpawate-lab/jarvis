@@ -583,7 +583,7 @@ class EmailManager:
     def manage_label(self, action, label, requested_account=None):
         account = self._account(requested_account)
         label = str(label or "").strip()
-        if not label or len(label) > 120 or any(ch in label for ch in "\r\n"):
+        if not label or len(label) > 120 or any(ch in label for ch in "\r\n\\"):
             raise ValueError("A valid Gmail label name (1–120 characters) is required.")
         if action not in ("create", "delete"):
             raise ValueError("Label action must be create or delete.")
@@ -801,7 +801,7 @@ class EmailManager:
     def set_label(self, uid, label, add=True, requested_account=None, mailbox="INBOX"):
         account = self._account(requested_account)
         label = str(label or "").strip()
-        if not label or len(label) > 120 or any(ch in label for ch in "\\r\\n"):
+        if not label or len(label) > 120 or any(ch in label for ch in "\r\n\\"):
             raise ValueError("A valid Gmail label name is required.")
         mail = None
         try:
@@ -811,7 +811,6 @@ class EmailManager:
                 raise RuntimeError(f"Unable to open mailbox: {mailbox}")
             operation = "+X-GM-LABELS" if add else "-X-GM-LABELS"
             status, _ = mail.uid("store", self._uid_bytes(uid), operation, f'("{label}")')
-                                 self._uid_bytes(uid), operation, f'("{label}")')
             if status != "OK":
                 raise RuntimeError(f"Gmail did not confirm label update: {label}")
             return {"status": "OK", "account": account["email"], "uid": str(uid),
