@@ -179,7 +179,7 @@ def _collect_youtube(limit):
         if channel_id and uploads:
             channels.append((snippet.get("title") or "YouTube channel", uploads))
     out = []
-    for channel, playlist in channels[:min(limit, 8)]:
+    for channel, playlist in channels[:min(limit, 4)]:
         data = _request("GET", "https://www.googleapis.com/youtube/v3/playlistItems",
                         token=token, params={"part": "snippet,contentDetails", "playlistId": playlist, "maxResults": 2},
                         headers=headers)
