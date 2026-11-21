@@ -2782,18 +2782,26 @@ class FastAgent:
     def _local_tool_result_fallback(messages):
         """Return a verified result for supported actions without another model call."""
         tool_names = {}
+        tool_actions = {}
         for item in messages:
             if not isinstance(item, dict):
                 continue
             for call in item.get("tool_calls") or []:
                 function = call.get("function") or {}
-                tool_names[str(call.get("id") or "")] = str(function.get("name") or "")
+                call_id = str(call.get("id") or "")
+                tool_names[call_id] = str(function.get("name") or "")
+                try:
+                    call_args = json.loads(function.get("arguments") or "{}")
+                except (TypeError, ValueError):
+                    call_args = {}
+                tool_actions[call_id] = str(call_args.get("action") or "")
 
         for item in reversed(messages):
             if not isinstance(item, dict) or item.get("role") != "tool":
                 continue
             call_id = str(item.get("tool_call_id") or "")
             name = tool_names.get(call_id, str(item.get("name") or ""))
+            action = tool_actions.get(call_id, "")
             try:
                 result = json.loads(str(item.get("content") or ""))
             except (TypeError, ValueError):
@@ -2816,7 +2824,6 @@ class FastAgent:
             if name == "email_send":
                 return "The email tool confirmed that the message was sent successfully."
             if name == "email_manage":
-                action = str(result.get("action") or "")
                 if result.get("status") == "SENT":
                     return f"Gmail confirmed the {action.replace('_', ' ')} operation was sent successfully."
                 if action == "get":
