@@ -150,7 +150,24 @@ bash whatsapp_daemon.sh
 
 The main JARVIS runtime also attempts to start the bridge when needed. Do not run multiple copies unnecessarily.
 
-### Gmail
+### Social accounts and feed review
+
+JARVIS includes optional social integrations for GitHub, Reddit, YouTube, Instagram, Facebook Pages, and LinkedIn. Ask naturally, for example:
+
+```text
+Which social accounts are connected?
+Catch me up on the best posts about robotics and physics.
+Review my YouTube subscriptions and Reddit feed, but keep it to 10 items.
+Star the suyogpawate-lab/jarvis repository on GitHub.
+```
+
+The feed reviewer creates a finite digest, deduplicates items, ranks them against a topic, filters Reddit mature posts, and preserves source links. It does not automatically like, vote, comment, follow, repost, or publish. Explicitly requested actions are supported only where the platform API and granted scopes permit them.
+
+Configure tokens in the private `.env` file; see [social/README.md](social/README.md) for variables, supported actions, and setup limitations. This initial release reads pre-authorized tokens; it does not yet include an in-app OAuth login/refresh wizard. A configured token is not proof of valid permissions.
+
+**Platform boundaries:** Instagram's official API is for Business/Creator accounts, not ordinary personal consumer accounts ([Meta API documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)). Facebook personal-profile feed access is not included; Facebook Page access is used instead. LinkedIn member-feed reading requires restricted access, while posting permissions differ from reading permissions ([LinkedIn permissions](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-04)). YouTube rating actions use the official OAuth-protected rating endpoint ([YouTube Data API](https://developers.google.com/youtube/data/reference/rest/v3/videos/rate)).
+
+## Gmail
 
 After configuring Gmail with `jarvis-setup gmail`, ask JARVIS in natural language to search or summarize recent email, find messages, or send an email. Gmail uses IMAP/SMTP and a Google App Password. If several accounts are configured, setup can select a default account. Email access will not work until valid credentials and network connectivity are available.
 
