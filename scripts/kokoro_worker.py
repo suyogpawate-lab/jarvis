@@ -251,8 +251,9 @@ class PersistentKokoroEngine:
             ipa = " ".join(str(phonemes).split())
         else:
             # One eSpeak process for the whole utterance, not one process per clause.
+            phrase = text
             result = subprocess.run(
-                ["espeak-ng", "-q", "--ipa", "-v", lang, text],
+                ["espeak-ng", "-q", "--ipa", "-v", lang, phrase],
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode:
