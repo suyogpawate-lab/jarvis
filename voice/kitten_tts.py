@@ -35,10 +35,10 @@ def _kitten_home() -> Path:
 def _request(payload: dict, timeout: float = 180.0) -> dict:
     with socket.create_connection((HOST, PORT), timeout=min(timeout, 10.0)) as sock:
         sock.settimeout(timeout)
-        stream = sock.makefile("rwb")
-        stream.write((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
-        stream.flush()
-        raw = stream.readline(1_000_001)
+        with sock.makefile("rwb") as stream:
+            stream.write((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+            stream.flush()
+            raw = stream.readline(1_000_001)
 
     if not raw:
         raise RuntimeError("KittenTTS worker disconnected without a response.")
