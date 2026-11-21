@@ -3,4 +3,4 @@
 set -eu
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
-exec python "$ROOT/setup.py" voice "$@"
+exec "$ROOT/setup" voice "$@"
