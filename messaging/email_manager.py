@@ -412,6 +412,63 @@ class EmailManager:
                 except Exception:
                     pass
 
+    def delete_matching_sender(self, sender_domain, requested_account=None, mailbox="[Gmail]/All Mail", limit=2000):
+        """Move every matching sender-domain message in All Mail to Trash, never expunge."""
+        account = self._account(requested_account)
+        sender = str(sender_domain or "").strip().lower().lstrip("@")
+        if not sender or any(ch.isspace() for ch in sender) or "." not in sender:
+            raise ValueError("Provide a sender domain such as github.com.")
+        try:
+            limit = max(1, min(int(limit), 2000))
+        except (TypeError, ValueError):
+            limit = 2000
+
+        mail = None
+        try:
+            mail = self._imap(account)
+            status, _ = mail.select(mailbox, readonly=False)
+            if status != "OK":
+                raise RuntimeError(f"Unable to open Gmail mailbox: {mailbox}")
+            status, data = mail.uid("search", None, "FROM", f'"{sender}"')
+            if status != "OK":
+                raise RuntimeError("Gmail sender search failed.")
+
+            uids = list(data[0].split())
+            total = len(uids)
+            selected = uids[:limit]
+            moved = 0
+            failed = []
+            for uid in selected:
+                # Gmail label operations are reversible. Never EXPUNGE or use
+                # IMAP +FLAGS.SILENT (\\Deleted), which could purge messages.
+                status, _ = mail.uid("store", uid, "+X-GM-LABELS", r"(\\Trash)")
+                if status != "OK":
+                    failed.append(uid.decode(errors="replace"))
+                    continue
+                status, _ = mail.uid("store", uid, "-X-GM-LABELS", r"(\\Inbox)")
+                if status != "OK":
+                    failed.append(uid.decode(errors="replace"))
+                    continue
+                moved += 1
+            return {
+                "account": account["email"],
+                "mailbox": mailbox,
+                "sender_domain": sender,
+                "matched": total,
+                "processed": len(selected),
+                "moved_to_trash": moved,
+                "failed": len(failed),
+                "failed_uids": failed[:20],
+                "truncated": total > limit,
+                "permanent_delete": False,
+            }
+        finally:
+            if mail:
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+
     def send(
         self,
         to,
