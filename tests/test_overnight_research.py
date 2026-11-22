@@ -3,12 +3,41 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from automation.overnight_research import OvernightResearch, _redact
 
 
 class OvernightResearchTests(unittest.TestCase):
+    def test_delivery_deadline_uses_device_local_timezone(self):
+        import time
+        from datetime import datetime
+        deadline = OvernightResearch._resolve_delivery_deadline("at 5:30 AM")
+        self.assertGreater(deadline, time.time())
+        target = datetime.fromtimestamp(deadline).astimezone()
+        self.assertEqual((target.hour, target.minute), (5, 30))
+
+    def test_interrupted_mission_is_auto_resumed_on_startup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            state_path.write_text(json.dumps({"schema": 1, "missions": [{
+                "id": "overnight-recover-me",
+                "query": "quantum physics",
+                "status": "COLLECTING",
+                "phase": "collection",
+                "collection_deadline": 0,
+                "evidence_file": str(Path(directory) / "evidence.jsonl"),
+                "directory": directory,
+                "report_file": str(Path(directory) / "FINAL_REPORT.md"),
+            }]}), encoding="utf-8")
+            with patch.object(OvernightResearch, "resume", autospec=True) as resume:
+                manager = OvernightResearch(Mock(), Mock(), state_path)
+            resume.assert_called_once_with(manager, "overnight-recover-me")
+            saved = json.loads(state_path.read_text(encoding="utf-8"))
+            mission = saved["missions"][0]
+            self.assertEqual(mission["status"], "PAUSED_RECOVERY")
+            self.assertTrue(mission["auto_resume"])
+
     def test_only_public_https_urls_are_eligible(self):
         self.assertEqual(OvernightResearch._url("http://example.com/page"), "")
         self.assertEqual(OvernightResearch._url("https://localhost/private"), "")
