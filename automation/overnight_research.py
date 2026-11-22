@@ -255,7 +255,7 @@ class OvernightResearch:
             return None
         text = _clean(value, 80).lower()
         match = re.search(
-            r"(?:(tomorrow)\\s+)?(?:by|at)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?",
+            r"(?:(tomorrow)\s+)?(?:by|at)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
             text,
         )
         if not match:
