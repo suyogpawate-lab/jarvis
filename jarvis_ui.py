@@ -1502,7 +1502,7 @@ def cursor(show):
 
 def main():
     import termios, tty, codecs
-    global _ev_pos, BRAIN, BRAIN_ERR
+    global _ev_pos, BRAIN, BRAIN_ERR, AUTO_UPDATE_RESTART
     print("Starting JARVIS...")
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
