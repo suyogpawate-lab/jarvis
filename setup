@@ -1065,9 +1065,14 @@ def step_voice(env):
     elif choice in ("5", "kitten", "kitten-tts", "otis"):
         env.set("JARVIS_TTS_PROVIDER", "kitten")
         env.unset("JARVIS_KITTEN_HOME")  # legacy external-worker setting
-        cache_dir = Path(
-            env.get("JARVIS_KITTEN_CACHE") or Path.home() / ".cache" / "huggingface"
-        ).expanduser()
+        configured_cache = (env.get("JARVIS_KITTEN_CACHE") or "").strip()
+        legacy_default = Path.home() / ".cache" / "huggingface"
+        # Migrate the old implicit cache default into this checkout. Preserve
+        # only an explicitly selected non-default cache location.
+        if not configured_cache or Path(configured_cache).expanduser() == legacy_default:
+            cache_dir = ROOT / "cache" / "huggingface"
+        else:
+            cache_dir = Path(configured_cache).expanduser()
         env.set("JARVIS_KITTEN_CACHE", str(cache_dir))
         env.set("JARVIS_KITTEN_MODEL", env.get("JARVIS_KITTEN_MODEL", "KittenML/kitten-tts-2-pico") or "KittenML/kitten-tts-2-pico")
         env.set("JARVIS_KITTEN_OFFLINE", env.get("JARVIS_KITTEN_OFFLINE", "0") or "0")
