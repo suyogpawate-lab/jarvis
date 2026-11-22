@@ -17,8 +17,7 @@ echo "[Kitten] Installing KittenML without its heavyweight optional PyTorch stac
 python -m pip install --retries 5 --timeout 30 --no-deps --upgrade kittenml
 
 echo "[Kitten] Installing the lightweight ONNX + phonemization dependencies..."
-python -m pip install --retries 5 --timeout 30 \
-    numpy soundfile huggingface_hub espeakng_loader phonemizer misaki spacy num2words
+python -m pip install --retries 5 --timeout 30 -r requirements-kitten.txt
 
 echo "[Kitten] Checking runtime imports..."
 python - <<'PY'
