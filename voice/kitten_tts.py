@@ -1,8 +1,10 @@
 """Persistent KittenTTS Pico bridge for JARVIS.
 
-KittenTTS owns model loading and its Misaki + NLTK frontend. JARVIS calls
-the localhost worker and copies each generated WAV into a unique cache file
-before the worker's shared current.wav can be overwritten.
+KittenML owns the text frontend: its English G2P uses a Misaki lexicon with
+a lightweight eSpeak NG fallback when optional ML frontend dependencies are
+unavailable. JARVIS calls the bundled worker over localhost and copies each
+generated WAV into a unique cache file before the worker's prior output is
+reclaimed.
 """
 from __future__ import annotations
 
