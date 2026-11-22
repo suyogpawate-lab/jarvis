@@ -188,14 +188,7 @@ Configure it interactively:
 jarvis-setup coding
 ```
 
-Then delegate coding work explicitly:
-
-```text
-/code status
-/code inspect this repository, fix the failing parser tests, and run the test suite
-```
-
-Programming requests that clearly target code, a repository, a script, a bug, or a software project are routed to the selected coding CLI. Other JARVIS tasks continue through their existing routes.
+After configuration, use ordinary language. For example, ask JARVIS to “inspect this repository, fix the failing parser tests, and run the test suite.” Requests to build, modify, debug, test, or otherwise work on software are automatically routed to the selected coding CLI. Conceptual questions such as “What is a Python generator?” remain with the conversational assistant. Other JARVIS tasks continue through their existing routes.
 
 Configuration is stored in the private, git-ignored `.env` file:
 
