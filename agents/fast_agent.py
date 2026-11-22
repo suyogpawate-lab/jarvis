@@ -314,6 +314,11 @@ class FastAgent:
             return "Checking your Gmail inbox"
         if name == "email_search":
             return f"Searching Gmail for \u201c{clip(args.get('query'), 50)}\u201d"
+        if name == "email_bulk_delete":
+            return f"Moving Gmail messages from {clip(args.get('sender_domain'), 40)} to Trash"
+        if name == "email_manage":
+            action = str(args.get("action") or "").replace("_", " ")
+            return f"Gmail: {clip(action, 30)} message"
         if name == "email_list_unread":
             return "Checking unread Gmail messages"
         if name == "email_mark_all_read":
