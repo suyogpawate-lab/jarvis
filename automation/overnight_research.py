@@ -519,6 +519,7 @@ class OvernightResearch:
             "depth": int(item.get("depth", 0) or 0),
             "collected_at": time.time(),
             "published_at": _clean(item.get("published_at"), 80),
+            "publication_date_status": "provided_by_source" if item.get("published_at") else "unknown",
             "content": content,
         }
         path = Path(mission["evidence_file"])
@@ -685,6 +686,7 @@ class OvernightResearch:
                            and not (Path(current) / d).is_symlink()]
                 for filename in files:
                     if (self._cancel[mission["id"]].is_set()
+                            or time.time() >= float(mission.get("collection_deadline", 0))
                             or mission.get("corpus_limit_reached")
                             or scanned >= MAX_LOCAL_FILES):
                         break
@@ -722,6 +724,7 @@ class OvernightResearch:
                         self._update(mission["id"], local_files_scanned=scanned,
                                      progress=f"Scanned {scanned} local text files.")
                 if (self._cancel[mission["id"]].is_set()
+                        or time.time() >= float(mission.get("collection_deadline", 0))
                         or mission.get("corpus_limit_reached")
                         or scanned >= MAX_LOCAL_FILES):
                     break
@@ -927,9 +930,10 @@ class OvernightResearch:
                 crawled_urls.add(url)
         try:
             # One-time local corpus collection, then repeated public discovery.
-            if not mission.get("local_scan_complete"):
+            if not mission.get("local_scan_complete") and not cancel.is_set() and time.time() < float(mission.get("collection_deadline", 0)):
                 self._scan_local_files(mission, seen)
-                self._knowledge_hub(mission, seen)
+                if not cancel.is_set() and time.time() < float(mission.get("collection_deadline", 0)):
+                    self._knowledge_hub(mission, seen)
                 self._update(mission_id, local_scan_complete=True)
             resume_analysis = str(mission.get("phase", "")).startswith("analysis")
             deadline = float(mission.get("collection_deadline", time.time()))
