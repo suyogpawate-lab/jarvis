@@ -153,21 +153,21 @@ class ConversationalResearch:
         # mission immediately. Parse it before the generic agent can reinterpret
         # the request as an alarm or ordinary conversation.
         scheduled_prefix = re.match(
-            r"^(?:please\\s+)?(?:schedule|set up|arrange)\\s+"
-            r"(?:an?\\s+)?(?:overnight\\s+)?research\\b",
+            r"^(?:please\s+)?(?:schedule|set up|arrange)\s+"
+            r"(?:an?\s+)?(?:overnight\s+)?research\b",
             raw, re.I,
         )
         research_intent = scheduled_prefix or re.match(
-            r"^(?:please\\s+)?(?:overnight\\s+)?(?:jarvis[, ]+)?"
-            r"(?:can you\\s+|could you\\s+|would you\\s+)?"
-            r"(?:research|investigate|look into|study)\\b",
+            r"^(?:please\s+)?(?:overnight\s+)?(?:jarvis[, ]+)?"
+            r"(?:can you\s+|could you\s+|would you\s+)?"
+            r"(?:research|investigate|look into|study)\b",
             raw, re.I,
         ) or re.match(
-            r"^(?:please\\s+)?(?:research|investigate|look into|study)\\s+overnight\\b",
+            r"^(?:please\s+)?(?:research|investigate|look into|study)\s+overnight\b",
             raw, re.I,
         )
         monitoring_intent = re.match(
-            r"^(?:please\\s+)?(?:jarvis[, ]+)?(?:keep track of|monitor|track)\\b",
+            r"^(?:please\s+)?(?:jarvis[, ]+)?(?:keep track of|monitor|track)\b",
             raw, re.I,
         )
         if not (research_intent or monitoring_intent):
@@ -176,11 +176,11 @@ class ConversationalResearch:
         # Accept natural notification phrasing, including "update me on the
         # result at 5 AM tomorrow", not just "give me the results by 5 AM".
         delivery_match = re.search(
-            r"\\b(?:and\\s+)?(?:update me|notify me|give me|deliver|send me|"
-            r"report back|brief me)\\b.*?\\b(?:results?|result|report|findings|summary)\\b"
-            r".*?\\b(?:(tomorrow)\\s+)?(?:by|at)\\s+"
-            r"(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)"
-            r"(?:\\s+(tomorrow))?\\b",
+            r"\b(?:and\s+)?(?:update me|notify me|give me|deliver|send me|"
+            r"report back|brief me)\b.*?\b(?:results?|result|report|findings|summary)\b"
+            r".*?\b(?:(tomorrow)\s+)?(?:by|at)\s+"
+            r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)"
+            r"(?:\s+(tomorrow))?\b",
             raw, re.I,
         )
 
@@ -188,16 +188,16 @@ class ConversationalResearch:
         # deadline is parsed independently from the final delivery clause.
         start_segment = raw[:delivery_match.start()] if delivery_match else raw
         start_time_match = re.search(
-            r"\\b(?:at\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\s*"
-            r"(today|tonight|tomorrow)\\b",
+            r"\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*"
+            r"(today|tonight|tomorrow)\b",
             start_segment, re.I,
         )
 
-        recurring = re.search(r"\\b(every day|daily|every week|weekly)\\b", lower)
+        recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
         if not recurring and re.search(
-            r"\\b(keep track of|monitor|track)\\b", lower
-        ) and re.search(r"\\b(notify me|alert me|keep me updated)\\b", lower):
-            recurring = re.search(r"\\b(daily)\\b", "daily")
+            r"\b(keep track of|monitor|track)\b", lower
+        ) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
+            recurring = re.search(r"\b(daily)\b", "daily")
 
         timing = "now"
         if scheduled_prefix and start_time_match:
@@ -205,15 +205,15 @@ class ConversationalResearch:
         elif delivery_match:
             timing = "overnight"
         elif re.match(
-            r"^(?:please\\s+)?(?:overnight\\s+research|research\\s+overnight)\\b",
+            r"^(?:please\s+)?(?:overnight\s+research|research\s+overnight)\b",
             lower,
-        ) and not re.search(r"\\b(tomorrow|next day)\\b", lower):
+        ) and not re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "overnight"
         elif recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
-        elif re.search(r"\\b(tomorrow|next day)\\b", lower):
+        elif re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "tomorrow"
-        elif re.search(r"\\bat\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?\\b", lower):
+        elif re.search(r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b", lower):
             timing = "at"
 
         # Keep only the topic: remove the scheduling prefix and any delivery
@@ -221,32 +221,32 @@ class ConversationalResearch:
         query_source = raw[:delivery_match.start()] if delivery_match else raw
         if scheduled_prefix:
             query_source = re.sub(
-                r"^(?:please\\s+)?(?:schedule|set up|arrange)\\s+"
-                r"(?:an?\\s+)?(?:overnight\\s+)?research"
-                r"(?:\\s+(?:task|mission))?\\s*(?:on|about|into)?\\s*",
+                r"^(?:please\s+)?(?:schedule|set up|arrange)\s+"
+                r"(?:an?\s+)?(?:overnight\s+)?research"
+                r"(?:\s+(?:task|mission))?\s*(?:on|about|into)?\s*",
                 "", query_source, flags=re.I,
             )
         else:
             query_source = re.sub(
-                r"^(?:please\\s+)?(?:overnight\\s+)?(?:jarvis[, ]+)?"
-                r"(?:can you\\s+|could you\\s+|would you\\s+)?"
-                r"(?:research|investigate|look into|study|keep track of|monitor|track)\\s*"
-                r"(?:overnight\\s+)?(?:on|about|into)?\\s*",
+                r"^(?:please\s+)?(?:overnight\s+)?(?:jarvis[, ]+)?"
+                r"(?:can you\s+|could you\s+|would you\s+)?"
+                r"(?:research|investigate|look into|study|keep track of|monitor|track)\s*"
+                r"(?:overnight\s+)?(?:on|about|into)?\s*",
                 "", query_source, flags=re.I,
             )
         query_source = re.sub(
-            r"\\b(?:at\\s+)?\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)\\s*"
-            r"(?:today|tonight|tomorrow)\\b",
+            r"\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\s*"
+            r"(?:today|tonight|tomorrow)\b",
             "", query_source, flags=re.I,
         )
         query_source = re.sub(
-            r"\\b(?:overnight|tonight|this evening|later tonight|today|tomorrow|"
-            r"next day|every day|daily|every week|weekly)\\b",
+            r"\b(?:overnight|tonight|this evening|later tonight|today|tomorrow|"
+            r"next day|every day|daily|every week|weekly)\b",
             "", query_source, flags=re.I,
         )
         query_source = re.sub(
-            r"\\b(?:and\\s+)?(?:update me|notify me|give me|show me|deliver|"
-            r"send me|report back|brief me)\\b.*$",
+            r"\b(?:and\s+)?(?:update me|notify me|give me|show me|deliver|"
+            r"send me|report back|brief me)\b.*$",
             "", query_source, flags=re.I,
         )
         query = _clean(query_source).strip(" ,.:;")
@@ -272,7 +272,7 @@ class ConversationalResearch:
             )
 
         time_match = re.search(
-            r"\\bat\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?",
+            r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
             lower, re.I,
         )
         schedule_at = time_match.group(0) if time_match else None
