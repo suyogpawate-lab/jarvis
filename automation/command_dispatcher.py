@@ -1975,18 +1975,18 @@ Rules:
             value = (code_match.group(1) or "").strip()
             if not value or value.lower() in {"help", "?"}:
                 return (
-                    "Coding backend commands:\\n"
-                    "/code status — show selected CLI, executable, and workspace\\n"
-                    "/code <task> — delegate a programming task to the selected coding agent\\n"
+                    "Coding backend commands:\n"
+                    "/code status — show selected CLI, executable, and workspace\n"
+                    "/code <task> — delegate a programming task to the selected coding agent\n"
                     "Configure with: jarvis-setup coding"
                 )
             if value.lower() == "status":
                 status = self.coding_backend.status()
                 return (
-                    f"[CODING BACKEND] {status['provider']}\\n"
-                    f"Configured: {status['configured']} | CLI available: {status['available']}\\n"
-                    f"Executable: {status.get('executable') or 'not configured'}\\n"
-                    f"Workspace: {status['workspace']}\\n"
+                    f"[CODING BACKEND] {status['provider']}\n"
+                    f"Configured: {status['configured']} | CLI available: {status['available']}\n"
+                    f"Executable: {status.get('executable') or 'not configured'}\n"
+                    f"Workspace: {status['workspace']}\n"
                     f"Command: {status.get('command') or 'not configured'}"
                 )
             return self.coding_backend.run(value)
