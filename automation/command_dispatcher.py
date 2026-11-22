@@ -2045,9 +2045,9 @@ Rules:
         # Resolve a named overnight mission status locally; do not send IDs
         # through Groq's tool router.
         overnight_status_match = re.fullmatch(
-            r"(?:(?:what\\s+is|what's|show|check|get|tell\\s+me)\\s+)?"
-            r"(?:the\\s+)?(?:(overnight-[a-f0-9]{10})\\s+(?:status|progress)|"
-            r"(?:status|progress)\\s+(?:of\\s+)?(overnight-[a-f0-9]{10}))",
+            r"(?:(?:what\s+is|what's|show|check|get|tell\s+me)\s+)?"
+            r"(?:the\s+)?(?:(overnight-[a-f0-9]{10})\s+(?:status|progress)|"
+            r"(?:status|progress)\s+(?:of\s+)?(overnight-[a-f0-9]{10}))",
             text, re.I,
         )
         if overnight_status_match:
@@ -2069,9 +2069,9 @@ Rules:
                 lines.append(f"ERROR: {mission['error']}")
             if mission.get("report_file"):
                 lines.append(f"REPORT: {mission['report_file']}")
-            return "\\n".join(lines)
+            return "\n".join(lines)
 
-        if re.fullmatch(r"(?:research\\s+status|status\\s+of\\s+research|monitoring\\s+status)", text, re.I):
+        if re.fullmatch(r"(?:research\s+status|status\s+of\s+research|monitoring\s+status)", text, re.I):
             return json.dumps(self.research.status(self.automation), indent=2)
         resume_match = re.fullmatch(r"resume\s+research\s+([A-Za-z0-9_-]+)", text, re.I)
         if resume_match:
