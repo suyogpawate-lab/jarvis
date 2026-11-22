@@ -142,7 +142,7 @@ def synth(text: str, speed: float = 0.88, voice: str | None = None) -> Path:
     text = str(text).strip()
     # Kitten phonemization should receive the spoken proper name, not an initialism.
     import re
-    text = re.sub(r"\\bjarvis\\b", "Jarvis", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bjarvis\b", "Jarvis", text, flags=re.IGNORECASE)
     if not text:
         raise ValueError("KittenTTS text cannot be empty.")
     speed = max(0.5, min(2.0, float(speed)))
