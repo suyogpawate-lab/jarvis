@@ -1137,7 +1137,7 @@ class WhatsAppAutoReplyWorker:
         # Every eligible incoming message, including greetings, is evaluated by Groq.
         # A previous 429 schedules a retry without consuming a failure attempt.
         retry_deadline = max(
-            (self._retry_after_by_message.get(message_id, 0.0) for message_id in ids),
+            (getattr(self, "_retry_after_by_message", {}).get(message_id, 0.0) for message_id in ids),
             default=0.0,
         )
         if retry_deadline > time.time():
