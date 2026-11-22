@@ -52,6 +52,7 @@ jarvis-setup --status
 | Setup section | What to configure |
 |---|---|
 | `keys` | Groq and OmniRoute provider settings. Optional search/lookup keys include Brave, Bing and Veriphone. |
+| `coding` | Select Claude Code, Codex, Cline, Freebuff, or any custom coding CLI and its workspace. |
 | `gmail` | Gmail account(s) and a Google [App Password](https://myaccount.google.com/apppasswords), not your normal account password. Enable 2-Step Verification and ensure IMAP access is available. |
 | `whatsapp` | Link WhatsApp with a pairing code or QR code. Pairing code is convenient when WhatsApp is on the same phone. |
 | `contacts` | Optionally sync Android contacts and maintain a priority-people list. Android may ask for permission. |
