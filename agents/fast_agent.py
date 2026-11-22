@@ -270,6 +270,12 @@ class FastAgent:
                 f"[WARN] Groq {kind} is currently limiting requests. "
                 f"The provider reports a reset in about {wait:.0f} seconds."
             )
+        if response.status_code == 413:
+            return (
+                "[WARN] Groq rejected this request because its prompt exceeded the "
+                "model/organization token budget. JARVIS will not replay any action "
+                "that has already executed."
+            )
         return f"[ERROR] Groq returned HTTP {response.status_code}: {response.text[:300]}"
 
     def _progress_label(self, name, args):
