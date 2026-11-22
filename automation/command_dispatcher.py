@@ -2048,7 +2048,7 @@ Rules:
             r"(?:(?:what\s+is|what's|show|check|get|tell\s+me)\s+)?"
             r"(?:the\s+)?(?:(overnight-[a-f0-9]{10})\s+(?:status|progress)|"
             r"(?:status|progress)\s+(?:of\s+)?(overnight-[a-f0-9]{10}))",
-            text, re.I,
+            text.strip().rstrip("?.!"), re.I,
         )
         if overnight_status_match:
             mission_id = overnight_status_match.group(1) or overnight_status_match.group(2)
