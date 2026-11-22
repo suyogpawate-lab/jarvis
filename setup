@@ -3,7 +3,8 @@
 JARVIS first-run setup.
 
     jarvis-setup                 # full guided setup
-    jarvis-setup gmail           # just one part: keys | gmail | whatsapp | contacts | apps
+    jarvis-setup coding          # configure Claude Code, Codex, Cline, or a custom CLI
+    jarvis-setup gmail           # just one part: keys | coding | gmail | whatsapp | contacts | apps
     jarvis-setup wake            # generate/cache prerecorded wake acknowledgements
     jarvis-setup --status        # show what is configured (secrets are masked)
 
@@ -27,6 +28,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -1344,6 +1346,18 @@ def show_status():
             ok(f"{var}: {mask(env.get(var))}")
         else:
             warn(f"{var}: NOT SET (required)")
+
+    coding_command = env.get("JARVIS_CODING_COMMAND", "claude -p {prompt}")
+    coding_backend = env.get("JARVIS_CODING_BACKEND", "claude-code")
+    try:
+        coding_parts = shlex.split(coding_command)
+        coding_cli = shutil.which(coding_parts[0]) if coding_parts else None
+    except ValueError:
+        coding_cli = None
+    (ok if coding_cli else warn)(
+        f"Coding backend: {coding_backend} ({'CLI found' if coding_cli else 'CLI missing or command invalid'})"
+    )
+    info(f"Coding workspace: {env.get('JARVIS_CODING_WORKSPACE', str(ROOT))}")
 
     accounts = gmail_accounts(env)
     if accounts:
