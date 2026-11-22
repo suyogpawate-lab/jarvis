@@ -855,14 +855,14 @@ class CommandDispatcher:
         if len(value) < 8 or value.startswith("/"):
             return False
         action = re.search(
-            r"\\b(build|implement|fix|debug|refactor|create|write|develop|update|"
-            r"upgrade|test|modify|add|remove|integrate|review|audit|compile|migrate)\\b",
+            r"\b(build|implement|fix|debug|refactor|create|write|develop|update|"
+            r"upgrade|test|modify|add|remove|integrate|review|audit|compile|migrate)\b",
             value, re.I,
         )
         target = re.search(
-            r"\\b(code|coding|programming|script|software|repository|repo|codebase|"
+            r"\b(code|coding|programming|script|software|repository|repo|codebase|"
             r"project|bug|tests?|function|class|module|API|backend|frontend|CLI|"
-            r"Python|JavaScript|TypeScript|package|dependency|JARVIS)\\b",
+            r"Python|JavaScript|TypeScript|package|dependency|JARVIS)\b",
             value, re.I,
         )
         return bool(action and target)
