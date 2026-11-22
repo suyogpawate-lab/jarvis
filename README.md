@@ -177,6 +177,38 @@ The initial adapter exposes read-only app tools plus Composio tool search, conne
 
 After configuring Gmail with `jarvis-setup gmail`, ask JARVIS in natural language to search or summarize recent email, find messages, or send an email. Gmail uses IMAP/SMTP and a Google App Password. If several accounts are configured, setup can select a default account. Email access will not work until valid credentials and network connectivity are available.
 
+### Coding / programming backend
+
+JARVIS has a separate, configurable coding-agent backend for repository work. It does not replace Groq for normal conversation or OmniRoute for JARVIS's existing reasoning/planning paths. The default preset is Claude Code; Codex CLI is also built in. Cline, Freebuff, and other local coding agents can be connected with a custom command template.
+
+Configure it interactively:
+
+```bash
+jarvis-setup coding
+```
+
+Then delegate coding work explicitly:
+
+```text
+/code status
+/code inspect this repository, fix the failing parser tests, and run the test suite
+```
+
+Programming requests that clearly target code, a repository, a script, a bug, or a software project are routed to the selected coding CLI. Other JARVIS tasks continue through their existing routes.
+
+Configuration is stored in the private, git-ignored `.env` file:
+
+| Variable | Purpose |
+|---|---|
+| `JARVIS_CODING_BACKEND` | `claude-code`, `codex`, `cline`, `freebuff`, or `custom` |
+| `JARVIS_CODING_COMMAND` | CLI command template; must contain `{prompt}`; may contain `{workspace}` |
+| `JARVIS_CODING_WORKSPACE` | Project directory the coding agent operates in |
+| `JARVIS_CODING_TIMEOUT` | Maximum run time in seconds (30–7200) |
+
+Examples: Claude Code uses `claude -p {prompt}`; Codex uses `codex exec {prompt}`. For Cline, Freebuff, or another tool, enter the command syntax supported by the installed CLI version. Authentication and provider routing remain managed by that CLI, so an existing Claude Code → OmniRoute setup can continue to work without coupling JARVIS to OmniRoute.
+
+The adapter invokes an argument vector without a shell, runs in the configured workspace, captures output, and enforces a timeout. It does not install coding agents or configure their credentials. A coding agent can modify files and run commands with the permissions of its own process; use a dedicated workspace and review changes. Its own approval/sandbox settings remain in force.
+
 ### Memory and multi-agent discussion
 
 JARVIS has persistent personal/project memory and can use relevant stored context in later responses. Useful explicit commands:
