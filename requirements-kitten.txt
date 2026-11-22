@@ -1,11 +1,11 @@
-# Lightweight KittenTTS Pico ONNX runtime.
-# Termux: install ONNX Runtime with: pkg install python-onnxruntime
-# Install kittenml itself with --no-deps to avoid its optional PyTorch stack.
+# Lightweight KittenTTS Pico ONNX runtime for Termux.
+# Install kittenml with --no-deps to avoid its heavyweight PyTorch stack.
+# KittenML 0.9.7 has an English G2P fallback to eSpeak NG when its optional
+# PyTorch/Misaki frontend is unavailable; spaCy and NLTK are not required here.
 numpy
 soundfile
 huggingface_hub
 espeakng_loader
-phonemizer
-misaki
-spacy
+phonemizer>=3.4
+misaki>=0.9.4
 num2words
