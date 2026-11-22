@@ -1321,11 +1321,24 @@ class FastAgent:
                 sender_domain = arguments.get("sender_domain")
                 if not isinstance(sender_domain, str) or not sender_domain.strip():
                     return {"ok": False, "error": "A sender domain is required."}
-                return {"ok": True, **mgr.delete_matching_sender(
+                result = mgr.delete_matching_sender(
                     sender_domain,
                     requested_account=account,
                     limit=arguments.get("limit", 2000),
-                )}
+                )
+                moved = int(result.get("moved_to_trash", 0))
+                matched = int(result.get("matched", 0))
+                failed = int(result.get("failed", 0))
+                final_reply = (
+                    f"Gmail found {matched} messages from {result['sender_domain']} "
+                    f"and moved {moved} to Trash."
+                )
+                if failed:
+                    final_reply += f" {failed} message(s) had a problem during processing."
+                if result.get("truncated"):
+                    final_reply += " The 2,000-message safety limit was reached; more matches may remain."
+                final_reply += " Nothing was permanently deleted."
+                return {"ok": True, **result, "final_reply": final_reply}
 
             if name == "email_search":
                 query = arguments.get("query")
