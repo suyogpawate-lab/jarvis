@@ -2006,6 +2006,20 @@ Rules:
         if automation_result is not None:
             return automation_result
 
+        # Natural-language stop/pause requests must reach the research
+        # controller before generic Android app-control or agent routing.
+        if re.fullmatch(
+            r"(?:please\\s+)?(?:stop|pause|cancel)\\s+(?:(?:the|current|active)\\s+)?"
+            r"(?:overnight\\s+)?research(?:\\s+task|\\s+mission)?",
+            text.strip(), re.IGNORECASE,
+        ):
+            active = next((item for item in reversed(
+                self.research.overnight.status().get("missions", [])
+            ) if item.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}), None)
+            if active:
+                return self.research.cancel_overnight(active["id"])
+            return "There is no active overnight research mission to stop."
+
         # Overnight research is model-free. Run it after explicit local controls
         # and scheduler-management commands, but before conversational research.
         overnight_request = self.research.parse_request(text)
