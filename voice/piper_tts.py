@@ -55,7 +55,7 @@ def _settings():
         pass
 
     def configured_path(name, fallback):
-        value = os.environ.get(name) or env_values.get(name)
+        value = env_values.get(name) or os.environ.get(name)
         return Path(value).expanduser() if value else fallback
 
     model = configured_path(

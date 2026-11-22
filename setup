@@ -842,6 +842,7 @@ def _discover_piper_voices(env):
         Path.home() / "piper_models",
         Path.home(),
         Path.home() / "storage" / "shared",
+        Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr")) / "share" / "piper",
         Path("/sdcard"),
         Path("/storage/emulated/0"),
     ]
@@ -933,6 +934,8 @@ def _select_piper_voice_model(env):
     model, config = models[int(selected) - 1]
     env.set("JARVIS_PIPER_MODEL", str(model))
     env.set("JARVIS_PIPER_CONFIG", str(config))
+    os.environ["JARVIS_PIPER_MODEL"] = str(model)
+    os.environ["JARVIS_PIPER_CONFIG"] = str(config)
     env.save()
     ok(f"Piper voice selected: {model.name}")
     return True

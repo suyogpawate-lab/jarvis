@@ -86,10 +86,10 @@ def main():
         directory.mkdir(parents=True, exist_ok=True)
 
     values = env_values()
-    configured_library = Path(os.environ.get("JARVIS_PIPER_LIBRARY") or values.get("JARVIS_PIPER_LIBRARY") or OLD_LIB / "libpiper.so").expanduser()
-    configured_model = Path(os.environ.get("JARVIS_PIPER_MODEL") or values.get("JARVIS_PIPER_MODEL") or OLD_MODELS / DEFAULT_MODEL).expanduser()
-    configured_config = Path(os.environ.get("JARVIS_PIPER_CONFIG") or values.get("JARVIS_PIPER_CONFIG") or str(configured_model) + ".json").expanduser()
-    configured_espeak = Path(os.environ.get("JARVIS_ESPEAK_DATA") or values.get("JARVIS_ESPEAK_DATA") or PREFIX / "share/espeak-ng-data").expanduser()
+    configured_library = Path(values.get("JARVIS_PIPER_LIBRARY") or os.environ.get("JARVIS_PIPER_LIBRARY") or OLD_LIB / "libpiper.so").expanduser()
+    configured_model = Path(values.get("JARVIS_PIPER_MODEL") or os.environ.get("JARVIS_PIPER_MODEL") or OLD_MODELS / DEFAULT_MODEL).expanduser()
+    configured_config = Path(values.get("JARVIS_PIPER_CONFIG") or os.environ.get("JARVIS_PIPER_CONFIG") or str(configured_model) + ".json").expanduser()
+    configured_espeak = Path(values.get("JARVIS_ESPEAK_DATA") or os.environ.get("JARVIS_ESPEAK_DATA") or PREFIX / "share/espeak-ng-data").expanduser()
 
     # Copy the Piper library and sibling shared objects, including a private
     # ONNX Runtime when shipped beside it. Never copy the whole Termux lib dir.
