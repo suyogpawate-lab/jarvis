@@ -1406,7 +1406,8 @@ def show_status():
 # ───────────────────────────── main ─────────────────────────────
 
 STEPS = {
-    "keys": step_keys,\n    "coding": step_coding,
+    "keys": step_keys,
+    "coding": step_coding,
     "gmail": step_gmail,
     "whatsapp": step_whatsapp,
     "contacts": step_contacts,
