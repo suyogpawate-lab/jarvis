@@ -208,7 +208,7 @@ Configuration is stored in the private, git-ignored `.env` file:
 
 Examples: Claude Code uses `claude -p {prompt}`; Codex uses `codex exec {prompt}`. For Cline, Freebuff, or another tool, enter the command syntax supported by the installed CLI version. Authentication and provider routing remain managed by that CLI, so an existing Claude Code → OmniRoute setup can continue to work without coupling JARVIS to OmniRoute.
 
-The adapter invokes an argument vector without a shell, runs in the configured workspace, captures output, and enforces a timeout. It does not install coding agents or configure their credentials. A coding agent can modify files and run commands with the permissions of its own process; use a dedicated workspace and review changes. Its own approval/sandbox settings remain in force.
+The adapter invokes an argument vector without a shell, runs in the configured workspace, stores process output in temporary files to avoid unbounded RAM use, and enforces a timeout. It does not install coding agents or configure their credentials. Keep API keys out of command templates; use the CLI's normal authentication or environment configuration. A coding agent can modify files and run commands with the permissions of its own process; use a dedicated workspace and review changes. Its own approval/sandbox settings remain in force.
 
 ### Memory and multi-agent discussion
 
