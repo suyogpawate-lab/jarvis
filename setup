@@ -427,7 +427,7 @@ def step_coding(env):
         ok(f"Coding backend saved: {provider}; executable found: {executable}")
     else:
         warn(f"Configuration saved, but {parts[0]} is not currently on PATH.")
-    info("Run /code status to inspect configuration, or /code <task> to delegate a coding task.")
+    info("JARVIS will route programming and repository-change requests to this backend automatically.")
 
 
 # ───────────────────────────── 2. Gmail ─────────────────────────────
