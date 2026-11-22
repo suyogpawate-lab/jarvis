@@ -4,6 +4,7 @@
 #   bash install.sh              install core runtime + speech engines/models + guided setup
 #   bash install.sh --skip-voice skip Sherpa, Kokoro, Needle/Whistle and wake clips
 #   bash install.sh --skip-phonon skip the Phonon Rust runtime/model
+#   bash install.sh --with-kitten install the lightweight KittenTTS Pico ONNX backend
 #   bash install.sh --skip-osint skip optional OSINT tools
 #   bash install.sh --skip-setup don't launch the guided setup at the end
 #
@@ -30,6 +31,7 @@ cd "$ROOT"
 
 WITH_VOICE=1
 WITH_PHONON=1
+WITH_KITTEN=0
 WITH_OSINT=1
 RUN_SETUP=1
 for arg in "$@"; do
@@ -38,6 +40,8 @@ for arg in "$@"; do
         --skip-voice) WITH_VOICE=0; WITH_PHONON=0 ;;
         --with-phonon) WITH_PHONON=1 ;;
         --skip-phonon) WITH_PHONON=0 ;;
+        --with-kitten) WITH_KITTEN=1 ;;
+        --skip-kitten) WITH_KITTEN=0 ;;
         --skip-osint) WITH_OSINT=0 ;;
         --skip-setup) RUN_SETUP=0 ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
@@ -182,6 +186,13 @@ if [ "$WITH_VOICE" -eq 1 ]; then
     info "Generating the 25 prerecorded wake acknowledgements..."
     python scripts/generate_wake_responses.py \
         || warn "Wake acknowledgements were not generated; run jarvis-setup wake later."
+fi
+
+# ───────────────────────── KittenTTS Pico (optional local ONNX voice) ─────────────────────────
+if [ "$WITH_KITTEN" -eq 1 ]; then
+    info "Installing the lightweight KittenTTS Pico ONNX backend..."
+    bash "$ROOT/scripts/install_kitten_tts.sh" \
+        || warn "KittenTTS setup did not complete. Retry: bash scripts/install_kitten_tts.sh"
 fi
 
 # ───────────────────────── installed apps index ─────────────────────────
