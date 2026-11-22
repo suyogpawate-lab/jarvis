@@ -2009,8 +2009,8 @@ Rules:
         # Natural-language stop/pause requests must reach the research
         # controller before generic Android app-control or agent routing.
         if re.fullmatch(
-            r"(?:please\\s+)?(?:stop|pause|cancel)\\s+(?:(?:the|current|active)\\s+)?"
-            r"(?:overnight\\s+)?research(?:\\s+task|\\s+mission)?",
+            r"(?:please\s+)?(?:stop|pause|cancel)\s+(?:(?:the|current|active)\s+)?"
+            r"(?:overnight\s+)?research(?:\s+task|\s+mission)?",
             text.strip(), re.IGNORECASE,
         ):
             active = next((item for item in reversed(
