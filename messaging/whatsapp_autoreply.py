@@ -1143,7 +1143,7 @@ class WhatsAppAutoReplyWorker:
         if retry_deadline > time.time():
             return False
         for message_id in ids:
-            self._retry_after_by_message.pop(message_id, None)
+            getattr(self, "_retry_after_by_message", {}).pop(message_id, None)
 
         try:
             decision, attachments = self._generate_reply(
