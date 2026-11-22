@@ -16,6 +16,7 @@ import socket
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta
 from collections import deque
 from html.parser import HTMLParser
 from pathlib import Path
@@ -168,12 +169,23 @@ class OvernightResearch:
         self._cancel = {}
         self._threads = {}
         self._state = self._load()
+        recover = []
         for item in self._state.get("missions", []):
             if item.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}:
                 item["status"] = "PAUSED_RECOVERY"
                 item["updated_at"] = time.time()
-                item["recovery_note"] = "JARVIS restarted. Resume explicitly to continue from saved evidence."
+                item["auto_resume"] = True
+                item["recovery_note"] = "JARVIS restarted. Automatically resuming from durable evidence/checkpoints."
+                recover.append(item.get("id"))
         self._save()
+        # Recover interrupted missions automatically after a process restart.
+        # If collection time elapsed while offline, resume proceeds to analysis.
+        for mission_id in recover:
+            if mission_id:
+                try:
+                    self.resume(mission_id)
+                except Exception as exc:
+                    self._log_recovery_failure(mission_id, exc)
 
     def _load(self):
         try:
@@ -230,7 +242,37 @@ class OvernightResearch:
               str(snapshot.get("phase", snapshot.get("status", ""))) + ": " +
               str(snapshot.get("progress", ""))[:180], flush=True)
 
-    def start(self, query, hours=None):
+    def _log_recovery_failure(self, mission_id, exc):
+        try:
+            self._update(mission_id, recovery_error=f"{type(exc).__name__}: {str(exc)[:300]}",
+                         progress="Automatic recovery could not start; use resume research <mission-id>.")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _resolve_delivery_deadline(value):
+        if not value:
+            return None
+        text = _clean(value, 80).lower()
+        match = re.search(
+            r"(?:(tomorrow)\s+)?(?:by|at)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+            text,
+        )
+        if not match:
+            raise ValueError("Delivery time must look like 'at 5:30 AM' or 'tomorrow at 5:30 AM'.")
+        hour, minute = int(match.group(2)), int(match.group(3) or 0)
+        meridiem = match.group(4)
+        if minute > 59 or hour < 1 or hour > (12 if meridiem else 23):
+            raise ValueError("Invalid delivery time.")
+        if meridiem:
+            hour = hour % 12 + (12 if meridiem == "pm" else 0)
+        now = datetime.now().astimezone()
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if match.group(1) or target <= now:
+            target += timedelta(days=1)
+        return target.timestamp()
+
+    def start(self, query, hours=None, delivery_at=None):
         query = _clean(query)
         if len(query) < 4:
             return "[ERROR] Research topic is too short."
@@ -239,7 +281,17 @@ class OvernightResearch:
                 "JARVIS_OVERNIGHT_RESEARCH_HOURS", str(DEFAULT_HOURS)))
         except (TypeError, ValueError):
             hours = DEFAULT_HOURS
-        hours = max(1.0, min(hours, 16.0))
+        hours = max(0.25, min(hours, 36.0))
+        delivery_deadline = self._resolve_delivery_deadline(delivery_at)
+        now = time.time()
+        if delivery_deadline is not None:
+            hours = max(0.0, (delivery_deadline - now) / 3600.0)
+            if hours <= 0:
+                return "[ERROR] The requested delivery time is not in the future."
+            analysis_budget = min(7200.0, max(900.0, hours * 3600.0 * 0.25))
+            collection_deadline = max(now, delivery_deadline - analysis_budget)
+        else:
+            collection_deadline = now + hours * 3600.0
         with self._lock:
             active = next((m for m in reversed(self._state["missions"])
                            if m.get("status") in {"COLLECTING", "ANALYZING", "CANCEL_REQUESTED"}), None)
@@ -253,7 +305,8 @@ class OvernightResearch:
             mission = {
                 "id": mission_id, "query": query, "status": "COLLECTING",
                 "phase": "collection", "created_at": now, "updated_at": now,
-                "duration_hours": hours, "collection_deadline": now + hours * 3600,
+                "duration_hours": hours, "collection_deadline": collection_deadline,
+                "delivery_deadline": delivery_deadline, "auto_resume": True,
                 "directory": str(directory), "evidence_file": str(directory / "evidence.jsonl"),
                 "report_file": str(directory / "FINAL_REPORT.md"),
                 "source_count": 0, "evidence_bytes": 0, "pages_crawled": 0,
@@ -270,6 +323,12 @@ class OvernightResearch:
                                       name="jarvis-overnight-" + mission_id[-6:], daemon=True)
             self._threads[mission_id] = thread
             thread.start()
+        if delivery_deadline is not None:
+            deadline_text = datetime.fromtimestamp(delivery_deadline).astimezone().strftime("%Y-%m-%d %I:%M %p %Z")
+            return (f"[RESEARCH] Overnight mission started: {mission_id}. "
+                    f"Collection is planned to stop before the analysis window for {deadline_text}; "
+                    "OmniRoute will then synthesize the saved evidence. "
+                    f"The report is targeted for {deadline_text}; progress is checkpointed in {directory}.")
         return (f"[RESEARCH] Overnight mission started: {mission_id}. "
                 f"Model-free collection will run for up to {hours:g} hours, "
                 "then OmniRoute will analyze the saved evidence. "
@@ -313,7 +372,10 @@ class OvernightResearch:
             resume_analysis = str(mission.get("phase", "")).startswith("analysis")
             mission["status"] = "ANALYZING" if resume_analysis else "COLLECTING"
             mission["phase"] = "analysis" if resume_analysis else "collection"
-            if not resume_analysis:
+            if not resume_analysis and not mission.get("delivery_deadline"):
+                # Legacy missions without a delivery deadline get one bounded
+                # recovery hour. Deadline-driven missions retain their original
+                # schedule; overdue collection proceeds directly to analysis.
                 mission["collection_deadline"] = max(
                     float(mission.get("collection_deadline", time.time())),
                     time.time() + 3600,

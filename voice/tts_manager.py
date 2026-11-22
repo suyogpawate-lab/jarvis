@@ -126,7 +126,8 @@ class TTSManager:
                     break
                 say_speak(s)
         elif provider == "piper":
-            result = self._play_pipeline(provider, text, speed, gen)
+            from voice.piper_tts import speak as piper_speak
+            result = piper_speak(text, wait=True, speed=speed)
         elif provider == "sherpa":
             result = self._play_pipeline(provider, text, speed, gen)
         elif provider == "edge":
@@ -235,14 +236,17 @@ class TTSManager:
         return False
 
     def _play_pipeline(self, provider, text, speed, gen, voice=None):
-        # Local engines share the same buffered policy: no split up to 50
-        # words, a ~50-word first chunk, then ~15-word chunks. The producer
-        # synthesizes ahead into a two-item queue while mpv plays one stream.
-        # Kokoro receives the complete reply in one worker request. Its worker
-        # phonemizes once and uses one model inference for normal-length replies;
-        # it only splits internally if the 510-token model window is exceeded.
-        # Other local engines retain their existing sentence-streaming policy.
-        sentences = [text] if provider == "kokoro" else phonon_chunk_text(text)
+        # The producer synthesizes ahead into a two-item queue while mpv plays
+        # one continuous stream. Kokoro receives the complete reply in one
+        # worker request. Kitten Pico gets longer, sentence-aware phrases: its
+        # short 15-word follow-up chunks reset prosody too frequently.
+        if provider == "kokoro":
+            sentences = [text]
+        elif provider == "kitten":
+            from voice.text_chunking import kitten_chunk_text
+            sentences = kitten_chunk_text(text)
+        else:
+            sentences = phonon_chunk_text(text)
 
         q = queue.Queue(maxsize=2)  # two ready-ahead chunks while one chunk plays
         errors = []
@@ -531,7 +535,8 @@ class TTSManager:
             primary = f"say/{voice if voice in ('alan', 'bryce') else 'alan'} (ZIP socket server)"
             model = str(Path.home() / "jarvis_voice")
         elif provider == "piper":
-            model = str(Path(__file__).resolve().parents[1] / "models/piper/en_GB-alan-medium.onnx")
+            from voice.piper_tts import _settings
+            model = str(_settings()["model"])
             primary = f"piper/{Path(model).name}"
         elif provider == "sherpa":
             voice = os.environ.get("JARVIS_SHERPA_VOICE", "alan").strip().lower()

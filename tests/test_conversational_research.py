@@ -49,6 +49,21 @@ class ConversationalResearchTests(unittest.TestCase):
             with self.subTest(request=request):
                 self.assertIsNone(ConversationalResearch.parse_request(request))
 
+    def test_overnight_research_parses_report_delivery_deadline(self):
+        parsed = ConversationalResearch.parse_request(
+            "overnight research on quantum physics and give me the result at 5:30 AM"
+        )
+        self.assertEqual(parsed["timing"], "overnight")
+        self.assertEqual(parsed["query"], "quantum physics")
+        self.assertEqual(parsed["delivery_at"], "at 5:30 AM")
+
+        tomorrow = ConversationalResearch.parse_request(
+            "research overnight on quantum physics and give me the result tomorrow at 5:30 AM"
+        )
+        self.assertEqual(tomorrow["timing"], "overnight")
+        self.assertEqual(tomorrow["query"], "quantum physics")
+        self.assertEqual(tomorrow["delivery_at"], "tomorrow at 5:30 AM")
+
     def test_parses_tonight_and_explicit_time(self):
         tonight = ConversationalResearch.parse_request(
             "Research semiconductor advances tonight and brief me"

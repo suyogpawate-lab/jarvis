@@ -155,3 +155,28 @@ def chunk_text(text: str, target_words: int = 22, threshold_words: int = 60) -> 
     if current:
         chunks.append(" ".join(current).strip())
     return [chunk for chunk in chunks if chunk]
+
+
+
+def kitten_chunk_text(
+    text: str,
+    target_words: int = 40,
+    threshold_words: int = 50,
+    min_tail_words: int = 18,
+) -> list[str]:
+    """Chunk Kitten Pico into longer phrases to preserve prosody between calls.
+
+    Keep replies up to 50 words in one synthesis. Longer replies target about
+    40 words at sentence boundaries, and a tiny final remainder is merged
+    back into the previous phrase when the result stays at or below 55 words.
+    """
+    chunks = chunk_text(
+        text, target_words=target_words, threshold_words=threshold_words
+    )
+    if len(chunks) > 1:
+        tail_words = len(chunks[-1].split())
+        combined_words = len(chunks[-2].split()) + tail_words
+        if tail_words < max(1, int(min_tail_words)) and combined_words <= 55:
+            chunks[-2] = chunks[-2].rstrip() + " " + chunks[-1].lstrip()
+            chunks.pop()
+    return chunks

@@ -1976,7 +1976,7 @@ Rules:
         # and scheduler-management commands, but before conversational research.
         overnight_request = self.research.parse_request(text)
         if overnight_request and overnight_request.get("timing") == "overnight":
-            return self.research.start_overnight(overnight_request["query"])
+            return self.research.start_overnight(overnight_request["query"], delivery_at=overnight_request.get("delivery_at"))
 
         # ======================================================
         # CONVERSATIONAL RESEARCH — shared voice/text intake.
@@ -2019,7 +2019,7 @@ Rules:
         research_request = self.research.parse_request(text)
         if research_request:
             if research_request["timing"] == "overnight":
-                return self.research.start_overnight(research_request["query"])
+                return self.research.start_overnight(research_request["query"], delivery_at=research_request.get("delivery_at"))
             if research_request["timing"] == "now":
                 return self.research.research_now(research_request["query"], notify=(source == "scheduler"))
             return self.research.schedule(
