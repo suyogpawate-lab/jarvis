@@ -7,6 +7,7 @@ the saved evidence is analyzed through the configured OmniRoute model only.
 ## Start and control
 
 - `overnight research on <topic>` — start a background mission immediately.
+- `overnight research on <topic> and give me the result at 5:30 AM` — set a local-time delivery target. JARVIS reserves the final part of the window for analysis and synthesis.
 - `research status` — show mission phase, counters, progress, and errors.
 - `list research missions` — list normal and overnight research jobs.
 - `cancel research <mission-id>` — stop an active overnight mission while preserving evidence.
@@ -45,12 +46,21 @@ exports, credentials, or unrelated personal material to the configured roots.
   collection timestamps.
 - OmniRoute analysis is chunked, checkpointed, and retried up to three times.
   It never falls back to Groq.
-- A JARVIS/Termux process restart marks an interrupted mission as paused. Resume it
-  explicitly after startup; the workflow does not silently replay or restart work.
+- A JARVIS process restart automatically resumes an interrupted mission from its
+  persisted evidence and completed analysis batches. It does not restart collection
+  from zero. If the collection deadline has passed, it proceeds directly to analysis.
+- Deadline-driven missions retain the original delivery target across restarts.
+  If the device was offline at the target time, JARVIS completes the report as soon
+  as it can after recovery; it cannot deliver while the device is powered off.
+- Research evidence is appended incrementally and completed analysis batches are
+  written atomically, so a process kill does not discard already completed work.
 
-Android may suspend or terminate Termux during long idle periods. Keep JARVIS
-running overnight for uninterrupted collection. If Android terminates it, the
-saved corpus and completed analysis batches remain available for explicit resume.
+Android may suspend or terminate Termux during long idle periods. A process-level
+recovery feature cannot launch itself after Android force-stops the Termux app or
+while the device is powered off. To resume after a device reboot, Termux must be
+started by the user or a separately installed and configured Termux:Boot app.
+Android battery-optimization and background-execution policies can still affect
+availability. No software can continue processing while the device is switched off.
 
 The collector searches configured, reachable sources; it cannot guarantee
 exhaustive coverage of the internet, private sites, paywalled material, or
