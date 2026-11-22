@@ -78,9 +78,13 @@ class CodingBackendTests(unittest.TestCase):
         self.assertTrue(CommandDispatcher._looks_like_coding_task("Fix the JARVIS WhatsApp parser bug"))
         self.assertTrue(CommandDispatcher._looks_like_coding_task("Build a Python CLI tool"))
         self.assertTrue(CommandDispatcher._looks_like_coding_task("Refactor this repository backend"))
+        self.assertTrue(CommandDispatcher._looks_like_coding_task("Can you add a feature to my app?"))
+        self.assertTrue(CommandDispatcher._looks_like_coding_task("Please make the JARVIS coding backend use Claude Code"))
+        self.assertTrue(CommandDispatcher._looks_like_coding_task("Work on the Python project and fix its tests"))
         self.assertFalse(CommandDispatcher._looks_like_coding_task("Research quantum physics overnight"))
         self.assertFalse(CommandDispatcher._looks_like_coding_task("What is a Python generator?"))
-        self.assertFalse(CommandDispatcher._looks_like_coding_task("/code status"))
+        self.assertFalse(CommandDispatcher._looks_like_coding_task("How do I fix a Python bug?"))
+        self.assertFalse(CommandDispatcher._looks_like_coding_task("Explain how a backend works"))
 
 
 if __name__ == "__main__":
