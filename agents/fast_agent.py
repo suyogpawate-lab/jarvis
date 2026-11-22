@@ -3055,12 +3055,10 @@ class FastAgent:
                         "role": "system",
                         "content": (
                             "Rewrite the supplied answer as one plain-prose paragraph of "
-                            "at most 120 words. Preserve every fact needed for correctness, "
+                            "at most 120 words when that can preserve correctness, "
                             "all critical caveats, and uncertainty. Do not add facts. Do not "
-                            "use lists, bullets, numbering, or headings. If it cannot be "
-                            "accurately compressed, reply exactly: "
-                            "'I cannot fit the complete accurate answer into 120 words. "
-                            "Which part should I focus on?'"
+                            "use lists, bullets, numbering, or headings. If accurate "
+                            "compression is not possible, return the supplied answer unchanged."
                         ),
                     },
                     {"role": "user", "content": answer},
@@ -3074,7 +3072,13 @@ class FastAgent:
                 ).strip()
                 compact_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", compact))
                 compact_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", compact))
-                if compact and len(compact.split()) <= 120 and not compact_list and not compact_heading:
+                if (
+                    compact
+                    and len(compact.split()) <= 120
+                    and not compact_list
+                    and not compact_heading
+                    and not compact.lower().startswith("i cannot fit the complete accurate answer")
+                ):
                     return compact
         except Exception as exc:
             print(f"[JARVIS OUTPUT] Concision pass unavailable: {type(exc).__name__}", flush=True)
