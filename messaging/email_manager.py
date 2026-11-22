@@ -446,12 +446,12 @@ class EmailManager:
             for uid in selected:
                 # Gmail label operations are reversible. Never EXPUNGE or use
                 # IMAP +FLAGS.SILENT (\\Deleted), which could purge messages.
-                status, _ = mail.uid("store", uid, "+X-GM-LABELS", r"(\\Trash)")
+                status, _ = mail.uid("store", uid, "+X-GM-LABELS", r"(\Trash)")
                 if status != "OK":
                     failed.append(uid.decode(errors="replace"))
                     continue
                 moved += 1
-                status, _ = mail.uid("store", uid, "-X-GM-LABELS", r"(\\Inbox)")
+                status, _ = mail.uid("store", uid, "-X-GM-LABELS", r"(\Inbox)")
                 if status != "OK":
                     failed.append(uid.decode(errors="replace"))
             return {
