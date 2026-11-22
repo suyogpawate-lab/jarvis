@@ -964,10 +964,17 @@ class OvernightResearch:
             self._update(mission_id, status="CANCELLED", phase=paused_phase,
                          progress="Mission cancelled; evidence and completed batches preserved.")
         except Exception as exc:
-            self._update(mission_id, status="ANALYSIS_FAILED" if
-                         self._mission(mission_id).get("phase") == "analysis" else "FAILED",
-                         error=f"{type(exc).__name__}: {str(exc)[:500]}",
-                         progress="Mission stopped with an error; evidence is preserved for resume.")
+            # Read the latest persisted phase safely. A missing mission must
+            # not cause a second exception while recording the original failure.
+            current = self._mission(mission_id) or {}
+            phase = str(current.get("phase", ""))
+            failure_status = "ANALYSIS_FAILED" if phase.startswith("analysis") else "FAILED"
+            self._update(
+                mission_id,
+                status=failure_status,
+                error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                progress="Mission stopped with an error; evidence is preserved for resume.",
+            )
         finally:
             self._threads.pop(mission_id, None)
             self._cancel.pop(mission_id, None)
