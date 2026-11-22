@@ -850,19 +850,32 @@ class CommandDispatcher:
 
     @staticmethod
     def _looks_like_coding_task(text):
-        """Route explicit programming work to the selected external coding CLI."""
+        """Recognize natural-language requests to change or work on software."""
         value = str(text or "").strip()
         if len(value) < 8 or value.startswith("/"):
             return False
+
+        # Keep conceptual/explanatory questions on the conversational path.
+        if re.match(
+            r"^(?:what\s+(?:is|are|does)|why\s+(?:is|does|do)|"
+            r"explain\b|teach\s+me\b|how\s+do\s+i\b|"
+            r"how\s+does\b|what'?s\s+the\s+difference)\b",
+            value, re.I,
+        ):
+            return False
+
         action = re.search(
             r"\b(build|implement|fix|debug|refactor|create|write|develop|update|"
-            r"upgrade|test|modify|add|remove|integrate|review|audit|compile|migrate)\b",
+            r"upgrade|test|modify|add|remove|integrate|review|audit|compile|migrate|"
+            r"change|configure|improve|optimize|install|port|connect|wire|make|"
+            r"set\s+up|work\s+on)\b",
             value, re.I,
         )
         target = re.search(
             r"\b(code|coding|programming|script|software|repository|repo|codebase|"
             r"project|bug|tests?|function|class|module|API|backend|frontend|CLI|"
-            r"Python|JavaScript|TypeScript|package|dependency|JARVIS)\b",
+            r"Python|JavaScript|TypeScript|package|dependency|JARVIS|feature|"
+            r"program|app|application|website|web\s+app)\b",
             value, re.I,
         )
         return bool(action and target)
@@ -1967,29 +1980,6 @@ Rules:
             aie_result = aie_nl.handle(text, source=source)
             if aie_result is not None:
                 return aie_result
-
-        # The coding agent is a separately configured local CLI (Claude Code,
-        # Codex, Cline, Freebuff, or a custom executable), not the chat LLM.
-        code_match = re.match(r"^/code(?:\s+(.*))?$", text, re.IGNORECASE | re.DOTALL)
-        if code_match:
-            value = (code_match.group(1) or "").strip()
-            if not value or value.lower() in {"help", "?"}:
-                return (
-                    "Coding backend commands:\n"
-                    "/code status — show selected CLI, executable, and workspace\n"
-                    "/code <task> — delegate a programming task to the selected coding agent\n"
-                    "Configure with: jarvis-setup coding"
-                )
-            if value.lower() == "status":
-                status = self.coding_backend.status()
-                return (
-                    f"[CODING BACKEND] {status['provider']}\n"
-                    f"Configured: {status['configured']} | CLI available: {status['available']}\n"
-                    f"Executable: {status.get('executable') or 'not configured'}\n"
-                    f"Workspace: {status['workspace']}\n"
-                    "Command template: configured (hidden)"
-                )
-            return self.coding_backend.run(value)
 
         # Explicit agent/task/health controls are deterministic and never sent to AI.
         if re.match(r"^/skill(?:\s|$)", text, re.IGNORECASE):
