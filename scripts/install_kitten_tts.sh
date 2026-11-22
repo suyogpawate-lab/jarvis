@@ -13,21 +13,39 @@ fi
 echo "[Kitten] Installing Android ONNX Runtime and eSpeak..."
 pkg install -y python python-onnxruntime espeak-ng
 
-echo "[Kitten] Installing KittenML without its heavyweight optional PyTorch stack..."
-python -m pip install --retries 5 --timeout 30 --no-deps --upgrade kittenml
+echo "[Kitten] Installing KittenML 0.9.7 without its heavyweight PyTorch stack..."
+python -m pip install --retries 5 --timeout 30 --no-deps --upgrade "kittenml==0.9.7"
 
-echo "[Kitten] Installing the lightweight ONNX + phonemization dependencies..."
+echo "[Kitten] Installing lightweight ONNX + phonemization dependencies..."
 python -m pip install --retries 5 --timeout 30 -r requirements-kitten.txt
 
-echo "[Kitten] Checking runtime imports..."
+echo "[Kitten] Checking runtime imports and package origin..."
 python - <<'PY'
+from importlib.metadata import version
+from pathlib import Path
+import kittenml
 import onnxruntime
 import soundfile
 from kittenml import KittenTTS
-print("KittenTTS import OK")
+
+package_path = Path(kittenml.__file__).resolve()
+legacy_checkout = (Path.home() / "KittenTTS").resolve()
+try:
+    package_path.relative_to(legacy_checkout)
+except ValueError:
+    pass
+else:
+    raise SystemExit(
+        "KittenML is importing from ~/KittenTTS. Install it into the active "
+        "Termux Python environment rather than using that checkout on PYTHONPATH."
+    )
+
+print("KittenML:", version("kittenml"))
+print("KittenML package:", package_path)
 print("ONNX Runtime:", onnxruntime.__version__)
 print("SoundFile:", soundfile.__version__)
+print("KittenTTS import OK")
 PY
 
-echo "[Kitten] Runtime installed. The model downloads on first worker start."
+echo "[Kitten] Runtime installed. The Pico model downloads on first worker start."
 echo "Select it with: jarvis-setup voice"

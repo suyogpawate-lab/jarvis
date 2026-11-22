@@ -1,28 +1,29 @@
-"""Tests that live screen frames are classified locally before Groq reasoning."""
+"""Tests that live screen frames are described locally before Groq reasoning."""
 import unittest
 from unittest.mock import patch
 
 from screen_cast import perception
 
 
-class FakeVision:
-    def classify_bytes(self, frame, top_k=5):
+class FakeMirage:
+    def describe_bytes(self, frame):
         assert frame == b"ephemeral-jpeg"
         return {
             "ok": True,
-            "labels": [{"label": "Android settings screen", "score": 0.91}],
+            "reasoning": "Android settings screen",
+            "objects": [{"label": "settings panel"}],
         }
 
 
 class LocalScreenPerceptionTests(unittest.TestCase):
-    def test_groq_receives_text_labels_not_raw_frame(self):
+    def test_groq_receives_local_text_description_not_raw_frame(self):
         captured = []
 
         def ask(prompt):
             captured.append(prompt)
             return "Settings screen."
 
-        with patch.object(perception, "_VISION_ENGINE", FakeVision()):
+        with patch.object(perception, "_MIRAGE_ENGINE", FakeMirage()):
             result = perception._ask_screen("Describe screen", ask, b"ephemeral-jpeg")
 
         self.assertEqual(result, "Settings screen.")

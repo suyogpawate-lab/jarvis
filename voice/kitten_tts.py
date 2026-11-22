@@ -1,8 +1,10 @@
 """Persistent KittenTTS Pico bridge for JARVIS.
 
-KittenTTS owns model loading and its Misaki + NLTK frontend. JARVIS calls
-the localhost worker and copies each generated WAV into a unique cache file
-before the worker's shared current.wav can be overwritten.
+KittenML owns the text frontend: its English G2P uses a Misaki lexicon with
+a lightweight eSpeak NG fallback when optional ML frontend dependencies are
+unavailable. JARVIS calls the bundled worker over localhost and copies each
+generated WAV into a unique cache file before the worker's prior output is
+reclaimed.
 """
 from __future__ import annotations
 
@@ -27,9 +29,15 @@ _request_lock = threading.Lock()
 _worker_proc = None
 
 
-def _kitten_cache() -> Path | None:
+def _kitten_cache() -> Path:
     configured = os.environ.get("JARVIS_KITTEN_CACHE", "").strip()
-    return Path(configured).expanduser().resolve() if configured else None
+    # Keep model weights inside the JARVIS tree by default. An explicit
+    # JARVIS_KITTEN_CACHE remains available for users who choose another disk.
+    return (
+        Path(configured).expanduser().resolve()
+        if configured
+        else ROOT / "cache" / "huggingface"
+    )
 
 
 def _request(payload: dict, timeout: float = 180.0) -> dict:

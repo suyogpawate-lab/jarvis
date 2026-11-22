@@ -5,6 +5,7 @@ JARVIS client over a loopback-only newline-delimited JSON socket.
 """
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import os
 import socketserver
@@ -26,6 +27,33 @@ if cache_home:
     Path(cache_home).expanduser().mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(Path(cache_home).expanduser())
 
+# JARVIS must never import code from the former sibling ~/KittenTTS checkout.
+# KittenML is installed as a normal Python dependency; the worker itself and
+# all JARVIS-owned files remain under ROOT.
+import kittenml
+
+package_file = Path(kittenml.__file__).resolve()
+legacy_checkout = (Path.home() / "KittenTTS").resolve()
+try:
+    package_file.relative_to(legacy_checkout)
+except ValueError:
+    pass
+else:
+    raise RuntimeError(
+        "KittenML is being imported from the external ~/KittenTTS checkout. "
+        "Install the pinned KittenML package with "
+        "'bash scripts/install_kitten_tts.sh' from ~/jarvis."
+    )
+
+try:
+    kitten_version = importlib.metadata.version("kittenml")
+except importlib.metadata.PackageNotFoundError:
+    kitten_version = getattr(kittenml, "__version__", "unknown")
+
+print(
+    f"[Kitten] KittenML {kitten_version} from {package_file}",
+    flush=True,
+)
 print(f"[Kitten] Loading {MODEL_ID} with ONNX backend...", flush=True)
 from kittenml import KittenTTS
 
@@ -65,6 +93,7 @@ class Handler(socketserver.StreamRequestHandler):
                     "ok": True,
                     "status": "ready",
                     "model": MODEL_ID,
+                    "kittenml_version": kitten_version,
                     "load_seconds": load_seconds,
                     "warmup_seconds": warmup_seconds,
                 })
@@ -80,7 +109,6 @@ class Handler(socketserver.StreamRequestHandler):
                 return
             if len(text) > 20_000:
                 self.reply({"ok": False, "error": "Text is too long"})
-
                 return
 
             voice = str(request.get("voice") or "otis").strip()
@@ -127,7 +155,10 @@ class Handler(socketserver.StreamRequestHandler):
         except Exception as exc:
             detail = f"{type(exc).__name__}: {exc}"
             print(f"[Kitten ERROR] {detail}\n{traceback.format_exc()}", flush=True)
-            self.reply({"ok": False, "error": detail})
+            try:
+                self.reply({"ok": False, "error": detail})
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
 
     def reply(self, data):
         self.wfile.write((json.dumps(data, ensure_ascii=False) + "\n").encode("utf-8"))
