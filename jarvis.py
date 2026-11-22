@@ -39,11 +39,33 @@ from memory.intent import MemoryIntent
 from monitoring.system_telemetry import get_telemetry
 from monitoring.notification_watcher import NotificationWatcher
 import service_launcher
+from auto_update import AutoUpdater
 
 
 # ==============================================================
 # CORE OBJECTS
 # ==============================================================
+
+_auto_updater = AutoUpdater(Path(__file__).resolve().parent)
+_auto_update_restart = False
+
+
+def start_auto_updater():
+    return _auto_updater.start()
+
+
+def apply_auto_update_if_ready():
+    global _auto_update_restart
+    if _auto_update_restart: return True
+    _auto_update_restart = _auto_updater.apply_if_pending()
+    return _auto_update_restart
+
+
+def restart_after_update():
+    script = Path(sys.argv[0]).resolve()
+    if not script.is_file(): script = Path(__file__).resolve()
+    os.execv(sys.executable, [sys.executable, str(script), *sys.argv[1:]])
+
 
 jarvis = Jarvis()
 discussion = DiscussionCoordinator()
@@ -1327,6 +1349,11 @@ async def _read_prompt_async():
                     print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
                     return command.strip(), "voice"
 
+                if apply_auto_update_if_ready():
+                    prompt_task.cancel()
+                    try: await prompt_task
+                    except asyncio.CancelledError: pass
+                    return "", "update_restart"
                 await asyncio.sleep(0.08)
 
             _service_cli_background_events()
@@ -1351,8 +1378,8 @@ def read_prompt():
     """
     while True:
         prompt, source = asyncio.run(_read_prompt_async())
-        if prompt:
-            return prompt, source
+        if source == "update_restart": return prompt, source
+        if prompt: return prompt, source
 
 
 # ==============================================================
@@ -1373,6 +1400,7 @@ def main():
         print(f"[VOICE WARN] Local ZIP voice server unavailable: {exc}", flush=True)
 
     init_services()
+    start_auto_updater()
 
     if is_float_mode():
         # Termux:Float is a small terminal surface; keep the CLI compact and
@@ -1408,7 +1436,10 @@ def main():
                 _web_notify(summary)
 
             prompt, prompt_source = read_prompt()
-
+            if prompt_source == "update_restart":
+                print("\n[JARVIS UPDATE] Update installed. Restarting into the new version...", flush=True)
+                shutdown()
+                restart_after_update()
             if not prompt:
                 continue
 

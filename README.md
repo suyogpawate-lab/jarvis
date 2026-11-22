@@ -552,3 +552,14 @@ The installer discovers all `SKILL.md` files in the selected repository/folder, 
 ## Live Android Screen Cast
 
 JARVIS now includes a live-stream receiver and an Android companion app source project in [`android-screen-cast/`](android-screen-cast/README.md). The companion uses Android's visible MediaProjection consent flow to stream continuous frames into Termux over localhost, and an optional Accessibility Service provides UI actions. JARVIS keeps frames in RAM and analyzes the latest frame on request through the configured OmniRoute vision-capable model to avoid sending a model request for every video frame. See the companion README for build, permission, HTTP API, and device-test instructions.
+
+
+## Automatic live updates
+
+JARVIS checks `origin/main` for new commits every 10 seconds by default while its CLI, Float mode, or full-screen UI is running. The watcher only fetches Git metadata in the background. When an update is available, JARVIS waits until the current response/speech task is idle, checks that local tracked files are unchanged and that no untracked file would be overwritten, then fast-forwards `main` and syntax-checks changed Python files. A successful update triggers a controlled process re-exec so Python imports and services load the new code; the conversation UI may briefly reconnect.
+
+This is automatic live updating, not unsafe in-place replacement of Python modules while they are executing. Updates are applied from `main` only, so feature branches and unmerged pull requests are never installed. Local edits, divergent commits, or conflicting untracked files defer the update rather than being overwritten. Update activity is logged to `data/auto_update.log`.
+
+Configuration:
+- `JARVIS_AUTO_UPDATE=0` disables automatic updates.
+- `JARVIS_UPDATE_INTERVAL=10` changes the polling interval in seconds (minimum 5).

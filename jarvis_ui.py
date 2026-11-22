@@ -31,6 +31,7 @@ STATES = ["standby", "listening", "thinking", "speaking", "alert"]
 # ───────────────────────── connect to Jarvis ─────────────────────────
 BRAIN = None      # the imported jarvis.py module (set in main)
 BRAIN_ERR = ""
+AUTO_UPDATE_RESTART = False
 WEB_URL = ""      # e.g. ":8765" once jarvis_web is serving (shown in the prompt box)
 
 
@@ -1507,6 +1508,7 @@ def main():
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import jarvis as brain
         brain.init_services()
+        brain.start_auto_updater()
         BRAIN = brain
     except Exception as e:
         BRAIN_ERR = f"Could not load jarvis.py: {type(e).__name__}: {e}"
@@ -1536,6 +1538,14 @@ def main():
         with Live(get_renderable=build, console=CON, screen=True, refresh_per_second=FPS):
             last_hide = 0.0
             while not S["quit"]:
+                if BRAIN is not None and not S["busy"]:
+                    try:
+                        if BRAIN.apply_auto_update_if_ready():
+                            AUTO_UPDATE_RESTART = True
+                            S["quit"] = True
+                            break
+                    except Exception as update_exc:
+                        print(f"[AUTO UPDATE WARN] {update_exc}", file=sys.__stderr__, flush=True)
                 if time.time() - last_hide > 0.1:  # keep it hidden, whatever re-shows it
                     cursor(False)
                     last_hide = time.time()
@@ -1574,6 +1584,9 @@ def main():
         if BRAIN is not None:
             BRAIN.shutdown()
         print("JARVIS OFFLINE")
+    if AUTO_UPDATE_RESTART:
+        print("[JARVIS UPDATE] Reloading updated code now...", flush=True)
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
 
 
 if __name__ == "__main__":
