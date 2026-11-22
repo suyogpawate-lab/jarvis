@@ -7,6 +7,7 @@ before the worker's shared current.wav can be overwritten.
 from __future__ import annotations
 
 import json
+import re
 import os
 import shutil
 import socket
@@ -140,6 +141,8 @@ PICO_VOICES = {
 def synth(text: str, speed: float = 0.88, voice: str | None = None) -> Path:
     """Generate a WAV with a selected built-in Pico voice for JARVIS playback."""
     text = str(text).strip()
+    # Kitten phonemization should receive the spoken proper name, not an initialism.
+    text = re.sub(r"\bjarvis\b", "Jarvis", text, flags=re.IGNORECASE)
     if not text:
         raise ValueError("KittenTTS text cannot be empty.")
     speed = max(0.5, min(2.0, float(speed)))

@@ -210,7 +210,7 @@ class TTSManager:
             from voice.kitten_tts import synth
             base_speed = float(os.environ.get("JARVIS_KITTEN_SPEED", "0.88"))
             effective_speed = max(0.5, min(2.0, base_speed * float(speed)))
-            selected_voice = voice or os.environ.get("JARVIS_KITTEN_VOICE", "otis_en")
+            selected_voice = str(voice or os.environ.get("JARVIS_KITTEN_VOICE") or "otis_en").strip() or "otis_en"
             return synth(sentence, speed=effective_speed, voice=selected_voice)
         from voice import sherpa_tts as st
         import soundfile as sf
