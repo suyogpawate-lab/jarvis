@@ -270,6 +270,12 @@ class FastAgent:
                 f"[WARN] Groq {kind} is currently limiting requests. "
                 f"The provider reports a reset in about {wait:.0f} seconds."
             )
+        if response.status_code == 413:
+            return (
+                "[WARN] Groq rejected this request because its prompt exceeded the "
+                "model/organization token budget. JARVIS will not replay any action "
+                "that has already executed."
+            )
         return f"[ERROR] Groq returned HTTP {response.status_code}: {response.text[:300]}"
 
     def _progress_label(self, name, args):
@@ -308,6 +314,11 @@ class FastAgent:
             return "Checking your Gmail inbox"
         if name == "email_search":
             return f"Searching Gmail for \u201c{clip(args.get('query'), 50)}\u201d"
+        if name == "email_bulk_delete":
+            return f"Moving Gmail messages from {clip(args.get('sender_domain'), 40)} to Trash"
+        if name == "email_manage":
+            action = str(args.get("action") or "").replace("_", " ")
+            return f"Gmail: {clip(action, 30)} message"
         if name == "email_list_unread":
             return "Checking unread Gmail messages"
         if name == "email_mark_all_read":
@@ -454,6 +465,25 @@ class FastAgent:
         # Sorted so the request prefix is byte-identical every time (Groq caches exact prefixes only).
         extra = sorted(tool_registry.schemas(), key=lambda t: t["function"]["name"])
         return self._builtin_tool_definitions() + extra
+
+    def _continuation_tool_definitions(self, messages):
+        """Keep follow-up tool schemas scoped to the family already in use."""
+        used = set()
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            for call in item.get("tool_calls") or []:
+                function = call.get("function") or {}
+                name = str(function.get("name") or "")
+                if name:
+                    used.add(name)
+        if used and all(name.startswith("email_") for name in used):
+            return [
+                tool for tool in self._tool_definitions()
+                if str((tool.get("function") or {}).get("name") or "").startswith("email_")
+            ]
+        return self._tool_definitions()
+
 
     def _builtin_tool_definitions(self):
         return [
@@ -877,6 +907,27 @@ class FastAgent:
             {
                 "type": "function",
                 "function": {
+                    "name": "email_bulk_delete",
+                    "description": (
+                        "Move all messages from a sender domain to Gmail Trash. "
+                        "Use only when the user explicitly asks to delete/trash all mail from that sender. "
+                        "Searches Gmail All Mail, including archived messages; does not permanently delete or expunge. "
+                        "For example sender_domain=github.com."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "sender_domain": {"type": "string", "description": "Sender domain, e.g. github.com."},
+                            "account": {"type": "string", "description": "Gmail account; omit for default."},
+                            "limit": {"type": "integer", "description": "Maximum messages to process, 1 to 2000; default 2000."}
+                        },
+                        "required": ["sender_domain"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "email_send",
                     "description": "Send an email from the user's Gmail. Only call when the user clearly wants it sent; for drafts or rewording, reply with the draft instead.",
                     "parameters": {
@@ -1271,6 +1322,29 @@ class FastAgent:
                     requested_account=account, mailbox="INBOX"
                 )}
 
+            if name == "email_bulk_delete":
+                sender_domain = arguments.get("sender_domain")
+                if not isinstance(sender_domain, str) or not sender_domain.strip():
+                    return {"ok": False, "error": "A sender domain is required."}
+                result = mgr.delete_matching_sender(
+                    sender_domain,
+                    requested_account=account,
+                    limit=arguments.get("limit", 2000),
+                )
+                moved = int(result.get("moved_to_trash", 0))
+                matched = int(result.get("matched", 0))
+                failed = int(result.get("failed", 0))
+                final_reply = (
+                    f"Gmail found {matched} messages from {result['sender_domain']} "
+                    f"and moved {moved} to Trash."
+                )
+                if failed:
+                    final_reply += f" {failed} message(s) had a problem during processing."
+                if result.get("truncated"):
+                    final_reply += " The 2,000-message safety limit was reached; more matches may remain."
+                final_reply += " Nothing was permanently deleted."
+                return {"ok": True, **result, "final_reply": final_reply}
+
             if name == "email_search":
                 query = arguments.get("query")
                 if not isinstance(query, str) or not query.strip():
@@ -1631,7 +1705,7 @@ class FastAgent:
         if name in ("set_alarm", "set_timer"):
             return self._tool_alarm(name, arguments)
 
-        if name in ("email_list_recent", "email_list_unread", "email_mark_all_read", "email_search", "email_send", "email_manage"):
+        if name in ("email_list_recent", "email_list_unread", "email_mark_all_read", "email_search", "email_send", "email_manage", "email_bulk_delete"):
             return self._tool_email(name, arguments)
 
         if name == "whatsapp_send":
@@ -2840,6 +2914,34 @@ class FastAgent:
                 return f"Done. I marked {count} unread messages in your Gmail inbox as read."
             if name == "email_send":
                 return "The email tool confirmed that the message was sent successfully."
+            if name == "email_bulk_delete":
+                try:
+                    moved = int(result.get("moved_to_trash", 0))
+                    matched = int(result.get("matched", 0))
+                    failed = int(result.get("failed", 0))
+                except (TypeError, ValueError):
+                    continue
+                sender = str(result.get("sender_domain") or "the requested sender")
+                message = (
+                    f"Gmail found {matched} messages from {sender} and moved "
+                    f"{moved} to Trash."
+                )
+                if failed:
+                    message += f" {failed} message(s) could not be moved."
+                if result.get("truncated"):
+                    message += " The safety processing limit was reached; more matching messages may remain."
+                message += " Nothing was permanently deleted."
+                return message
+            if name == "email_search":
+                try:
+                    count = int(result.get("count", 0))
+                except (TypeError, ValueError):
+                    count = 0
+                query = str(result.get("query") or "that search")
+                return (
+                    f"Gmail search for {query!r} returned {count} message(s). "
+                    "This was a search only; no messages were deleted."
+                )
             if name == "email_manage":
                 if result.get("status") == "SENT":
                     return f"Gmail confirmed the {action.replace('_', ' ')} operation was sent successfully."
@@ -3293,15 +3395,31 @@ class FastAgent:
                         ):
                             passthrough = str(result["final_reply"])
 
+                        tool_content = json.dumps(result, ensure_ascii=False)
+                        # Search/list tools can return many previews. Keep UIDs,
+                        # sender and subject fields while bounding model context.
+                        if tool_call["function"]["name"] in ("email_search", "email_list_recent", "email_list_unread"):
+                            try:
+                                compact_result = json.loads(tool_content)
+                                compact_emails = []
+                                for email_item in (compact_result.get("emails") or [])[:12]:
+                                    if not isinstance(email_item, dict):
+                                        continue
+                                    compact_emails.append({
+                                        key: str(email_item.get(key) or "")[:180]
+                                        for key in ("uid", "account", "from", "subject", "date")
+                                    })
+                                compact_result["emails"] = compact_emails
+                                compact_result["returned"] = len(compact_emails)
+                                tool_content = json.dumps(compact_result, ensure_ascii=False)
+                            except (TypeError, ValueError):
+                                tool_content = tool_content[:3500]
                         messages.append(
                             {
                                 "role": "tool",
                                 "tool_call_id": tool_call["id"],
                                 "name": tool_call["function"]["name"],
-                                "content": json.dumps(
-                                    result,
-                                    ensure_ascii=False,
-                                ),
+                                "content": tool_content[:6000],
                             }
                         )
 
@@ -3310,10 +3428,23 @@ class FastAgent:
                     if passthrough:
                         return passthrough
 
+                    # The initial system prompt contains every skill. A tool
+                    # continuation needs only a compact execution policy plus the
+                    # live request and completed tool results.
+                    continuation_messages = list(messages)
+                    if continuation_messages and continuation_messages[0].get("role") == "system":
+                        continuation_messages[0] = {
+                            "role": "system",
+                            "content": (
+                                "You are JARVIS. Continue the user's current task using the "
+                                "available tools. Treat tool results as evidence. Never repeat "
+                                "an action that has already succeeded. Be concise and truthful."
+                            ),
+                        }
                     final_payload = {
                         "model": self.model,
-                        "messages": messages,
-                        "tools": self._tool_definitions(),
+                        "messages": continuation_messages,
+                        "tools": self._continuation_tool_definitions(messages),
                         "tool_choice": "auto",
                         "temperature": 1e-8,
                         "max_tokens": 512,
