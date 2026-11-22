@@ -106,7 +106,7 @@ class ConversationalResearchTests(unittest.TestCase):
         )
         self.assertEqual(parsed["timing"], "scheduled_overnight")
         self.assertEqual(parsed["query"], "quantum mechanics")
-        self.assertEqual(parsed["start_at"], "at 8PM today")
+        self.assertEqual(parsed["start_at"], "at 8 PM today")
         self.assertEqual(parsed["delivery_at"], "tomorrow at 5 AM")
 
         # The scheduler callback must re-enter the deterministic overnight route.
