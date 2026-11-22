@@ -450,11 +450,10 @@ class EmailManager:
                 if status != "OK":
                     failed.append(uid.decode(errors="replace"))
                     continue
+                moved += 1
                 status, _ = mail.uid("store", uid, "-X-GM-LABELS", r"(\\Inbox)")
                 if status != "OK":
                     failed.append(uid.decode(errors="replace"))
-                    continue
-                moved += 1
             return {
                 "account": account["email"],
                 "mailbox": mailbox,
