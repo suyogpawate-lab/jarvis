@@ -45,6 +45,7 @@ from monitoring.health_manager import HealthManager
 from android.android_tools import AndroidTools
 from monitoring.notification_ingestor import NotificationIngestor
 from agents.fast_agent import FastAgent
+from social import manager as social_manager
 from automation.scheduler import AutomationScheduler
 from voice.tts_manager import tts
 from search.search_hub import build_default_search_hub
@@ -2671,6 +2672,33 @@ Rules:
         # workflow planner. The agent runs in the configured workspace.
         if source != "agent_step" and self._looks_like_coding_task(text):
             return self.coding_backend.run(text)
+
+        # Instagram connection/setup is a credential-configuration workflow,
+        # not a shell-planning task. Handle it locally and explain the current
+        # API boundary instead of sending it to OmniRoute as a complex command.
+        if (re.search(r"\binstagram\b", text, re.IGNORECASE)
+                and re.search(r"\b(setup|connect|link|configure|status|account)\b", text, re.IGNORECASE)):
+            account = next(
+                (item for item in social_manager._status({}).get("accounts", [])
+                 if item.get("platform") == "instagram_professional"),
+                {},
+            )
+            if account.get("connected"):
+                return (
+                    "[INSTAGRAM] Professional-account credentials are configured. "
+                    "They have not yet been provider-validated. Ask me to review Instagram "
+                    "to test the read connection. Publishing requires a separate explicit request."
+                )
+            return (
+                "[INSTAGRAM] No professional-account credentials are configured. "
+                "JARVIS currently consumes an OAuth token; it does not yet have an in-app "
+                "Meta OAuth consent/callback wizard. Use an Instagram Business or Creator "
+                "account, complete Meta app setup and OAuth consent with the required "
+                "Instagram business permissions, then place the token and account ID in "
+                "the private ~/jarvis/.env file as JARVIS_INSTAGRAM_ACCESS_TOKEN and "
+                "JARVIS_INSTAGRAM_USER_ID. Do not paste access tokens into chat. "
+                "Ordinary personal Instagram accounts are not supported by this API integration."
+            )
 
         # Natural-language non-coding action requests use the Agent Engine.
         # Keep this after deterministic device routes so simple local queries
