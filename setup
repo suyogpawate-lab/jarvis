@@ -359,7 +359,73 @@ def step_keys(env):
         ok("Optional keys saved.")
 
 
+# ───────────────────────────── Coding agent ─────────────────────────────
+
+def step_coding(env):
+    heading("Coding / programming backend")
+    info("This is separate from JARVIS's Groq conversation model and OmniRoute reasoning model.")
+    info("The selected local CLI handles code editing, tests, and repository work in its configured workspace.")
+    current = (env.get("JARVIS_CODING_BACKEND", "claude-code") or "claude-code").strip().lower()
+    print("  1) Claude Code")
+    print("  2) OpenAI Codex CLI")
+    print("  3) Cline CLI (custom command)")
+    print("  4) Freebuff / another coding agent (custom command)")
+    print("  5) Any other CLI (custom command)")
+    defaults = {"1": "claude-code", "2": "codex", "3": "cline", "4": "freebuff", "5": "custom"}
+    default_choice = next((key for key, value in defaults.items() if value == current), "1")
+    choice = ask("Choose coding backend", default=default_choice).strip().lower()
+    provider = defaults.get(choice, choice if choice in {"claude-code", "codex", "cline", "freebuff", "custom"} else "custom")
+    env.set("JARVIS_CODING_BACKEND", provider)
+
+    preset = {
+        "claude-code": "claude -p {prompt}",
+        "codex": "codex exec {prompt}",
+    }
+    command_default = env.get("JARVIS_CODING_COMMAND") or preset.get(provider, "")
+    if provider in {"cline", "freebuff", "custom"}:
+        info("Enter the exact CLI command for your installed version.")
+        info("Use {prompt} where the task text should be inserted and {workspace} for the project path.")
+        info("Example: my-agent --prompt {prompt} --workspace {workspace}")
+    command = ask(
+        "Coding CLI command template (must include {prompt})",
+        default=command_default,
+        allow_empty=False,
+    ).strip()
+    if "{prompt}" not in command:
+        warn("The command must include {prompt}; configuration was not changed.")
+        return
+    try:
+        import shlex
+        parts = shlex.split(command)
+        if not parts:
+            raise ValueError("empty command")
+    except ValueError as exc:
+        warn(f"Invalid command template: {exc}")
+        return
+
+    workspace_default = env.get("JARVIS_CODING_WORKSPACE") or str(ROOT)
+    workspace = ask("Coding workspace directory", default=workspace_default).strip()
+    if not workspace:
+        workspace = workspace_default
+    timeout = ask("Maximum coding-agent run time in seconds", default=env.get("JARVIS_CODING_TIMEOUT", "1800")).strip()
+    if not timeout.isdigit() or not 30 <= int(timeout) <= 7200:
+        warn("Timeout must be between 30 and 7200 seconds; keeping the previous value.")
+        timeout = env.get("JARVIS_CODING_TIMEOUT", "1800")
+
+    env.set("JARVIS_CODING_COMMAND", command)
+    env.set("JARVIS_CODING_WORKSPACE", str(Path(workspace).expanduser()))
+    env.set("JARVIS_CODING_TIMEOUT", timeout)
+    env.save()
+    executable = shutil.which(parts[0])
+    if executable:
+        ok(f"Coding backend saved: {provider}; executable found: {executable}")
+    else:
+        warn(f"Configuration saved, but {parts[0]} is not currently on PATH.")
+    info("Run /code status to inspect configuration, or /code <task> to delegate a coding task.")
+
+
 # ───────────────────────────── 2. Gmail ─────────────────────────────
+
 
 GMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@(gmail|googlemail)\.com$", re.IGNORECASE)
 
@@ -1326,7 +1392,7 @@ def show_status():
 # ───────────────────────────── main ─────────────────────────────
 
 STEPS = {
-    "keys": step_keys,
+    "keys": step_keys,\n    "coding": step_coding,
     "gmail": step_gmail,
     "whatsapp": step_whatsapp,
     "contacts": step_contacts,
