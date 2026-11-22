@@ -21,11 +21,12 @@ class CodingBackendTests(unittest.TestCase):
     def test_custom_cli_receives_prompt_as_single_argument_without_shell(self):
         with tempfile.TemporaryDirectory() as directory:
             calls = []
+            wait_timeouts = []
             def runner(argv, **kwargs):
                 calls.append((argv, kwargs))
                 kwargs["stdout"].write(b"changed files and tests passed")
                 return type("Process", (), {
-                    "wait": lambda self, timeout=None: 0,
+                    "wait": lambda self, timeout=None: wait_timeouts.append(timeout) or 0,
                     "terminate": lambda self: None,
                     "kill": lambda self: None,
                 })()
@@ -44,7 +45,7 @@ class CodingBackendTests(unittest.TestCase):
             self.assertEqual(argv[-1], str(Path(directory).resolve()))
             self.assertEqual(kwargs["cwd"], str(Path(directory).resolve()))
             self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
-            self.assertEqual(kwargs["timeout"], 60)
+            self.assertEqual(wait_timeouts, [60])
             self.assertNotIn("shell", kwargs)
 
     def test_missing_prompt_placeholder_is_not_executed(self):
