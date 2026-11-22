@@ -383,7 +383,11 @@ def step_coding(env):
         "claude-code": "claude -p {prompt}",
         "codex": "codex exec {prompt}",
     }
-    command_default = env.get("JARVIS_CODING_COMMAND") or preset.get(provider, "")
+    existing_command = env.get("JARVIS_CODING_COMMAND", "")
+    command_default = (
+        existing_command if provider == current and existing_command
+        else preset.get(provider, "")
+    )
     if provider in {"cline", "freebuff", "custom"}:
         info("Enter the exact CLI command for your installed version.")
         info("Use {prompt} where the task text should be inserted and {workspace} for the project path.")
