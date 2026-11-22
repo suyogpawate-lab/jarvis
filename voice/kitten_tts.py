@@ -29,9 +29,15 @@ _request_lock = threading.Lock()
 _worker_proc = None
 
 
-def _kitten_cache() -> Path | None:
+def _kitten_cache() -> Path:
     configured = os.environ.get("JARVIS_KITTEN_CACHE", "").strip()
-    return Path(configured).expanduser().resolve() if configured else None
+    # Keep model weights inside the JARVIS tree by default. An explicit
+    # JARVIS_KITTEN_CACHE remains available for users who choose another disk.
+    return (
+        Path(configured).expanduser().resolve()
+        if configured
+        else ROOT / "cache" / "huggingface"
+    )
 
 
 def _request(payload: dict, timeout: float = 180.0) -> dict:
