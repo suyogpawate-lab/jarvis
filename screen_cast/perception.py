@@ -64,46 +64,69 @@ def _bounded_snapshot(snapshot: dict[str, Any]) -> str:
     return compact[:maximum] + ("[snapshot truncated]" if len(compact) > maximum else "")
 
 
-_VISION_ENGINE = None
+
+_MIRAGE_ENGINE = None
 
 
 def _local_visual_context(frame: bytes | None) -> str:
-    """Run MobileCLIP locally; return only bounded labels/scores to Groq."""
-    global _VISION_ENGINE
+    """Describe the current frame locally with Cactus Mirage."""
+    global _MIRAGE_ENGINE
     if not frame:
-        return "LOCAL VISUAL PERCEPTION: no fresh live frame was available."
+        return "LOCAL MIRAGE PERCEPTION: no fresh live frame was available."
+
     try:
-        if _VISION_ENGINE is None:
-            from intelligence.vision_engine import VisionEngine
-            _VISION_ENGINE = VisionEngine()
-        result = _VISION_ENGINE.classify_bytes(frame, top_k=5)
+        if _MIRAGE_ENGINE is None:
+            from intelligence.mirage_engine import get_mirage_engine
+            _MIRAGE_ENGINE = get_mirage_engine()
+
+        result = _MIRAGE_ENGINE.describe_bytes(frame)
         if not result.get("ok"):
-            return "LOCAL VISUAL PERCEPTION: MobileCLIP-S0 unavailable (" + str(result.get("error", "unknown error"))[:180] + ")."
-        labels = result.get("labels", [])
-        summary = [
-            str(item.get("label", ""))[:100] + " (score " + f"{float(item.get('score', 0.0)):.3f}" + ")"
-            for item in labels if isinstance(item, dict) and item.get("label")
-        ]
-        return "LOCAL MOBILECLIP-S0 VISUAL CANDIDATES: " + ("; ".join(summary) if summary else "no labels")
+            return "LOCAL MIRAGE PERCEPTION unavailable (" + str(
+                result.get("error", "unknown error")
+            )[:180] + ")."
+
+        # Keep structured observations intact but bounded before sending text
+        # to Groq. Mirage's reasoning is its natural-language visual summary.
+        sections = []
+        for key in (
+            "reasoning", "scene", "objects", "regions",
+            "text", "relations", "events"
+        ):
+            value = result.get(key)
+            if value is not None and value != [] and value != {} and value != "":
+                rendered = value if isinstance(value, str) else json.dumps(
+                    value, ensure_ascii=False, separators=(",", ":")
+                )
+                sections.append(key.upper() + ": " + str(rendered)[:3500])
+
+        return "LOCAL CACTUS MIRAGE VISUAL UNDERSTANDING:\n" + (
+            "\n".join(sections) if sections else "No visual details returned."
+        )
+
     except Exception as exc:
-        return "LOCAL VISUAL PERCEPTION: unavailable (" + type(exc).__name__ + ")."
+        return "LOCAL MIRAGE PERCEPTION unavailable (" + type(exc).__name__ + ")."
 
 
 def _ask_screen(prompt: str, ask: Callable[..., str], frame: bytes | None) -> str:
     visual_context = _local_visual_context(frame)
-    # Groq receives text only: Accessibility data + MobileCLIP's local labels.
+    # Groq receives text only: Accessibility data + Mirage's local description.
     # The raw screen frame is never uploaded to a remote vision endpoint.
     enriched = str(prompt) + "\n\n" + visual_context
     return str(ask(enriched) or "").strip()
 
 
-def analyze_latest_screen(prompt: str, ask: Callable[..., str]) -> str:
+def analyze_latest_screen(
+    prompt: str,
+    ask: Callable[..., str],
+    receiver=None,
+) -> str:
     """Describe the current display using a fresh hierarchy and recent live frame."""
-    snapshot, error = get_screen_snapshot()
+    receiver = receiver or get_receiver()
+    snapshot, error = get_screen_snapshot(receiver)
     if error or snapshot is None:
         return "Sir, I couldn't read the live Android screen. " + (error or "Check the JARVIS Accessibility service.")
     compact = _bounded_snapshot(snapshot)
-    frame, frame_at = get_receiver().latest_frame()
+    frame, frame_at = receiver.latest_frame()
     if frame and (not frame_at or time.time() - frame_at > 3.0):
         frame = None
     safe_prompt = (prompt or "Describe the visible screen.").strip()[:1200]
@@ -161,7 +184,7 @@ def handle_screen_request(
                 "Use the app's own confirmation flow.")
 
     if not _ACTION_RE.search(text):
-        return analyze_latest_screen(text, ask)
+        return analyze_latest_screen(text, ask, receiver=receiver)
 
     snapshot, error = get_screen_snapshot(receiver)
     if error or snapshot is None:

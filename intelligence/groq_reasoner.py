@@ -16,7 +16,7 @@ class ScreenReasoningError(RuntimeError):
 
 
 def ask_screen_with_groq(prompt: str) -> str:
-    """Send only Accessibility text and local MobileCLIP labels to Groq."""
+    """Send only Accessibility text and local Mirage descriptions to Groq."""
     keys = get_groq_api_keys()
     model = os.getenv("JARVIS_FAST_MODEL", "openai/gpt-oss-120b")
     prompt = str(prompt or "")[:22000]
