@@ -2042,6 +2042,35 @@ Rules:
                 return self.research.cancel_overnight(mission_id)
             return self.research.cancel_mission(mission_id, self.automation)
 
+        # Resolve a named overnight mission status locally; do not send IDs
+        # through Groq's tool router.
+        overnight_status_match = re.fullmatch(
+            r"(?:(?:what\s+is|what's|show|check|get|tell\s+me)\s+)?"
+            r"(?:the\s+)?(?:(overnight-[a-f0-9]{10})\s+(?:status|progress)|"
+            r"(?:status|progress)\s+(?:of\s+)?(overnight-[a-f0-9]{10}))",
+            text, re.I,
+        )
+        if overnight_status_match:
+            mission_id = overnight_status_match.group(1) or overnight_status_match.group(2)
+            missions = self.research.overnight.status().get("missions", [])
+            mission = next((item for item in missions if item.get("id") == mission_id), None)
+            if not mission:
+                return f"[ERROR] Overnight research mission not found in the latest saved missions: {mission_id}"
+            lines = [
+                f"MISSION: {mission_id}",
+                f"STATUS: {mission.get('status', 'UNKNOWN')}",
+                f"PHASE: {mission.get('phase', 'unknown')}",
+                f"PROGRESS: {mission.get('progress', 'No progress message saved.')}",
+                f"EVIDENCE RECORDS: {mission.get('source_count', 0)}",
+                f"WEB PAGES CRAWLED: {mission.get('pages_crawled', 0)}",
+                f"LOCAL FILES SCANNED: {mission.get('local_files_scanned', 0)}",
+            ]
+            if mission.get("error"):
+                lines.append(f"ERROR: {mission['error']}")
+            if mission.get("report_file"):
+                lines.append(f"REPORT: {mission['report_file']}")
+            return "\n".join(lines)
+
         if re.fullmatch(r"(?:research\s+status|status\s+of\s+research|monitoring\s+status)", text, re.I):
             return json.dumps(self.research.status(self.automation), indent=2)
         resume_match = re.fullmatch(r"resume\s+research\s+([A-Za-z0-9_-]+)", text, re.I)

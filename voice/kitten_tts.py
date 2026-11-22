@@ -27,10 +27,9 @@ _request_lock = threading.Lock()
 _worker_proc = None
 
 
-def _kitten_home() -> Path:
-    return Path(
-        os.environ.get("JARVIS_KITTEN_HOME", str(Path.home() / "KittenTTS"))
-    ).expanduser().resolve()
+def _kitten_cache() -> Path | None:
+    configured = os.environ.get("JARVIS_KITTEN_CACHE", "").strip()
+    return Path(configured).expanduser().resolve() if configured else None
 
 
 def _request(payload: dict, timeout: float = 180.0) -> dict:
@@ -71,24 +70,31 @@ def ensure_server(timeout: float = 180.0) -> dict:
         except Exception:
             pass
 
-        home = _kitten_home()
-        worker = home / "kitten_worker.py"
+        # The worker ships with JARVIS; users no longer need a separate
+        # ~/KittenTTS checkout or external worker path.
+        worker = ROOT / "voice" / "kitten_worker.py"
         if not worker.is_file():
-            raise FileNotFoundError(
-                f"KittenTTS worker not found at {worker}. "
-                "Set JARVIS_KITTEN_HOME to the KittenTTS project directory."
-            )
+            raise FileNotFoundError(f"Bundled KittenTTS worker is missing: {worker}")
 
         log_dir = ROOT / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "kitten_tts_worker.log"
         env = os.environ.copy()
-        env["HF_HUB_OFFLINE"] = "1"
+        cache_dir = _kitten_cache()
+        if cache_dir is not None:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            env["JARVIS_KITTEN_HOME"] = str(cache_dir)
+        # Permit the first run to download the tiny Pico model. Offline mode
+        # is opt-in once the model has been cached.
+        if env.get("JARVIS_KITTEN_OFFLINE", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            env["HF_HUB_OFFLINE"] = "1"
+        else:
+            env.pop("HF_HUB_OFFLINE", None)
 
         with log_path.open("a", encoding="utf-8") as log:
             _worker_proc = subprocess.Popen(
                 [sys.executable, str(worker)],
-                cwd=str(home),
+                cwd=str(ROOT),
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log,

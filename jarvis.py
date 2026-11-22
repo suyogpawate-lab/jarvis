@@ -614,7 +614,9 @@ def handle_screen_question(prompt):
             "http://127.0.0.1:21339/screen/analyze",
             headers={"X-Token": token},
             json={"prompt": prompt.strip()},
-            timeout=24,
+            # Mirage runs locally before Groq summarizes the visual context.
+            # Allow enough time for both stages on slower Android hardware.
+            timeout=(5, 90),
         )
         if response.status_code == 401:
             return "Sir, the screen bridge rejected its authentication token. Check JARVIS_HTTP_TOKEN in .env."

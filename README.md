@@ -24,10 +24,26 @@ bash install.sh --skip-setup    # install dependencies without launching guided 
 bash install.sh --skip-osint    # skip optional OSINT tool clones/dependencies
 bash install.sh --with-voice    # install OpenWakeWord dependencies + Needle/Whistle STT
 bash install.sh --with-phonon   # build ptts and download Phonon q8 model + voice embeddings
+bash install.sh --with-kitten   # install lightweight KittenTTS Pico ONNX runtime
 bash install.sh --help          # show installer options
 ```
 
 The optional voice setup downloads the Android ARM64 Needle runner and Whistle speech model, and installs OpenWakeWord dependencies. Python audio dependencies may still fail on Android if compatible wheels are unavailable. Core JARVIS does not require optional voice packages.
+
+### KittenTTS Pico (bundled local voice backend)
+
+KittenTTS is integrated into the JARVIS repository; it no longer depends on a separate `~/KittenTTS` checkout or an external worker file. Install its lightweight ONNX path with:
+
+```bash
+bash scripts/install_kitten_tts.sh
+# or include it in the main Termux installer:
+bash install.sh --with-kitten
+jarvis-setup voice
+```
+
+The installer installs KittenML without its optional PyTorch stack, uses Termux's ONNX Runtime package, and installs the ONNX/phonemization dependencies. The Pico model weights are downloaded from Hugging Face on the first worker start and cached locally; they are not committed to Git. The worker stays resident, preloads the model once, and exposes only a loopback socket to JARVIS. Generated audio is cached under `cache/kitten_tts/`. Set `JARVIS_KITTEN_OFFLINE=1` after the model has been cached to disable network access for model loading. The selected voice is configured through `jarvis-setup voice` or `JARVIS_KITTEN_VOICE`.
+
+This backend is optional because its Python frontend dependencies and model download are separate from the core JARVIS install. It uses the compact Pico ONNX model rather than KittenTTS's much larger PyTorch model family.
 
 ## First-time setup and configuration
 
