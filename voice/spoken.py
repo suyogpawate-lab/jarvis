@@ -8,6 +8,8 @@ MAX_WORDS = 99
 
 def to_speakable(text, max_words=MAX_WORDS):
     text = strip_markdown(text)
+    # Treat the product name as a proper name, not an all-caps initialism.
+    text = re.sub(r"\bjarvis\b", "Jarvis", text, flags=re.IGNORECASE)
     # Remove only the comma immediately before the honorific "sir".
     text = re.sub(r",\s*(?=sir\b)", " ", text, flags=re.IGNORECASE)
     lines = []
