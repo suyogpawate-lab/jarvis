@@ -325,12 +325,17 @@ class EmailManager:
                     f"Unable to open mailbox: {mailbox}"
                 )
 
-            status, data = mail.uid(
-                "search",
-                None,
-                "TEXT",
-                f'"{query}"',
-            )
+            # Support the common Gmail search operators instead of
+            # searching for their literal text (e.g. "from:github.com").
+            operator, _, operand = query.partition(":")
+            operator = operator.strip().lower()
+            operand = operand.strip().strip('"')
+            if operator == "from" and operand:
+                status, data = mail.uid("search", None, "FROM", f'"{operand}"')
+            elif operator == "subject" and operand:
+                status, data = mail.uid("search", None, "SUBJECT", f'"{operand}"')
+            else:
+                status, data = mail.uid("search", None, "TEXT", f'"{query}"')
 
             if status != "OK":
                 raise RuntimeError(
