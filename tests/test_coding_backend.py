@@ -23,14 +23,19 @@ class CodingBackendTests(unittest.TestCase):
             calls = []
             def runner(argv, **kwargs):
                 calls.append((argv, kwargs))
-                return subprocess.CompletedProcess(argv, 0, "changed files and tests passed", "")
+                kwargs["stdout"].write(b"changed files and tests passed")
+                return type("Process", (), {
+                    "wait": lambda self, timeout=None: 0,
+                    "terminate": lambda self: None,
+                    "kill": lambda self: None,
+                })()
             env = {
                 "JARVIS_CODING_BACKEND": "cline",
                 "JARVIS_CODING_COMMAND": "fake-cline --prompt {prompt} --cwd {workspace}",
                 "JARVIS_CODING_WORKSPACE": directory,
                 "JARVIS_CODING_TIMEOUT": "60",
             }
-            backend = CodingBackend(environ=env, runner=runner)
+            backend = CodingBackend(environ=env, popen_factory=runner)
             with patch("automation.coding_backend.shutil.which", return_value="/usr/bin/fake-cline"):
                 result = backend.run("Fix the parser; then run tests")
             self.assertIn("[CODING COMPLETE]", result)
@@ -52,12 +57,17 @@ class CodingBackendTests(unittest.TestCase):
     def test_nonzero_exit_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             def runner(argv, **kwargs):
-                return subprocess.CompletedProcess(argv, 2, "", "test failure")
+                kwargs["stderr"].write(b"test failure")
+                return type("Process", (), {
+                    "wait": lambda self, timeout=None: 2,
+                    "terminate": lambda self: None,
+                    "kill": lambda self: None,
+                })()
             backend = CodingBackend(environ={
                 "JARVIS_CODING_BACKEND": "custom",
                 "JARVIS_CODING_COMMAND": "fake-agent {prompt}",
                 "JARVIS_CODING_WORKSPACE": directory,
-            }, runner=runner)
+            }, popen_factory=runner)
             with patch("automation.coding_backend.shutil.which", return_value="/usr/bin/fake-agent"):
                 result = backend.run("run tests")
             self.assertIn("exited with code 2", result)
