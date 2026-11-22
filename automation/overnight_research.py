@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timedelta
+from automation.scheduler import _resolve_timezone
 from collections import deque
 from html.parser import HTMLParser
 from pathlib import Path
@@ -168,6 +169,8 @@ class OvernightResearch:
         self._lock = threading.RLock()
         self._cancel = {}
         self._threads = {}
+        self._last_terminal_update = {}
+        self.timezone_name, self.timezone = _resolve_timezone()
         self._state = self._load()
         recover = []
         for item in self._state.get("missions", []):
@@ -238,9 +241,30 @@ class OvernightResearch:
             mission["updated_at"] = time.time()
             self._save()
             snapshot = dict(mission)
-        print("[OVERNIGHT RESEARCH] " + mission_id + " " +
-              str(snapshot.get("phase", snapshot.get("status", ""))) + ": " +
-              str(snapshot.get("progress", ""))[:180], flush=True)
+            log_path = Path(snapshot.get("directory") or self.root / mission_id) / "progress.log"
+            try:
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as log:
+                    log.write(json.dumps({
+                        "at": time.time(), "status": snapshot.get("status"),
+                        "phase": snapshot.get("phase"), "progress": snapshot.get("progress"),
+                    }, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+        # Background progress is persisted, not streamed into the interactive
+        # conversation. Emit lifecycle transitions and at most one heartbeat/minute.
+        now = time.monotonic()
+        previous = self._last_terminal_update.get(mission_id, {})
+        state = (snapshot.get("status"), snapshot.get("phase"))
+        lifecycle = state != previous.get("state")
+        heartbeat = now - previous.get("at", 0) >= 60
+        if lifecycle or heartbeat:
+            print("[OVERNIGHT RESEARCH] " + mission_id + " " +
+                  str(snapshot.get("status", "")) + "/" +
+                  str(snapshot.get("phase", "")) + " — " +
+                  str(snapshot.get("source_count", 0)) + " sources; " +
+                  str(snapshot.get("progress", ""))[:100], flush=True)
+            self._last_terminal_update[mission_id] = {"state": state, "at": now}
 
     def _log_recovery_failure(self, mission_id, exc):
         try:
@@ -266,7 +290,8 @@ class OvernightResearch:
             raise ValueError("Invalid delivery time.")
         if meridiem:
             hour = hour % 12 + (12 if meridiem == "pm" else 0)
-        now = datetime.now().astimezone()
+        _, timezone = _resolve_timezone()
+        now = datetime.now(timezone)
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if match.group(1) or target <= now:
             target += timedelta(days=1)
@@ -306,7 +331,10 @@ class OvernightResearch:
                 "id": mission_id, "query": query, "status": "COLLECTING",
                 "phase": "collection", "created_at": now, "updated_at": now,
                 "duration_hours": hours, "collection_deadline": collection_deadline,
-                "delivery_deadline": delivery_deadline, "auto_resume": True,
+                "delivery_deadline": delivery_deadline, "timezone": self.timezone_name,
+                "started_at": datetime.fromtimestamp(now, self.timezone).isoformat(), "planned_collection_end_at": datetime.fromtimestamp(collection_deadline, self.timezone).isoformat(),
+                "planned_delivery_at": datetime.fromtimestamp(delivery_deadline, self.timezone).isoformat() if delivery_deadline else None,
+                "progress_log": str(directory / "progress.log"), "auto_resume": True,
                 "directory": str(directory), "evidence_file": str(directory / "evidence.jsonl"),
                 "report_file": str(directory / "FINAL_REPORT.md"),
                 "source_count": 0, "evidence_bytes": 0, "pages_crawled": 0,
@@ -324,7 +352,7 @@ class OvernightResearch:
             self._threads[mission_id] = thread
             thread.start()
         if delivery_deadline is not None:
-            deadline_text = datetime.fromtimestamp(delivery_deadline).astimezone().strftime("%Y-%m-%d %I:%M %p %Z")
+            deadline_text = datetime.fromtimestamp(delivery_deadline, self.timezone).strftime("%Y-%m-%d %I:%M %p %Z")
             return (f"[RESEARCH] Overnight mission started: {mission_id}. "
                     f"Collection is planned to stop before the analysis window for {deadline_text}; "
                     "OmniRoute will then synthesize the saved evidence. "
@@ -491,6 +519,7 @@ class OvernightResearch:
             "depth": int(item.get("depth", 0) or 0),
             "collected_at": time.time(),
             "published_at": _clean(item.get("published_at"), 80),
+            "publication_date_status": "provided_by_source" if item.get("published_at") else "unknown",
             "content": content,
         }
         path = Path(mission["evidence_file"])
@@ -657,6 +686,7 @@ class OvernightResearch:
                            and not (Path(current) / d).is_symlink()]
                 for filename in files:
                     if (self._cancel[mission["id"]].is_set()
+                            or time.time() >= float(mission.get("collection_deadline", 0))
                             or mission.get("corpus_limit_reached")
                             or scanned >= MAX_LOCAL_FILES):
                         break
@@ -694,6 +724,7 @@ class OvernightResearch:
                         self._update(mission["id"], local_files_scanned=scanned,
                                      progress=f"Scanned {scanned} local text files.")
                 if (self._cancel[mission["id"]].is_set()
+                        or time.time() >= float(mission.get("collection_deadline", 0))
                         or mission.get("corpus_limit_reached")
                         or scanned >= MAX_LOCAL_FILES):
                     break
@@ -899,9 +930,10 @@ class OvernightResearch:
                 crawled_urls.add(url)
         try:
             # One-time local corpus collection, then repeated public discovery.
-            if not mission.get("local_scan_complete"):
+            if not mission.get("local_scan_complete") and not cancel.is_set() and time.time() < float(mission.get("collection_deadline", 0)):
                 self._scan_local_files(mission, seen)
-                self._knowledge_hub(mission, seen)
+                if not cancel.is_set() and time.time() < float(mission.get("collection_deadline", 0)):
+                    self._knowledge_hub(mission, seen)
                 self._update(mission_id, local_scan_complete=True)
             resume_analysis = str(mission.get("phase", "")).startswith("analysis")
             deadline = float(mission.get("collection_deadline", time.time()))
