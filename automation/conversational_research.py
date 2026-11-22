@@ -165,11 +165,19 @@ class ConversationalResearch:
         )
         if not (research_intent or monitoring_intent):
             return None
+        delivery_match = re.search(
+            r"\b(?:give me|show me|deliver|send me|report back|brief me)\s+"
+            r"(?:the\s+)?(?:final\s+)?(?:research\s+)?results?\s+"
+            r"(?:by|at)\s+(tomorrow\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+            raw, re.I,
+        )
         recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
         if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
             recurring = re.search(r"\b(daily)\b", "daily")
         timing = "now"
-        if re.match(r"^(?:please\s+)?(?:overnight\s+research|research\s+overnight)\b", lower) and not re.search(r"\b(tomorrow|next day)\b", lower):
+        if delivery_match:
+            timing = "overnight"
+        elif re.match(r"^(?:please\s+)?(?:overnight\s+research|research\s+overnight)\b", lower) and not re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "overnight"
         elif recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
@@ -181,6 +189,12 @@ class ConversationalResearch:
             timing = "at"
         query = re.sub(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", "", raw, flags=re.I)
         query = re.sub(r"\b(overnight|tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
+        query = re.sub(
+            r"\b(?:and\s+)?(?:give me|show me|deliver|send me|report back|brief me)\s+"
+            r"(?:the\s+)?(?:final\s+)?(?:research\s+)?results?\s+"
+            r"(?:by|at)\s+(?:tomorrow\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b",
+            "", query, flags=re.I,
+        )
         query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
         query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
         query = re.sub(r"^\s*overnight\s+on\s+", "", query, flags=re.I)
@@ -190,8 +204,14 @@ class ConversationalResearch:
         if len(query) < 4:
             return None
         time_match = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lower, re.I)
+        delivery_at = None
+        if delivery_match:
+            prefix = "tomorrow " if delivery_match.group(1) else ""
+            minute = ":" + delivery_match.group(3) if delivery_match.group(3) else ""
+            delivery_at = f"{prefix}at {delivery_match.group(2)}{minute} {delivery_match.group(4)}"
         return {"query": query[:MAX_QUERY], "timing": timing,
-                "schedule_at": time_match.group(0) if time_match else None}
+                "schedule_at": time_match.group(0) if time_match else None,
+                "delivery_at": delivery_at}
 
     def _load(self):
         try:
@@ -246,8 +266,8 @@ class ConversationalResearch:
         return {"mission_counts": counts, "recent_missions": missions[-10:],
                 "overnight": overnight, "monitor": self.monitor.status()}
 
-    def start_overnight(self, query: str) -> str:
-        return self.overnight.start(query)
+    def start_overnight(self, query: str, delivery_at: str | None = None) -> str:
+        return self.overnight.start(query, delivery_at=delivery_at)
 
     def cancel_overnight(self, mission_id: str) -> str:
         return self.overnight.cancel(mission_id)
