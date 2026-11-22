@@ -99,6 +99,25 @@ class ConversationalResearchTests(unittest.TestCase):
             self.assertEqual(run_at.date(), expected_date)
             self.assertEqual((run_at.hour, run_at.minute), (5, 0))
 
+    def test_scheduled_overnight_research_separates_start_and_delivery(self):
+        parsed = ConversationalResearch.parse_request(
+            "schedule an overnight research on quantum mechanics at 8PM today "
+            "and update me on the result at 5AM tomorrow"
+        )
+        self.assertEqual(parsed["timing"], "scheduled_overnight")
+        self.assertEqual(parsed["query"], "quantum mechanics")
+        self.assertEqual(parsed["start_at"], "at 8PM today")
+        self.assertEqual(parsed["delivery_at"], "tomorrow at 5 AM")
+
+        # The scheduler callback must re-enter the deterministic overnight route.
+        callback = ConversationalResearch.parse_request(
+            "research overnight on quantum mechanics and update me on the results "
+            "tomorrow at 5 AM"
+        )
+        self.assertEqual(callback["timing"], "overnight")
+        self.assertEqual(callback["query"], "quantum mechanics")
+        self.assertEqual(callback["delivery_at"], "tomorrow at 5 AM")
+
     def test_monitoring_request_becomes_daily_recurrence(self):
         parsed = ConversationalResearch.parse_request(
             "Keep track of semiconductor developments and notify me when something significant happens"
