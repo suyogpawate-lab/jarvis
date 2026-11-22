@@ -235,8 +235,9 @@ class ConversationalResearch:
                 "", query_source, flags=re.I,
             )
         query_source = re.sub(
-            r"\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\s*"
-            r"(?:today|tonight|tomorrow)\b",
+            r"\b(?:(?:today|tonight|tomorrow)\s+)?(?:at\s+)?"
+            r"\d{1,2}(?::\d{2})?\s*(?:am|pm)"
+            r"(?:\s+(?:today|tonight|tomorrow))?\b",
             "", query_source, flags=re.I,
         )
         query_source = re.sub(
