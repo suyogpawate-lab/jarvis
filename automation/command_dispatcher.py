@@ -1987,7 +1987,7 @@ Rules:
                     f"Configured: {status['configured']} | CLI available: {status['available']}\n"
                     f"Executable: {status.get('executable') or 'not configured'}\n"
                     f"Workspace: {status['workspace']}\n"
-                    f"Command: {status.get('command') or 'not configured'}"
+                    "Command template: configured (hidden)"
                 )
             return self.coding_backend.run(value)
 
