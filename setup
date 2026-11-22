@@ -1031,13 +1031,13 @@ def step_voice(env):
         default_choice = "1"
 
     info("Choose a speech backend. The local English ZIP/Sherpa voice is one option; Kokoro, Needle and Phonon assets are installed by install.sh.")
-    print("  1) Edge TTS — Ryan Neural (online)")
-    print("  2) Local English — ZIP/Sherpa voice")
-    print("  3) Phonon — local Rust TTS (loads a compact q8 model into RAM)")
-    print("  4) Kokoro-82M — local FP16 ONNX, 157 voices + matching-voice whisper")
-    print("  5) KittenTTS Pico — 30 voices, 8 languages (local ONNX)")
-    print("  6) Piper — choose any installed ONNX voice model")
-    choice = ask("Choose voice: 1=Edge, 2=Local English, 3=Phonon, 4=Kokoro, 5=KittenTTS, 6=Piper",
+    print(" [1] Edge TTS — Ryan Neural (online)")
+    print(" [2] Local English — ZIP/Sherpa voice")
+    print(" [3] Phonon — local Rust TTS (loads a compact q8 model into RAM)")
+    print(" [4] Kokoro-82M — local FP16 ONNX, 157 voices + matching-voice whisper")
+    print(" [5] KittenTTS Pico — 30 voices, 8 languages (local ONNX)")
+    print(" [6] Piper — choose any installed ONNX voice model")
+    choice = ask("Choose voice: ",
                  default=default_choice).strip().lower()
 
     if choice in ("2", "local", "english", "alan", "bryce", "say", "sherpa"):
