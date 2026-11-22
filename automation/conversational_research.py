@@ -166,7 +166,7 @@ class ConversationalResearch:
         if not (research_intent or monitoring_intent):
             return None
         delivery_match = re.search(
-            r"\b(?:give me|show me|deliver|send me|report back|brief me)\s+"
+            r"\b(?:give me|deliver|send me|report back|brief me)\s+"
             r"(?:the\s+)?(?:final\s+)?(?:research\s+)?results?\s*"
             r"(?:(?:by|at)\s+)?(tomorrow\s+)?(?:by|at)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
             raw, re.I,
