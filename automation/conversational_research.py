@@ -213,6 +213,8 @@ class ConversationalResearch:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
         elif re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "tomorrow"
+        elif re.search(r"\b(tonight|this evening|later tonight)\b", lower):
+            timing = "tonight"
         elif re.search(r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b", lower):
             timing = "at"
 
