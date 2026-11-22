@@ -455,6 +455,25 @@ class FastAgent:
         extra = sorted(tool_registry.schemas(), key=lambda t: t["function"]["name"])
         return self._builtin_tool_definitions() + extra
 
+    def _continuation_tool_definitions(self, messages):
+        """Keep follow-up tool schemas scoped to the family already in use."""
+        used = set()
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            for call in item.get("tool_calls") or []:
+                function = call.get("function") or {}
+                name = str(function.get("name") or "")
+                if name:
+                    used.add(name)
+        if used and all(name.startswith("email_") for name in used):
+            return [
+                tool for tool in self._tool_definitions()
+                if str((tool.get("function") or {}).get("name") or "").startswith("email_")
+            ]
+        return self._tool_definitions()
+
+
     def _builtin_tool_definitions(self):
         return [
             {
@@ -2871,6 +2890,34 @@ class FastAgent:
                 return f"Done. I marked {count} unread messages in your Gmail inbox as read."
             if name == "email_send":
                 return "The email tool confirmed that the message was sent successfully."
+            if name == "email_bulk_delete":
+                try:
+                    moved = int(result.get("moved_to_trash", 0))
+                    matched = int(result.get("matched", 0))
+                    failed = int(result.get("failed", 0))
+                except (TypeError, ValueError):
+                    continue
+                sender = str(result.get("sender_domain") or "the requested sender")
+                message = (
+                    f"Gmail found {matched} messages from {sender} and moved "
+                    f"{moved} to Trash."
+                )
+                if failed:
+                    message += f" {failed} message(s) could not be moved."
+                if result.get("truncated"):
+                    message += " The safety processing limit was reached; more matching messages may remain."
+                message += " Nothing was permanently deleted."
+                return message
+            if name == "email_search":
+                try:
+                    count = int(result.get("count", 0))
+                except (TypeError, ValueError):
+                    count = 0
+                query = str(result.get("query") or "that search")
+                return (
+                    f"Gmail search for {query!r} returned {count} message(s). "
+                    "This was a search only; no messages were deleted."
+                )
             if name == "email_manage":
                 if result.get("status") == "SENT":
                     return f"Gmail confirmed the {action.replace('_', ' ')} operation was sent successfully."
@@ -3324,15 +3371,31 @@ class FastAgent:
                         ):
                             passthrough = str(result["final_reply"])
 
+                        tool_content = json.dumps(result, ensure_ascii=False)
+                        # Search/list tools can return many previews. Keep UIDs,
+                        # sender and subject fields while bounding model context.
+                        if tool_call["function"]["name"] in ("email_search", "email_list_recent", "email_list_unread"):
+                            try:
+                                compact_result = json.loads(tool_content)
+                                compact_emails = []
+                                for email_item in (compact_result.get("emails") or [])[:12]:
+                                    if not isinstance(email_item, dict):
+                                        continue
+                                    compact_emails.append({
+                                        key: str(email_item.get(key) or "")[:180]
+                                        for key in ("uid", "account", "from", "subject", "date")
+                                    })
+                                compact_result["emails"] = compact_emails
+                                compact_result["returned"] = len(compact_emails)
+                                tool_content = json.dumps(compact_result, ensure_ascii=False)
+                            except (TypeError, ValueError):
+                                tool_content = tool_content[:3500]
                         messages.append(
                             {
                                 "role": "tool",
                                 "tool_call_id": tool_call["id"],
                                 "name": tool_call["function"]["name"],
-                                "content": json.dumps(
-                                    result,
-                                    ensure_ascii=False,
-                                ),
+                                "content": tool_content[:6000],
                             }
                         )
 
@@ -3341,10 +3404,23 @@ class FastAgent:
                     if passthrough:
                         return passthrough
 
+                    # The initial system prompt contains every skill. A tool
+                    # continuation needs only a compact execution policy plus the
+                    # live request and completed tool results.
+                    continuation_messages = list(messages)
+                    if continuation_messages and continuation_messages[0].get("role") == "system":
+                        continuation_messages[0] = {
+                            "role": "system",
+                            "content": (
+                                "You are JARVIS. Continue the user's current task using the "
+                                "available tools. Treat tool results as evidence. Never repeat "
+                                "an action that has already succeeded. Be concise and truthful."
+                            ),
+                        }
                     final_payload = {
                         "model": self.model,
-                        "messages": messages,
-                        "tools": self._tool_definitions(),
+                        "messages": continuation_messages,
+                        "tools": self._continuation_tool_definitions(messages),
                         "tool_choice": "auto",
                         "temperature": 1e-8,
                         "max_tokens": 512,
