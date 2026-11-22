@@ -877,6 +877,27 @@ class FastAgent:
             {
                 "type": "function",
                 "function": {
+                    "name": "email_bulk_delete",
+                    "description": (
+                        "Move all messages from a sender domain to Gmail Trash. "
+                        "Use only when the user explicitly asks to delete/trash all mail from that sender. "
+                        "Searches Gmail All Mail, including archived messages; does not permanently delete or expunge. "
+                        "For example sender_domain=github.com."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "sender_domain": {"type": "string", "description": "Sender domain, e.g. github.com."},
+                            "account": {"type": "string", "description": "Gmail account; omit for default."},
+                            "limit": {"type": "integer", "description": "Maximum messages to process, 1 to 2000; default 2000."}
+                        },
+                        "required": ["sender_domain"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "email_send",
                     "description": "Send an email from the user's Gmail. Only call when the user clearly wants it sent; for drafts or rewording, reply with the draft instead.",
                     "parameters": {
@@ -1271,6 +1292,16 @@ class FastAgent:
                     requested_account=account, mailbox="INBOX"
                 )}
 
+            if name == "email_bulk_delete":
+                sender_domain = arguments.get("sender_domain")
+                if not isinstance(sender_domain, str) or not sender_domain.strip():
+                    return {"ok": False, "error": "A sender domain is required."}
+                return {"ok": True, **mgr.delete_matching_sender(
+                    sender_domain,
+                    requested_account=account,
+                    limit=arguments.get("limit", 2000),
+                )}
+
             if name == "email_search":
                 query = arguments.get("query")
                 if not isinstance(query, str) or not query.strip():
@@ -1631,7 +1662,7 @@ class FastAgent:
         if name in ("set_alarm", "set_timer"):
             return self._tool_alarm(name, arguments)
 
-        if name in ("email_list_recent", "email_list_unread", "email_mark_all_read", "email_search", "email_send", "email_manage"):
+        if name in ("email_list_recent", "email_list_unread", "email_mark_all_read", "email_search", "email_send", "email_manage", "email_bulk_delete"):
             return self._tool_email(name, arguments)
 
         if name == "whatsapp_send":
