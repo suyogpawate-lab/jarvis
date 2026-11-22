@@ -2676,7 +2676,7 @@ Rules:
         # Instagram connection/setup is a credential-configuration workflow,
         # not a shell-planning task. Handle it locally and explain the current
         # API boundary instead of sending it to OmniRoute as a complex command.
-        if (re.search(r"\binstagram\\b", text, re.IGNORECASE)
+        if (re.search(r"\binstagram\b", text, re.IGNORECASE)
                 and re.search(r"\b(setup|connect|link|configure|status|account)\\b", text, re.IGNORECASE)):
             account = next(
                 (item for item in social_manager._status({}).get("accounts", [])
