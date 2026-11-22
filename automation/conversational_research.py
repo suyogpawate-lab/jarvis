@@ -192,7 +192,7 @@ class ConversationalResearch:
         query = re.sub(
             r"\b(?:and\s+)?(?:give me|show me|deliver|send me|report back|brief me)\s+"
             r"(?:the\s+)?(?:final\s+)?(?:research\s+)?results?\s+"
-            r"(?:by|at)\s+(?:tomorrow\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b",
+            r"(?:(?:by|at)\s+(?:tomorrow\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b)?",
             "", query, flags=re.I,
         )
         query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
