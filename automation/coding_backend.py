@@ -10,6 +10,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,9 +28,16 @@ PRESETS = {
 class CodingBackend:
     """Run Claude Code, Codex, Cline, or any user-configured coding CLI."""
 
-    def __init__(self, environ=None, runner=None):
+    def __init__(self, environ=None, popen_factory=None):
         self.environ = os.environ if environ is None else environ
-        self.runner = subprocess.run if runner is None else runner
+        self.popen_factory = subprocess.Popen if popen_factory is None else popen_factory
+
+    @staticmethod
+    def _read_tail(stream):
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(max(0, size - MAX_OUTPUT_CHARS), os.SEEK_SET)
+        return stream.read(MAX_OUTPUT_CHARS).decode("utf-8", errors="replace").strip()
 
     @property
     def provider(self):
@@ -100,27 +108,39 @@ class CodingBackend:
         if not any("{prompt}" in part for part in parts):
             return "[ERROR] JARVIS_CODING_COMMAND must contain the {prompt} placeholder."
         print(f"[CODING] {self.provider} working in {workspace}", flush=True)
+        # Keep verbose CLI output on disk, not in unbounded RAM buffers.
         try:
-            result = self.runner(
-                argv,
-                cwd=str(workspace),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return f"[ERROR] Coding agent timed out after {self.timeout} seconds. Check the workspace for partial changes."
+            with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+                process = self.popen_factory(
+                    argv,
+                    cwd=str(workspace),
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                )
+                try:
+                    return_code = process.wait(timeout=self.timeout)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    output = "\n".join(
+                        part for part in (self._read_tail(stdout_file), self._read_tail(stderr_file)) if part
+                    )
+                    return (
+                        f"[ERROR] Coding agent timed out after {self.timeout} seconds. "
+                        "Check the workspace for partial changes.\n" + output
+                    )
+                output = "\n".join(
+                    part for part in (self._read_tail(stdout_file), self._read_tail(stderr_file)) if part
+                )
         except FileNotFoundError:
             return f"[ERROR] Coding CLI not found: {argv[0]}"
         except OSError as exc:
             return f"[ERROR] Could not launch coding agent: {type(exc).__name__}: {exc}"
-        output = "\n".join(
-            part.strip() for part in (result.stdout or "", result.stderr or "") if part.strip()
-        )
-        if len(output) > MAX_OUTPUT_CHARS:
-            output = output[:MAX_OUTPUT_CHARS] + "\n[Output truncated.]"
-        if result.returncode:
-            return f"[CODING FAILED] {self.provider} exited with code {result.returncode}.\n{output}"
+        if return_code:
+            return f"[CODING FAILED] {self.provider} exited with code {return_code}.\n{output}"
         return f"[CODING COMPLETE] Backend: {self.provider}\nWorkspace: {workspace}\n{output or 'The coding agent returned no text output.'}"
