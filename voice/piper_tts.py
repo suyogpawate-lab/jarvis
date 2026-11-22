@@ -43,12 +43,30 @@ class _AudioChunk(ctypes.Structure):
 
 def _settings():
     root = Path(__file__).resolve().parents[1]
+    env_values = {}
+    try:
+        for line in (root / ".env").read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            env_values[key.strip()] = value.strip().strip("\"'")
+    except OSError:
+        pass
+
+    def configured_path(name, fallback):
+        value = os.environ.get(name) or env_values.get(name)
+        return Path(value).expanduser() if value else fallback
+
+    model = configured_path(
+        "JARVIS_PIPER_MODEL", root / "models/piper/en_GB-alan-medium.onnx"
+    )
     return {
-        "library": root / "lib/piper/libpiper.so",
-        "model": root / "models/piper/en_GB-alan-medium.onnx",
-        "config": root / "models/piper/en_GB-alan-medium.onnx.json",
-        "espeak": root / "voice/data/espeak-ng-data",
-        "output": root / "cache/piper",
+        "library": configured_path("JARVIS_PIPER_LIBRARY", root / "lib/piper/libpiper.so"),
+        "model": model,
+        "config": configured_path("JARVIS_PIPER_CONFIG", Path(str(model) + ".json")),
+        "espeak": configured_path("JARVIS_ESPEAK_DATA", root / "voice/data/espeak-ng-data"),
+        "output": configured_path("JARVIS_PIPER_OUTPUT_DIR", root / "cache/piper"),
     }
 
 

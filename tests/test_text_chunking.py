@@ -40,3 +40,33 @@ def test_commas_are_not_chunk_boundaries():
     assert len(chunks) > 1
     assert not any(chunk.endswith(",") for chunk in chunks)
     assert sum(len(chunk.split()) for chunk in chunks) == 61
+
+
+
+def test_kitten_keeps_replies_up_to_fifty_words_in_one_synthesis():
+    from voice.text_chunking import kitten_chunk_text
+
+    text = " ".join(f"word{i}" for i in range(50)) + "."
+    assert kitten_chunk_text(text) == [text]
+
+
+def test_kitten_uses_longer_chunks_and_merges_tiny_final_remainder():
+    from voice.text_chunking import kitten_chunk_text
+
+    text = " ".join(f"word{i}" for i in range(81)) + "."
+    chunks = kitten_chunk_text(text)
+    assert [len(chunk.split()) for chunk in chunks] == [40, 41]
+    assert " ".join(chunks) == text
+
+
+def test_kitten_preserves_sentence_boundaries_when_chunking_long_replies():
+    from voice.text_chunking import kitten_chunk_text
+
+    sentences = [
+        " ".join(f"first{i}" for i in range(20)) + ".",
+        " ".join(f"second{i}" for i in range(20)) + ".",
+        " ".join(f"third{i}" for i in range(20)) + ".",
+    ]
+    chunks = kitten_chunk_text(" ".join(sentences))
+    assert " ".join(chunks) == " ".join(sentences)
+    assert all(chunk.endswith(".") for chunk in chunks)

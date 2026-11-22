@@ -53,13 +53,13 @@ def merge_tree_missing(source, target):
             shutil.copy2(item, dest)
 
 
-def write_env(values):
+def write_env(values, model_path, config_path):
     if not ENV_FILE.exists():
         return
     keys = {
         "JARVIS_PIPER_LIBRARY": str(TARGET_LIB_DIR / "libpiper.so"),
-        "JARVIS_PIPER_MODEL": str(TARGET_MODEL_DIR / DEFAULT_MODEL),
-        "JARVIS_PIPER_CONFIG": str(TARGET_MODEL_DIR / (DEFAULT_MODEL + ".json")),
+        "JARVIS_PIPER_MODEL": str(model_path),
+        "JARVIS_PIPER_CONFIG": str(config_path),
         "JARVIS_ESPEAK_DATA": str(TARGET_ESPEAK),
         "JARVIS_PIPER_OUTPUT_DIR": str(TARGET_OUTPUT),
     }
@@ -108,23 +108,41 @@ def main():
                     copy_file_if_missing(item, TARGET_LIB_DIR / item.name)
     copy_file_if_missing(configured_library, TARGET_LIB_DIR / "libpiper.so")
 
-    model_name = DEFAULT_MODEL
-    config_name = model_name + ".json"
-    target_model = TARGET_MODEL_DIR / model_name
-    target_config = TARGET_MODEL_DIR / config_name
-    copy_file_if_missing(configured_model, target_model)
-    copy_file_if_missing(configured_config, target_config)
-    if not target_model.exists():
-        copy_file_if_missing(OLD_MODELS / DEFAULT_MODEL, TARGET_MODEL_DIR / DEFAULT_MODEL)
-    if not target_config.exists():
-        copy_file_if_missing(OLD_MODELS / (DEFAULT_MODEL + ".json"), TARGET_MODEL_DIR / (DEFAULT_MODEL + ".json"))
+    if not configured_model.is_file():
+        raise SystemExit(f"[PIPER] Selected model does not exist: {configured_model}")
+    if not configured_config.is_file():
+        raise SystemExit(f"[PIPER] Matching model config does not exist: {configured_config}")
+
+    target_model = TARGET_MODEL_DIR / configured_model.name
+    try:
+        same_model = target_model.resolve() == configured_model.resolve()
+    except OSError:
+        same_model = False
+    if not same_model and target_model.exists():
+        import hashlib
+        digest = hashlib.sha256(configured_model.read_bytes()).hexdigest()[:8]
+        target_model = TARGET_MODEL_DIR / (
+            f"{configured_model.stem}-{digest}{configured_model.suffix}"
+        )
+    if not same_model:
+        shutil.copy2(configured_model, target_model)
+        print(f"[PIPER] Selected voice copied to {target_model}")
+
+    target_config = Path(str(target_model) + ".json")
+    try:
+        same_config = target_config.resolve() == configured_config.resolve()
+    except OSError:
+        same_config = False
+    if not same_config:
+        shutil.copy2(configured_config, target_config)
+        print(f"[PIPER] Matching config copied to {target_config}")
 
     espeak_source = configured_espeak if configured_espeak.is_dir() and any(configured_espeak.iterdir()) else PREFIX / "share/espeak-ng-data"
     merge_tree_missing(espeak_source, TARGET_ESPEAK)
 
     # Standardize configuration to repository-local paths; the original
     # external files are intentionally left intact.
-    write_env(values)
+    write_env(values, target_model, target_config)
     print(f"[PIPER] Repository asset paths prepared under {ROOT}")
     print("[PIPER] Missing source assets are not downloaded automatically.")
 
