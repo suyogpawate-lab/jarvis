@@ -300,7 +300,7 @@ def _manage(args):
         return {"ok": True, "result": {"id": response.headers.get("x-restli-id") or response.text[:300]}}
 
     if platform == "instagram" and action == "publish_image":
-        token, user_id = _env("JARVIS_META_ACCESS_TOKEN"), _env("JARVIS_INSTAGRAM_USER_ID")
+        token, user_id = (_env("JARVIS_INSTAGRAM_ACCESS_TOKEN") or _env("JARVIS_META_ACCESS_TOKEN")), _env("JARVIS_INSTAGRAM_USER_ID")
         media_url = str(args.get("media_url") or "").strip()
         if not token or not user_id:
             return {"ok": False, "error": "Configure a professional-account token and JARVIS_INSTAGRAM_USER_ID."}
