@@ -419,10 +419,10 @@ class EmailManager:
 
     def delete_matching_sender(self, sender_domain, requested_account=None, mailbox="[Gmail]/All Mail", limit=2000):
         """Move every matching sender-domain message in All Mail to Trash, never expunge."""
-        account = self._account(requested_account)
         sender = str(sender_domain or "").strip().lower().lstrip("@")
         if not sender or any(ch.isspace() for ch in sender) or "." not in sender:
             raise ValueError("Provide a sender domain such as github.com.")
+        account = self._account(requested_account)
         try:
             limit = max(1, min(int(limit), 2000))
         except (TypeError, ValueError):
