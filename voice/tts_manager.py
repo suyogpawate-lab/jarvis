@@ -566,9 +566,9 @@ class TTSManager:
                 model = str(Path(__file__).resolve().parents[1] / "models/kokoro82m/kokoro-v1.0.fp16.onnx")
             primary = f"kokoro82m/{voice} (normal + matching whisper)"
         elif provider == "kitten":
-            model = str(Path(os.environ.get("JARVIS_KITTEN_HOME", str(Path.home() / "KittenTTS"))).expanduser())
+            model = str(Path(os.environ.get("JARVIS_KITTEN_CACHE", str(Path.home() / ".cache" / "huggingface"))).expanduser())
             selected_voice = os.environ.get("JARVIS_KITTEN_VOICE", "otis_en").strip().lower()
-            primary = f"kitten-tts-2-pico/{selected_voice} (Misaki + NLTK, ONNX worker)"
+            primary = f"kitten-tts-2-pico/{selected_voice} (bundled JARVIS ONNX worker)"
         else:
             model = "edge-tts/en-GB-RyanNeural"
             primary = model
