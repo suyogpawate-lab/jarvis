@@ -248,7 +248,7 @@ class OvernightResearch:
                     log.write(json.dumps({
                         "at": time.time(), "status": snapshot.get("status"),
                         "phase": snapshot.get("phase"), "progress": snapshot.get("progress"),
-                    }, ensure_ascii=False) + "\\n")
+                    }, ensure_ascii=False) + "\n")
             except OSError:
                 pass
         # Background progress is persisted, not streamed into the interactive
@@ -290,7 +290,7 @@ class OvernightResearch:
             raise ValueError("Invalid delivery time.")
         if meridiem:
             hour = hour % 12 + (12 if meridiem == "pm" else 0)
-        timezone_name, timezone = _resolve_timezone()
+        _, timezone = _resolve_timezone()
         now = datetime.now(timezone)
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if match.group(1) or target <= now:
@@ -332,7 +332,7 @@ class OvernightResearch:
                 "phase": "collection", "created_at": now, "updated_at": now,
                 "duration_hours": hours, "collection_deadline": collection_deadline,
                 "delivery_deadline": delivery_deadline, "timezone": self.timezone_name,
-                "started_at": now, "planned_collection_end_at": datetime.fromtimestamp(collection_deadline, self.timezone).isoformat(),
+                "started_at": datetime.fromtimestamp(now, self.timezone).isoformat(), "planned_collection_end_at": datetime.fromtimestamp(collection_deadline, self.timezone).isoformat(),
                 "planned_delivery_at": datetime.fromtimestamp(delivery_deadline, self.timezone).isoformat() if delivery_deadline else None,
                 "progress_log": str(directory / "progress.log"), "auto_resume": True,
                 "directory": str(directory), "evidence_file": str(directory / "evidence.jsonl"),
