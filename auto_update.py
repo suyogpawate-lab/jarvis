@@ -41,7 +41,7 @@ class AutoUpdater:
         if not self.enabled or not self._eligible_checkout(): return False
         with self._lock:
             try:
-                fetch = self._git("fetch", "--quiet", "origin", "main", timeout=35)
+                fetch = self._git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main", timeout=35)
                 if fetch.returncode: raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
                 counts = self._git("rev-list", "--left-right", "--count", "HEAD...origin/main")
                 if counts.returncode: raise RuntimeError(counts.stderr.strip() or "cannot compare commits")
