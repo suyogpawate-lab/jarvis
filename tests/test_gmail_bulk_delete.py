@@ -48,7 +48,7 @@ class GmailBulkDeleteTests(unittest.TestCase):
         self.assertTrue(fake.logged_out)
         self.assertFalse(any(call[0] == "expunge" for call in fake.calls))
         self.assertIn(("select", "[Gmail]/All Mail", False), fake.calls)
-        self.assertIn(("store", b"101", "+X-GM-LABELS", r"(\\Trash)"), fake.calls)
+        self.assertIn(("store", b"101", "+X-GM-LABELS", r"(\Trash)"), fake.calls)
 
     def test_bulk_delete_rejects_invalid_sender_domain(self):
         manager = EmailManager()
