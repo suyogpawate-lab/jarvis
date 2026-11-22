@@ -1063,9 +1063,14 @@ def step_voice(env):
         env.set("JARVIS_KOKORO_NORMAL_VOICE", env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric")
         env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
     elif choice in ("5", "kitten", "kitten-tts", "otis"):
-        kitten_home = Path(env.get("JARVIS_KITTEN_HOME") or Path.home() / "KittenTTS").expanduser()
         env.set("JARVIS_TTS_PROVIDER", "kitten")
-        env.set("JARVIS_KITTEN_HOME", str(kitten_home))
+        env.unset("JARVIS_KITTEN_HOME")  # legacy external-worker setting
+        cache_dir = Path(
+            env.get("JARVIS_KITTEN_CACHE") or Path.home() / ".cache" / "huggingface"
+        ).expanduser()
+        env.set("JARVIS_KITTEN_CACHE", str(cache_dir))
+        env.set("JARVIS_KITTEN_MODEL", env.get("JARVIS_KITTEN_MODEL", "KittenML/kitten-tts-2-pico") or "KittenML/kitten-tts-2-pico")
+        env.set("JARVIS_KITTEN_OFFLINE", env.get("JARVIS_KITTEN_OFFLINE", "0") or "0")
         env.set("JARVIS_KITTEN_SPEED", env.get("JARVIS_KITTEN_SPEED", "0.88") or "0.88")
         env.set("JARVIS_KITTEN_VOICE", env.get("JARVIS_KITTEN_VOICE", "otis_en") or "otis_en")
     else:
@@ -1078,12 +1083,40 @@ def step_voice(env):
         return
 
     if provider == "kitten":
-        kitten_home = Path(env.get("JARVIS_KITTEN_HOME") or Path.home() / "KittenTTS").expanduser()
-        worker = kitten_home / "kitten_worker.py"
+        worker = ROOT / "voice" / "kitten_worker.py"
         if not worker.is_file():
-            warn(f"KittenTTS worker not found: {worker}")
-            info("Set JARVIS_KITTEN_HOME to the KittenTTS project directory containing kitten_worker.py.")
+            warn(f"Bundled KittenTTS worker is missing: {worker}")
             return
+        probe = (
+            "import kittenml, onnxruntime, soundfile; "
+            "from kittenml import KittenTTS"
+        )
+        check = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if check.returncode != 0:
+            warn("KittenTTS ONNX dependencies are not ready.")
+            if not yes_no("Install the lightweight KittenTTS runtime now?", default=True):
+                env.set("JARVIS_TTS_PROVIDER", current_provider if current_provider != "kitten" else "edge")
+                env.save()
+                return
+            installer = ROOT / "scripts" / "install_kitten_tts.sh"
+            result = subprocess.run(["bash", str(installer)], cwd=ROOT, check=False)
+            if result.returncode != 0:
+                warn("KittenTTS dependency installation failed; keeping the previous voice provider.")
+                env.set("JARVIS_TTS_PROVIDER", current_provider if current_provider != "kitten" else "edge")
+                env.save()
+                return
+            check = subprocess.run(
+                [sys.executable, "-c", probe],
+                cwd=ROOT, capture_output=True, text=True, check=False,
+            )
+            if check.returncode != 0:
+                warn(f"KittenTTS still cannot import its ONNX runtime: {check.stderr.strip()[-1200:]}")
+                env.set("JARVIS_TTS_PROVIDER", current_provider if current_provider != "kitten" else "edge")
+                env.save()
+                return
         _show_kitten_pico_voices()
         valid_voices = {
             voice_id
