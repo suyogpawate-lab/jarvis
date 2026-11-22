@@ -1406,7 +1406,7 @@ def main():
         # Termux:Float is a small terminal surface; keep the CLI compact and
         # avoid starting the separate Rich full-screen UI/web companion.
         print("JARVIS FLOAT ONLINE")
-        print("Commands: /memory | exit")
+        print("Commands: /memory | /clear | exit")
     else:
         try:
             import jarvis_ui, jarvis_web
@@ -1418,6 +1418,7 @@ def main():
 
         print("JARVIS ONLINE")
         print("Type '/memory' to inspect memory.")
+        print("Type '/clear' to clear the terminal.")
         print("Type 'exit' to quit.")
     print()
 
@@ -1441,6 +1442,11 @@ def main():
                 shutdown()
                 restart_after_update()
             if not prompt:
+                continue
+
+            if prompt.strip().lower() == "/clear":
+                # ANSI clear-screen + cursor-home works in Termux and standard VT terminals.
+                print("\033[2J\033[H", end="", flush=True)
                 continue
 
             if prompt.lower() in {"exit", "quit"}:
