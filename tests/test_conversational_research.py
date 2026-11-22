@@ -58,7 +58,7 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(parsed["delivery_at"], "at 5:30 AM")
 
         tomorrow = ConversationalResearch.parse_request(
-            "research overnight on quantum physics and show me the results tomorrow at 5:30 AM"
+            "research overnight on quantum physics and give me the result tomorrow at 5:30 AM"
         )
         self.assertEqual(tomorrow["timing"], "overnight")
         self.assertEqual(tomorrow["query"], "quantum physics")
