@@ -1389,13 +1389,17 @@ STRICT OUTPUT RULES:
                 zone_name = token
 
         date_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", raw)
-        explicit_date = bool(date_match)
-        if explicit_date:
+        relative_day_match = re.search(r"\b(today|tonight|tomorrow)\b", raw, re.I)
+        relative_day = relative_day_match.group(1).lower() if relative_day_match else None
+        explicit_date = bool(date_match or relative_day_match)
+        if date_match:
             try:
                 target_date = datetime.strptime(date_match.group(1), "%Y-%m-%d").date()
             except ValueError as exc:
                 raise ValueError("Invalid date; use YYYY-MM-DD.") from exc
             raw = raw[:date_match.start()] + " " + raw[date_match.end():]
+        elif relative_day_match:
+            raw = raw[:relative_day_match.start()] + " " + raw[relative_day_match.end():]
 
         time_match = re.search(
             r"\b(?:at\s+)?(?:exactly\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
@@ -1417,8 +1421,8 @@ STRICT OUTPUT RULES:
             raise ValueError("Invalid time; use HH:MM or a valid AM/PM time.")
 
         now = datetime.now(zone)
-        if not explicit_date:
-            target_date = now.date()
+        if not date_match:
+            target_date = now.date() + (timedelta(days=1) if relative_day == "tomorrow" else timedelta())
         scheduled = datetime(
             target_date.year, target_date.month, target_date.day,
             hour, minute, tzinfo=zone,
@@ -2067,6 +2071,34 @@ Rules:
 
         research_request = self.research.parse_request(text)
         if research_request:
+            if research_request["timing"] == "scheduled_overnight":
+                try:
+                    scheduled, zone_name = self._parse_automation_datetime(
+                        research_request.get("start_at")
+                    )
+                except ValueError as exc:
+                    return f"[ERROR] Could not schedule overnight research: {exc}"
+                command = f"research overnight on {research_request['query']}"
+                delivery_at = research_request.get("delivery_at")
+                if delivery_at:
+                    command += f" and update me on the results {delivery_at}"
+                job = self.automation.schedule(
+                    command,
+                    scheduled.timestamp(),
+                    description=f"Start overnight research: {research_request['query']}",
+                )
+                start_display = scheduled.strftime("%Y-%m-%d %I:%M %p %Z")
+                delivery_display = (
+                    f" Result notification target: {delivery_at}."
+                    if delivery_at else
+                    " The mission will use the configured overnight duration."
+                )
+                return (
+                    f"[RESEARCH] Scheduled overnight research job {job['id']}. "
+                    f"Topic: {research_request['query']}. Start: {start_display} "
+                    f"({zone_name}).{delivery_display} "
+                    "The research mission will start at that time; it has not started yet."
+                )
             if research_request["timing"] == "overnight":
                 return self.research.start_overnight(research_request["query"], delivery_at=research_request.get("delivery_at"))
             if research_request["timing"] == "now":

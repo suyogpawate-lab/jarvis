@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import traceback
 import wave
 from pathlib import Path
 
@@ -158,7 +159,15 @@ class TTSManager:
             except Exception as exc:
                 primary_error = str(exc)
                 if _provider() in ("say", "kitten") and self._gen == gen:
-                    print(f"[TTS WARN] Local voice unavailable; falling back to Edge TTS: {primary_error}", flush=True)
+                    print(
+                        f"[TTS WARN] Local voice unavailable; falling back to Edge TTS: "
+                        f"{type(exc).__name__}: {primary_error}",
+                        flush=True,
+                    )
+                    # Keep the originating file and line in the log. A short
+                    # exception message alone is insufficient to diagnose worker,
+                    # phonemizer, WAV, and playback failures.
+                    print(traceback.format_exc(), flush=True)
                     if edge_speak(text, wait=True):
                         self.last_provider = "edge-fallback"
                         self.last_error = ""

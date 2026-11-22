@@ -148,11 +148,18 @@ class ConversationalResearch:
     def parse_request(text: str) -> dict[str, Any] | None:
         raw = _clean(text)
         lower = raw.lower()
-        # Only treat an explicit research/monitoring verb at the start as
-        # research intent. Merely mentioning "research" in a scheduler,
-        # status, or administrative request must never launch a research run.
-        research_intent = re.match(
-            r"^(?:please\s+)?(?:overnight\s+)?(?:jarvis[, ]+)?(?:can you\s+|could you\s+|would you\s+)?"
+
+        # Explicitly scheduled overnight research is distinct from starting a
+        # mission immediately. Parse it before the generic agent can reinterpret
+        # the request as an alarm or ordinary conversation.
+        scheduled_prefix = re.match(
+            r"^(?:please\s+)?(?:schedule|set up|arrange)\s+"
+            r"(?:an?\s+)?(?:overnight\s+)?research\b",
+            raw, re.I,
+        )
+        research_intent = scheduled_prefix or re.match(
+            r"^(?:please\s+)?(?:overnight\s+)?(?:jarvis[, ]+)?"
+            r"(?:can you\s+|could you\s+|would you\s+)?"
             r"(?:research|investigate|look into|study)\b",
             raw, re.I,
         ) or re.match(
@@ -165,19 +172,42 @@ class ConversationalResearch:
         )
         if not (research_intent or monitoring_intent):
             return None
+
+        # Accept natural notification phrasing, including "update me on the
+        # result at 5 AM tomorrow", not just "give me the results by 5 AM".
         delivery_match = re.search(
-            r"\b(?:give me|deliver|send me|report back|brief me)\s+"
-            r"(?:the\s+)?(?:final\s+)?(?:research\s+)?results?\s*"
-            r"(?:(?:by|at)\s+)?(tomorrow\s+)?(?:by|at)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+            r"\b(?:and\s+)?(?:update me|notify me|give me|deliver|send me|"
+            r"report back|brief me)\b.*?\b(?:results?|result|report|findings|summary)\b"
+            r".*?\b(?:(tomorrow)\s+)?(?:by|at)\s+"
+            r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)"
+            r"(?:\s+(tomorrow))?\b",
             raw, re.I,
         )
+
+        # The first clock time belongs to the scheduled start; the notification
+        # deadline is parsed independently from the final delivery clause.
+        start_segment = raw[:delivery_match.start()] if delivery_match else raw
+        start_time_match = re.search(
+            r"\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*"
+            r"(today|tonight|tomorrow)\b",
+            start_segment, re.I,
+        )
+
         recurring = re.search(r"\b(every day|daily|every week|weekly)\b", lower)
-        if not recurring and re.search(r"\b(keep track of|monitor|track)\b", lower) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
+        if not recurring and re.search(
+            r"\b(keep track of|monitor|track)\b", lower
+        ) and re.search(r"\b(notify me|alert me|keep me updated)\b", lower):
             recurring = re.search(r"\b(daily)\b", "daily")
+
         timing = "now"
-        if delivery_match:
+        if scheduled_prefix and start_time_match:
+            timing = "scheduled_overnight"
+        elif delivery_match:
             timing = "overnight"
-        elif re.match(r"^(?:please\s+)?(?:overnight\s+research|research\s+overnight)\b", lower) and not re.search(r"\b(tomorrow|next day)\b", lower):
+        elif re.match(
+            r"^(?:please\s+)?(?:overnight\s+research|research\s+overnight)\b",
+            lower,
+        ) and not re.search(r"\b(tomorrow|next day)\b", lower):
             timing = "overnight"
         elif recurring:
             timing = "daily" if recurring.group(1) in {"every day", "daily"} else "weekly"
@@ -187,31 +217,75 @@ class ConversationalResearch:
             timing = "tonight"
         elif re.search(r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b", lower):
             timing = "at"
-        query = re.sub(r"\b(research|investigate|look into|keep track of|study|monitor|track)\b", "", raw, flags=re.I)
-        query = re.sub(r"\b(overnight|tonight|this evening|later tonight|tomorrow|next day|every day|daily|every week|weekly|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", "", query, flags=re.I)
-        query = re.sub(
-            r"\b(?:and\s+)?(?:give me|show me|deliver|send me|report back|brief me)\s+"
-            r"(?:the\s+)?(?:final\s+)?(?:research\s+)?results?\s*"
-            r"(?:(?:by|at)\s+(?:tomorrow\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b)?",
-            "", query, flags=re.I,
+
+        # Keep only the topic: remove the scheduling prefix and any delivery
+        # clause before stripping clock/date metadata.
+        query_source = raw[:delivery_match.start()] if delivery_match else raw
+        if scheduled_prefix:
+            query_source = re.sub(
+                r"^(?:please\s+)?(?:schedule|set up|arrange)\s+"
+                r"(?:an?\s+)?(?:overnight\s+)?research"
+                r"(?:\s+(?:task|mission))?\s*(?:on|about|into)?\s*",
+                "", query_source, flags=re.I,
+            )
+        else:
+            query_source = re.sub(
+                r"^(?:please\s+)?(?:overnight\s+)?(?:jarvis[, ]+)?"
+                r"(?:can you\s+|could you\s+|would you\s+)?"
+                r"(?:research|investigate|look into|study|keep track of|monitor|track)\s*"
+                r"(?:overnight\s+)?(?:on|about|into)?\s*",
+                "", query_source, flags=re.I,
+            )
+        query_source = re.sub(
+            r"\b(?:(?:today|tonight|tomorrow)\s+)?(?:at\s+)?"
+            r"\d{1,2}(?::\d{2})?\s*(?:am|pm)"
+            r"(?:\s+(?:today|tonight|tomorrow))?\b",
+            "", query_source, flags=re.I,
         )
-        query = re.sub(r"\b(and )?(brief me|report back|notify me|alert me|tell me|keep me updated)\b", "", query, flags=re.I)
-        query = re.sub(r"\bwhen something significant happens\b", "", query, flags=re.I)
-        query = re.sub(r"^\s*overnight\s+on\s+", "", query, flags=re.I)
-        query = re.sub(r"\b(?:and\s+)?show\s+me\s+(?:the\s+)?results?\b", "", query, flags=re.I)
-        query = re.sub(r"^\s*on\s+", "", query, flags=re.I)
-        query = _clean(query).strip(" ,.:;")
+        query_source = re.sub(
+            r"\b(?:overnight|tonight|this evening|later tonight|today|tomorrow|"
+            r"next day|every day|daily|every week|weekly)\b",
+            "", query_source, flags=re.I,
+        )
+        query_source = re.sub(
+            r"\b(?:and\s+)?(?:update me|notify me|give me|show me|deliver|"
+            r"send me|report back|brief me)\b.*$",
+            "", query_source, flags=re.I,
+        )
+        query = _clean(query_source).strip(" ,.:;")
         if len(query) < 4:
             return None
-        time_match = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lower, re.I)
+
         delivery_at = None
         if delivery_match:
-            prefix = "tomorrow " if delivery_match.group(1) else ""
+            prefix = "tomorrow " if delivery_match.group(1) or delivery_match.group(5) else ""
             minute = ":" + delivery_match.group(3) if delivery_match.group(3) else ""
-            delivery_at = f"{prefix}at {delivery_match.group(2)}{minute} {delivery_match.group(4)}"
-        return {"query": query[:MAX_QUERY], "timing": timing,
-                "schedule_at": time_match.group(0) if time_match else None,
-                "delivery_at": delivery_at}
+            delivery_at = (
+                f"{prefix}at {delivery_match.group(2)}{minute} "
+                f"{delivery_match.group(4).upper()}"
+            )
+
+        start_at = None
+        if start_time_match:
+            minute = ":" + start_time_match.group(2) if start_time_match.group(2) else ""
+            start_at = (
+                f"at {start_time_match.group(1)}{minute} "
+                f"{start_time_match.group(3).upper()} "
+                f"{start_time_match.group(4).lower()}"
+            )
+
+        time_match = re.search(
+            r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+            lower, re.I,
+        )
+        schedule_at = time_match.group(0) if time_match else None
+        return {
+            "query": query[:MAX_QUERY],
+            "timing": timing,
+            "schedule_at": schedule_at,
+            "start_at": start_at,
+            "delivery_at": delivery_at,
+        }
 
     def _load(self):
         try:
