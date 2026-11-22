@@ -34,6 +34,7 @@ from android.process_tools import ProcessTools
 from automation.job_manager import JobManager
 from automation.task_executor import TaskExecutor
 from automation.agent_engine import AgentEngine
+from automation.coding_backend import CodingBackend
 from automation.skill_forge import SkillForge
 from automation.autonomy_supervisor import AutonomySupervisor, APPROVAL_OPERATIONS, READ_ONLY_OPERATIONS
 from automation.aie import AIEEngine, NaturalLanguageAIE
@@ -76,6 +77,7 @@ class CommandDispatcher:
         self.notifications = NotificationIngestor()
         self.search_hub = build_default_search_hub()
         self.fast_agent = FastAgent(search_hub=self.search_hub)
+        self.coding_backend = CodingBackend()
         self.deep_search = DeepSearch(self.search_hub, self.fast_agent)
         self.fast_agent.deep_search = self.deep_search
 
@@ -845,6 +847,38 @@ class CommandDispatcher:
                 f"[FILE FOUND] {target.relative_to(root)} was read locally, but "
                 f"the explanation request failed ({type(exc).__name__}: {exc})."
             )
+
+    @staticmethod
+    def _looks_like_coding_task(text):
+        """Recognize natural-language requests to change or work on software."""
+        value = str(text or "").strip()
+        if len(value) < 8 or value.startswith("/"):
+            return False
+
+        # Keep conceptual/explanatory questions on the conversational path.
+        if re.match(
+            r"^(?:what\s+(?:is|are|does)|why\s+(?:is|does|do)|"
+            r"explain\b|teach\s+me\b|how\s+do\s+i\b|"
+            r"how\s+does\b|what'?s\s+the\s+difference)\b",
+            value, re.I,
+        ):
+            return False
+
+        action = re.search(
+            r"\b(build|implement|fix|debug|refactor|create|write|develop|update|"
+            r"upgrade|test|modify|add|remove|integrate|review|audit|compile|migrate|"
+            r"change|configure|improve|optimize|install|port|connect|wire|make|"
+            r"set\s+up|work\s+on)\b",
+            value, re.I,
+        )
+        target = re.search(
+            r"\b(code|coding|programming|script|software|repository|repo|codebase|"
+            r"project|bug|tests?|function|class|module|API|backend|frontend|CLI|"
+            r"Python|JavaScript|TypeScript|package|dependency|JARVIS|feature|"
+            r"program|app|application|website|web\s+app)\b",
+            value, re.I,
+        )
+        return bool(action and target)
 
     @staticmethod
     def _looks_like_agent_task(text):
@@ -2619,7 +2653,12 @@ Rules:
             except Exception as exc:
                 return f"[ERROR] System status check failed: {exc}"
 
-        # Natural-language action requests use the Agent Engine immediately.
+        # Programming work goes to the selected coding CLI, not the OmniRoute
+        # workflow planner. The agent runs in the configured workspace.
+        if source != "agent_step" and self._looks_like_coding_task(text):
+            return self.coding_backend.run(text)
+
+        # Natural-language non-coding action requests use the Agent Engine.
         # Keep this after deterministic device routes so simple local queries
         # remain fast and do not incur unnecessary planning overhead.
         if source != "agent_step" and self._looks_like_agent_task(text):
