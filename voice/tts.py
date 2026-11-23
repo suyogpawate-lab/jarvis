@@ -80,7 +80,7 @@ def play_recorded(
                 return True
             proc = subprocess.Popen(
                 [
-                    "mpv", "--no-video", "--no-terminal", "--really-quiet",
+                    "mpv", "--no-config", "--no-video", "--no-terminal", "--really-quiet", "--volume=100",
                     f"--volume={max(0, min(100, int(volume)))}", "--", str(audio),
                 ],
                 stdin=subprocess.DEVNULL,
@@ -231,7 +231,7 @@ def speak_async(text: str) -> subprocess.Popen:
         audio = Path(temp_dir) / "speech.mp3"
         asyncio.run(_synthesize(text, audio))
         proc = subprocess.Popen(
-            ["mpv", "--no-video", "--really-quiet", "--", str(audio)]
+            ["mpv", "--no-config", "--no-video", "--really-quiet", "--", str(audio)]
         )
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
