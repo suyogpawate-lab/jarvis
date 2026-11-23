@@ -538,6 +538,12 @@ Useful checks:
 - The HTTP bridge requires an `X-Token` header for protected routes and binds to localhost only.
 
 
+## Kokoro voice selection and memory use
+
+Kokoro setup displays the complete 157-voice catalogue: 54 English voices and 103 Chinese voices. The current JARVIS runtime intentionally uses the English v1.0 model, so setup lets you select any of the 54 English voices and labels the Chinese entries as catalogue-only (they require a separate Chinese synthesis model).
+
+The Chinese voice archive is retained on disk solely so setup can display the full catalogue; the English worker never opens it. At runtime, JARVIS loads one selected English speaker embedding. The whisper style is derived from that same speaker and does not load another voice. Changing the selected voice takes effect after restarting JARVIS.
+
 ## Mission memory and diagnostics
 
 JARVIS includes local mission history analysis alongside its task executor and Skill Forge. It inspects saved task JSON records without making an AI/API request.
