@@ -180,3 +180,43 @@ def kitten_chunk_text(
             chunks[-2] = chunks[-2].rstrip() + " " + chunks[-1].lstrip()
             chunks.pop()
     return chunks
+
+
+
+def bounded_token_runs(
+    tokens: list[int],
+    limit: int = 510,
+    punctuation_tokens=(),
+    whitespace_token: int | None = None,
+) -> list[list[int]]:
+    """Split oversized phoneme-token streams without cutting through words.
+
+    Prefer a sentence-ending punctuation token near the model limit. If none
+    exists, split after the last whitespace token. A hard limit is the final
+    fallback for malformed/whitespace-free token streams.
+    """
+    values = list(tokens)
+    limit = max(1, int(limit))
+    punctuation = set(punctuation_tokens)
+    runs: list[list[int]] = []
+    while len(values) > limit:
+        window = values[:limit]
+        punctuation_boundaries = [
+            index + 1 for index, token in enumerate(window)
+            if token in punctuation and index + 1 >= int(limit * 0.55)
+        ]
+        if punctuation_boundaries:
+            boundary = punctuation_boundaries[-1]
+        else:
+            whitespace_boundaries = [
+                index + 1 for index, token in enumerate(window)
+                if whitespace_token is not None
+                and token == whitespace_token
+                and index + 1 >= int(limit * 0.55)
+            ]
+            boundary = whitespace_boundaries[-1] if whitespace_boundaries else limit
+        runs.append(values[:boundary])
+        values = values[boundary:]
+    if values:
+        runs.append(values)
+    return runs
