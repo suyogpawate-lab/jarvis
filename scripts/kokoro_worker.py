@@ -82,7 +82,8 @@ class PersistentKokoroEngine:
     """Loads only the selected voice's matching model; caches normal and whisper styles."""
 
     def __init__(self, model_path: Path, voices_path: Path, selected_voice: str):
-        self.threads = max(1, min(4, int(os.environ.get("JARVIS_KOKORO_THREADS", "2"))))
+        # Bounded ARM CPU pool; tune on-device because ORT builds and thermal states vary.
+        self.threads = max(1, min(8, int(os.environ.get("JARVIS_KOKORO_THREADS", "4"))))
         self.sample_rate = SAMPLE_RATE
         self._phoneme_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
         self._phoneme_cache_limit = 128
@@ -135,6 +136,8 @@ class PersistentKokoroEngine:
         options.enable_cpu_mem_arena = True
         options.enable_mem_pattern = True
         options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        options.add_session_config_entry("session.inter_op.allow_spinning", "0")
+        options.add_session_config_entry("session.set_denormal_as_zero", "1")
         requested_ep = os.environ.get("JARVIS_KOKORO_EP", "auto").strip().lower()
         quantized_int8 = any(tag in model_path.name.lower() for tag in ("int8", "q8"))
         available = ort.get_available_providers()
@@ -299,8 +302,11 @@ class PersistentKokoroEngine:
             "audio_seconds": round(len(audio) / SAMPLE_RATE, 4),
             "rtf": round((written - started) / (len(audio) / SAMPLE_RATE), 4)
                 if len(audio) else None,
-            "rtf_target": 0.5,
-            "rtf_within_target": bool(len(audio) and (written - started) / (len(audio) / SAMPLE_RATE) <= 0.5),
+            "rtf_target": float(os.environ.get("JARVIS_KOKORO_RTF_TARGET", "0.2")),
+            "rtf_within_target": bool(
+                len(audio) and (written - started) / (len(audio) / SAMPLE_RATE)
+                <= float(os.environ.get("JARVIS_KOKORO_RTF_TARGET", "0.2"))
+            ),
             "phonemize_ms": round((phonemized - started) * 1000, 1),
             "inference_ms": round((inferred - phonemized) * 1000, 1),
             "write_ms": round((written - inferred) * 1000, 1),
