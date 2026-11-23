@@ -26,8 +26,6 @@ LANGS = {
     "a": "en-us", "b": "en-gb", "e": "es", "f": "fr-fr",
     "h": "hi", "i": "it", "j": "ja", "p": "pt-br", "z": "cmn",
 }
-EXPECTED_V1_VOICES = 54
-EXPECTED_V11_VOICES = 103
 WHISPER_VOICE = "jarvis_whisper"
 
 
@@ -88,83 +86,44 @@ def write_wav(path: Path, audio: np.ndarray) -> None:
 class PersistentKokoroEngine:
     """Loads only the selected voice's matching model; caches normal and whisper styles."""
 
-    def __init__(
-        self,
-        model_v1_path: Path,
-        voices_v1_path: Path,
-        model_v11_path: Path,
-        voices_v11_path: Path,
-        selected_voice: str,
-    ):
-        self.model_paths = {"v1.0": model_v1_path, "v1.1-zh": model_v11_path}
-        self.voice_paths = {"v1.0": voices_v1_path, "v1.1-zh": voices_v11_path}
+    def __init__(self, model_path: Path, voices_path: Path, selected_voice: str):
         self.threads = max(1, min(4, int(os.environ.get("JARVIS_KOKORO_THREADS", "2"))))
         self.sample_rate = SAMPLE_RATE
-        self._g2p = None
-        self._g2p_lang = None
-        self._g2p_available = False
         self._phoneme_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
         self._phoneme_cache_limit = 128
-        self.voice_catalog: dict[str, str] = {}
-
-        self._scan_voice_catalog()
-        if selected_voice not in self.voice_catalog:
-            raise ValueError(
-                f"Selected Kokoro voice {selected_voice!r} is not in the installed 157-voice catalog."
-            )
-        self.selected_voice = selected_voice
-        self.model_family = self.voice_catalog[selected_voice]
-        self.model_path = self.model_paths[self.model_family]
-        self.voices_path = self.voice_paths[self.model_family]
-        self._init_session(self.model_path)
-        self.selected_lang = self._language_for_voice(selected_voice)
-        self.base_style = self._load_voice_style(selected_voice)
-        # Both variants are resident from startup. Whisper uses the same speaker
-        # embedding and applies the supplied LPC/formant-preserving whisper DSP.
-        self.whisper_style = self.base_style.copy()
-
-    @staticmethod
-    def _archive_names(path: Path) -> list[str]:
-        if not path.is_file():
-            raise FileNotFoundError(f"Kokoro voice archive is missing: {path}")
+        self.selected_voice = str(selected_voice).strip()
+        self.selected_lang = self._language_for_voice(self.selected_voice)
+        self.model_family = "v1.0"
+        self.model_path = model_path
+        self.voices_path = voices_path
+        if not self.voices_path.is_file():
+            raise FileNotFoundError(f"Kokoro English voice archive is missing: {self.voices_path}")
         try:
-            with np.load(str(path), allow_pickle=False) as archive:
-                return list(archive.files)
+            with np.load(str(self.voices_path), allow_pickle=False) as archive:
+                if self.selected_voice not in archive.files:
+                    raise ValueError(
+                        f"English Kokoro voice {self.selected_voice!r} is not present in {self.voices_path.name}."
+                    )
+        except ValueError:
+            raise
         except Exception as exc:
-            raise RuntimeError(f"Cannot read Kokoro voice archive {path.name}: {exc}") from exc
-
-    def _scan_voice_catalog(self) -> None:
-        v1_names = self._archive_names(self.voice_paths["v1.0"])
-        v11_names = self._archive_names(self.voice_paths["v1.1-zh"])
-        if len(v1_names) != EXPECTED_V1_VOICES:
-            raise RuntimeError(
-                f"Kokoro v1.0 archive must contain {EXPECTED_V1_VOICES} voices; found {len(v1_names)}."
-            )
-        if len(v11_names) != EXPECTED_V11_VOICES:
-            raise RuntimeError(
-                f"Kokoro v1.1-zh archive must contain {EXPECTED_V11_VOICES} voices; found {len(v11_names)}."
-            )
-        overlap = set(v1_names).intersection(v11_names)
-        if overlap:
-            raise RuntimeError(f"Kokoro voice IDs overlap between model packs: {sorted(overlap)}")
-        self.voice_catalog = {
-            **{name: "v1.0" for name in v1_names},
-            **{name: "v1.1-zh" for name in v11_names},
-        }
-        if len(self.voice_catalog) != 157:
-            raise RuntimeError(f"Expected 157 unique Kokoro voices; found {len(self.voice_catalog)}.")
+            raise RuntimeError(f"Cannot read Kokoro English voice archive: {exc}") from exc
+        self._init_session(self.model_path)
+        self.base_style = self._load_voice_style(self.selected_voice)
+        # Whisper is a DSP treatment of the same speaker, not another loaded voice.
+        self.whisper_style = self.base_style
 
     @staticmethod
     def _language_for_voice(voice: str) -> str:
         prefix = voice[:1].lower()
-        if prefix not in LANGS:
-            raise ValueError(f"Unsupported Kokoro language prefix in voice ID {voice!r}.")
+        if prefix not in ("a", "b"):
+            raise ValueError(
+                f"Kokoro is locked to one English voice; unsupported voice ID {voice!r}."
+            )
         return LANGS[prefix]
 
     def _load_voice_style(self, name: str) -> np.ndarray:
-        family = self.voice_catalog[name]
-        archive_path = self.voice_paths[family]
-        with np.load(str(archive_path), allow_pickle=False) as archive:
+        with np.load(str(self.voices_path), allow_pickle=False) as archive:
             style = np.array(archive[name], dtype=np.float32, copy=True)
         if style.ndim != 3 or style.shape[0] < 2:
             raise RuntimeError(f"Unexpected style embedding shape for {name}: {style.shape}")
@@ -361,6 +320,12 @@ class PersistentKokoroEngine:
             "mode": mode,
             "voice": self.selected_voice,
             "model_family": self.model_family,
+            "synthesis_seconds": round(written - started, 4),
+            "audio_seconds": round(len(audio) / SAMPLE_RATE, 4),
+            "rtf": round((written - started) / (len(audio) / SAMPLE_RATE), 4)
+                if len(audio) else None,
+            "rtf_target": 0.5,
+            "rtf_within_target": bool(len(audio) and (written - started) / (len(audio) / SAMPLE_RATE) <= 0.5),
             "phonemize_ms": round((phonemized - started) * 1000, 1),
             "inference_ms": round((inferred - phonemized) * 1000, 1),
             "write_ms": round((written - inferred) * 1000, 1),
@@ -371,21 +336,17 @@ class PersistentKokoroEngine:
 
 
 def main() -> int:
-    if len(sys.argv) != 6:
-        raise SystemExit(
-            "usage: kokoro_worker.py MODEL_V1.onnx VOICES_V1.bin MODEL_V11_ZH.onnx "
-            "VOICES_V11_ZH.bin SELECTED_VOICE"
-        )
-    engine = PersistentKokoroEngine(
-        Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5]
-    )
+    if len(sys.argv) != 4:
+        raise SystemExit("usage: kokoro_worker.py ENGLISH_MODEL.onnx ENGLISH_VOICES.bin SELECTED_ENGLISH_VOICE")
+    engine = PersistentKokoroEngine(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3])
     engine.warmup()
     print(json.dumps({
         "ready": True,
         "model": "Kokoro-82M",
         "model_family": engine.model_family,
         "model_path": str(engine.model_path),
-        "voices_loaded": len(engine.voice_catalog),
+        "voices_loaded": 1,
+        "language": "English",
         "selected_voice": engine.selected_voice,
         "normal_style_preloaded": True,
         "whisper_style_preloaded": True,
