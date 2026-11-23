@@ -2,10 +2,13 @@
 
 
 def select_onnx_providers(requested_ep, quantized_int8, available):
-    """Choose an Android accelerator when available, retaining CPU fallback.
+    """Choose a provider based on model quantization, retaining CPU fallback.
 
-    INT8 models use XNNPACK first; FP16 models use NNAPI first. Explicit
-    JARVIS_KOKORO_EP settings remain authoritative.
+    ONNX Runtime's mobile guidance recommends starting with CPU for quantized
+    models. XNNPACK is primarily a floating-point CPU accelerator and may not
+    cover the quantized operators in every Kokoro INT8 graph. Keep it available
+    through JARVIS_KOKORO_EP=xnnpack so device-specific benchmarks can compare
+    it against CPU. FP16 can use NNAPI when the runtime exposes that provider.
     """
     available = set(available or ())
     cpu = "CPUExecutionProvider"
@@ -17,8 +20,7 @@ def select_onnx_providers(requested_ep, quantized_int8, available):
     requested = str(requested_ep or "auto").strip().lower()
     if requested == "auto":
         preferred = (
-            ["XnnpackExecutionProvider", "NnapiExecutionProvider"]
-            if quantized_int8 else ["NnapiExecutionProvider"]
+            [cpu] if quantized_int8 else ["NnapiExecutionProvider", "XnnpackExecutionProvider"]
         )
         selected = next((name for name in preferred if name in available), cpu)
     else:
