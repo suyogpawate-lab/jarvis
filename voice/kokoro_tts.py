@@ -1,4 +1,4 @@
-"""Persistent dual-pack Kokoro worker client used by JARVIS TTSManager."""
+"""Persistent English-only, single-voice Kokoro worker client for JARVIS."""
 from __future__ import annotations
 
 import json
@@ -13,13 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / "models" / "kokoro82m"
 MODEL_V1_FP16 = MODEL_DIR / "kokoro-v1.0.fp16.onnx"
-MODEL_V11_FP16 = MODEL_DIR / "kokoro-v1.1-zh.fp16.onnx"
 VOICES_V1 = MODEL_DIR / "voices-v1.0.bin"
-VOICES_V11 = MODEL_DIR / "voices-v1.1-zh.bin"
 
-def _model_path(family: str) -> Path:
-    """Prefer explicit model paths, then installed INT8 artifacts, then FP16."""
-    key = "JARVIS_KOKORO_MODEL_V1" if family == "v1.0" else "JARVIS_KOKORO_MODEL_V11"
+def _model_path() -> Path:
+    """Prefer the English INT8 model, then the English FP16 model."""
+    key = "JARVIS_KOKORO_MODEL_V1"
     configured = os.environ.get(key, "").strip()
     if configured:
         path = Path(configured).expanduser()
@@ -27,16 +25,13 @@ def _model_path(family: str) -> Path:
             raise FileNotFoundError(f"{key} points to a missing model: {path}")
         return path
     candidates = (
-        (MODEL_DIR / "kokoro-v1.0.int8.onnx", MODEL_DIR / "kokoro-v1.0.INT8.onnx",
-         MODEL_V1_FP16)
-        if family == "v1.0" else
-        (MODEL_DIR / "kokoro-v1.1-zh.int8.onnx", MODEL_DIR / "kokoro-v1.1-zh.INT8.onnx",
-         MODEL_V11_FP16)
+        MODEL_DIR / "kokoro-v1.0.int8.onnx",
+        MODEL_DIR / "kokoro-v1.0.INT8.onnx",
+        MODEL_V1_FP16,
     )
     return next((path for path in candidates if path.is_file()), candidates[-1])
 
-MODEL_V1 = _model_path("v1.0")
-MODEL_V11 = _model_path("v1.1-zh")
+MODEL_V1 = _model_path()
 WORKER = ROOT / "scripts" / "kokoro_worker.py"
 _LOCK = threading.RLock()
 _PROCESS = None
@@ -49,10 +44,10 @@ def _selected_voice() -> str:
 
 
 def model_for_voice(voice: str | None = None) -> Path:
-    """Return the matching ONNX pack without loading it."""
+    """Return the sole English ONNX model; reject non-English voice IDs."""
     selected = (voice or _selected_voice()).strip()
-    if selected.startswith(("zf_", "zm_")) or selected in ("af_maple", "af_sol", "bf_vale"):
-        return MODEL_V11
+    if not selected.startswith(("a", "b")):
+        raise ValueError(f"Kokoro is English-only; unsupported voice ID: {selected}")
     return MODEL_V1
 
 
@@ -75,11 +70,13 @@ def _start_worker() -> dict:
                 "Kokoro voice selection changed while its worker was running. Restart JARVIS to preload the new voice."
             )
         return _READY
-    required = (MODEL_V1, VOICES_V1, MODEL_V11, VOICES_V11)
+    if not _selected_voice().startswith(("a", "b")):
+        raise ValueError("JARVIS_KOKORO_NORMAL_VOICE must select one English Kokoro voice (a* or b*).")
+    required = (MODEL_V1, VOICES_V1)
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(
-            "Kokoro 157-voice assets are missing: " + ", ".join(missing)
+            "Kokoro English model/voice assets are missing: " + ", ".join(missing)
             + "; run: bash scripts/install_kokoro82m_termux.sh"
         )
     cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "jarvis"
@@ -90,7 +87,7 @@ def _start_worker() -> dict:
     _PROCESS = subprocess.Popen(
         [
             sys.executable, str(WORKER),
-            str(MODEL_V1), str(VOICES_V1), str(MODEL_V11), str(VOICES_V11), selected,
+            str(MODEL_V1), str(VOICES_V1), selected,
         ],
         cwd=str(ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=_LOG, text=True, bufsize=1, env=env, start_new_session=True,
@@ -99,7 +96,8 @@ def _start_worker() -> dict:
         ready = json.loads(_readline(_PROCESS.stdout, 360.0))
         if (
             not ready.get("ready")
-            or ready.get("voices_loaded", 0) != 157
+            or ready.get("voices_loaded", 0) != 1
+            or ready.get("language") != "English"
             or ready.get("selected_voice") != selected
             or not ready.get("normal_style_preloaded")
             or not ready.get("whisper_style_preloaded")
@@ -122,7 +120,7 @@ def warmup() -> bool:
         ready = _start_worker()
     print(
         "[TTS] Kokoro-82M persistent worker ready; "
-        f"{ready['voices_loaded']} voices available; selected={ready['selected_voice']}; "
+        f"one English voice loaded={ready['selected_voice']}; "
         f"model={ready['model_family']}; normal + matching whisper styles preloaded; "
         f"model load {ready.get('model_load_seconds')}s; providers={ready.get('providers')}; "
         "inference warmup complete.",
@@ -162,7 +160,7 @@ def synth(text: str, voice: str | None = None, speed: float = 1.0) -> Path:
 
 
 def interrupt() -> None:
-    # Keep the selected ONNX session and both speaker-style arrays resident.
+    # Keep the one English ONNX session and one speaker embedding resident.
     return None
 
 
