@@ -87,5 +87,13 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         self.assertIn("audio={info['audio_seconds']}s", worker)
 
 
+    def test_worker_adds_repository_root_before_importing_voice_package(self):
+        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
+        bootstrap = worker.index("PROJECT_ROOT = Path(__file__).resolve().parents[1]")
+        local_import = worker.index("from voice.onnx_provider_policy import")
+        self.assertLess(bootstrap, local_import)
+        self.assertIn("sys.path.insert(0, str(PROJECT_ROOT))", worker)
+
+
 if __name__ == "__main__":
     unittest.main()
