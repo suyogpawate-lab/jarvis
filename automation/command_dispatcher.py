@@ -1973,7 +1973,7 @@ Rules:
         # persistent-goal matcher. Resolve explicit resume commands before AIE's
         # broad "resume <goal>" grammar so overnight IDs cannot be misclassified.
         research_resume = re.fullmatch(
-            r"(?:please\\s+)?resume\\s+(?:research\\s+)?([A-Za-z0-9_-]+)",
+            r"(?:please\s+)?resume\s+(?:research\s+)?([A-Za-z0-9_-]+)",
             text, re.IGNORECASE,
         )
         if research_resume:
