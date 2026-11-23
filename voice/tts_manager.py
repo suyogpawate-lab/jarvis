@@ -435,9 +435,14 @@ class TTSManager:
             "synthesized_chunks": synth_metrics["chunks"],
             "synthesis_seconds": round(synth_metrics["seconds"], 3),
             "generated_audio_seconds": round(synth_metrics["audio_seconds"], 3),
+            # Standard RTF = wall-clock synthesis time / generated audio duration.
             "synthesis_rtf": round(
-                synth_metrics["audio_seconds"] / synth_metrics["seconds"], 3
-            ) if synth_metrics["seconds"] > 0 else 0.0,
+                synth_metrics["seconds"] / synth_metrics["audio_seconds"], 3
+            ) if synth_metrics["audio_seconds"] > 0 else 0.0,
+            "rtf_target": 0.5,
+            "rtf_within_target": (
+                synth_metrics["seconds"] / synth_metrics["audio_seconds"] <= 0.5
+            ) if synth_metrics["audio_seconds"] > 0 else False,
             "first_chunk_seconds": round(first_chunk_seconds, 3),
             "queue_starvation_seconds": round(starvation_seconds, 3),
             "queue_starvation_events": starvation_events,
