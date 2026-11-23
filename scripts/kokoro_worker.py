@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -16,16 +15,12 @@ import numpy as np
 import onnxruntime as ort
 
 SAMPLE_RATE = 24000
-PAUSE_MAP = {".": 0.32, "!": 0.32, "?": 0.34, ";": 0.22, ":": 0.20, "—": 0.20, "-": 0.14, ",": 0.14}
 DTYPES = {
     "tensor(float16)": np.float16, "tensor(float)": np.float32,
     "tensor(double)": np.float64, "tensor(int64)": np.int64,
     "tensor(int32)": np.int32,
 }
-LANGS = {
-    "a": "en-us", "b": "en-gb", "e": "es", "f": "fr-fr",
-    "h": "hi", "i": "it", "j": "ja", "p": "pt-br", "z": "cmn",
-}
+LANGS = {"a": "en-us", "b": "en-gb"}
 WHISPER_VOICE = "jarvis_whisper"
 
 
@@ -182,7 +177,9 @@ class PersistentKokoroEngine:
         self.model_load_seconds = time.monotonic() - started
 
     def _phonemize(self, text: str, lang: str) -> list[tuple[str, float]]:
-        """Phonemize a complete utterance in one frontend call and cache the result."""
+        """Use the English eSpeak frontend once per utterance and cache its IPA."""
+        if lang not in ("en-us", "en-gb"):
+            raise ValueError(f"Kokoro worker only supports English, received {lang!r}.")
         text = " ".join(str(text).replace("--", "—").split())
         cache_key = (lang, text)
         cached = self._phoneme_cache.get(cache_key)
@@ -190,39 +187,17 @@ class PersistentKokoroEngine:
             self._phoneme_cache.move_to_end(cache_key)
             return [(cached, 0.0)]
 
-        if lang in ("cmn", "ja") and self._g2p_lang != lang:
-            self._g2p = None
-            self._g2p_available = False
-            try:
-                if lang == "cmn":
-                    from misaki import zh
-                    self._g2p = zh.ZHG2P(version=None)
-                else:
-                    from misaki import ja
-                    self._g2p = ja.JAG2P()
-                self._g2p_available = True
-            except (ImportError, OSError):
-                self._g2p = None
-            self._g2p_lang = lang
-
-        if self._g2p_available and lang in ("cmn", "ja"):
-            phonemes, _ = self._g2p(text)
-            ipa = " ".join(str(phonemes).split())
-        else:
-            # One eSpeak process for the whole utterance, not one process per clause.
-            phrase = text
-            result = subprocess.run(
-                ["espeak-ng", "-q", "--ipa", "-v", lang, phrase],
-                capture_output=True, text=True, timeout=30,
+        result = subprocess.run(
+            ["espeak-ng", "-q", "--ipa", "-v", lang, text],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode:
+            raise RuntimeError(
+                f"espeak-ng phonemization failed for language {lang}: {result.stderr.strip()}"
             )
-            if result.returncode:
-                raise RuntimeError(
-                    f"espeak-ng phonemization failed for language {lang}: {result.stderr.strip()}"
-                )
-            ipa = " ".join(result.stdout.strip().split())
-
+        ipa = " ".join(result.stdout.strip().split())
         if not ipa:
-            raise RuntimeError(f"Phonemizer returned no phonemes for language {lang}.")
+            raise RuntimeError(f"English phonemizer returned no phonemes for language {lang}.")
         self._phoneme_cache[cache_key] = ipa
         self._phoneme_cache.move_to_end(cache_key)
         if len(self._phoneme_cache) > self._phoneme_cache_limit:
