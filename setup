@@ -36,6 +36,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -1059,11 +1060,12 @@ def step_voice(env):
         required_assets = (
             model_dir / "kokoro-v1.0.fp16.onnx",
             model_dir / "voices-v1.0.bin",
+            model_dir / "voices-v1.1-zh.bin",
         )
         if not all(path.is_file() for path in required_assets):
-            warn("The English Kokoro model or voice archive is missing.")
+            warn("The Kokoro English model or complete 157-voice catalogue is missing.")
             if not yes_no(
-                "Download and checksum-verify the English model and voice archive now?",
+                "Download and verify the English model plus the on-disk voice catalogue now?",
                 default=True,
             ):
                 info("To install later, run: bash scripts/install_kokoro82m_termux.sh")
@@ -1076,19 +1078,54 @@ def step_voice(env):
                 warn("Kokoro installation failed. Retry: bash scripts/install_kokoro82m_termux.sh")
                 return
 
-        # Keep exactly one configured English stock voice; do not offer a
-        # multilingual catalog or initialize another speaker at runtime.
-        selected_voice = (
-            env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric"
+        def archive_voice_ids(path):
+            with zipfile.ZipFile(path) as archive:
+                return sorted(
+                    name.rsplit("/", 1)[-1][:-4]
+                    for name in archive.namelist()
+                    if name.endswith(".npy")
+                )
+
+        try:
+            english_ids = archive_voice_ids(model_dir / "voices-v1.0.bin")
+            chinese_ids = archive_voice_ids(model_dir / "voices-v1.1-zh.bin")
+        except (OSError, zipfile.BadZipFile) as exc:
+            warn(f"Could not read the Kokoro voice catalogue: {exc}")
+            return
+
+        if len(english_ids) != 54 or len(chinese_ids) != 103:
+            warn(
+                "Kokoro catalogue count mismatch: expected 54 English + 103 Chinese "
+                f"voices, found {len(english_ids)} + {len(chinese_ids)}."
+            )
+            return
+
+        heading("Kokoro voice catalogue (157 voices)")
+        info("English voices (54) are selectable with the English-only runtime:")
+        for offset in range(0, len(english_ids), 4):
+            print("  " + "    ".join(f"{voice:<18}" for voice in english_ids[offset:offset + 4]))
+        info("Chinese voices (103) are shown for catalogue completeness; they require the separate Chinese model:")
+        for offset in range(0, len(chinese_ids), 4):
+            print("  " + "    ".join(f"{voice:<18}" for voice in chinese_ids[offset:offset + 4]))
+
+        current_voice = (env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric").strip()
+        if current_voice not in english_ids:
+            current_voice = "am_eric" if "am_eric" in english_ids else english_ids[0]
+        selected_voice = ask(
+            "Select one English Kokoro voice ID",
+            default=current_voice,
+            validate=lambda value: None if value in english_ids else (
+                "Choose one of the 54 English voice IDs above. Chinese voices need a different model."
+            ),
+            allow_empty=False,
         ).strip()
-        if not selected_voice.startswith(("a", "b")):
-            selected_voice = "am_eric"
         env.set("JARVIS_KOKORO_VOICE_MODE", "auto")
         env.set("JARVIS_KOKORO_NORMAL_VOICE", selected_voice)
         env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
         env.save()
-        ok(f"Kokoro selected: {selected_voice}. One English speaker embedding will be loaded.")
-        info("The English v1.0 ONNX session stays resident; whisper mode reuses the same embedding.")
+        ok(f"Kokoro selected: {selected_voice}. Exactly one English speaker embedding will be loaded.")
+        info("All 157 voice IDs remain available in the on-disk setup catalogue; only the selected English embedding enters RAM.")
+        info("Whisper is derived from the selected speaker and reuses its embedding; no second voice is loaded.")
         return
 
     if provider == "phonon":

@@ -19,15 +19,29 @@ class KokoroIntegrationContractTests(unittest.TestCase):
             self.assertIn(filename, client)
             self.assertIn(filename, installer)
             self.assertIn(filename, setup)
-        for source in (client, worker, installer, setup):
+        for source in (client, worker):
             self.assertNotIn("kokoro-v1.1-zh", source)
             self.assertNotIn("voices-v1.1-zh", source)
+        self.assertNotIn("kokoro-v1.1-zh", installer)
+        self.assertNotIn("kokoro-v1.1-zh", setup)
         self.assertIn('if prefix not in ("a", "b")', worker)
         self.assertIn('if lang not in ("en-us", "en-gb")', worker)
         self.assertNotIn("ZHG2P", worker)
         self.assertNotIn("JAG2P", worker)
         self.assertIn('"voices_loaded": 1', worker)
         self.assertIn('ready.get("voices_loaded", 0) != 1', client)
+
+    def test_setup_preserves_full_catalog_but_selects_only_english(self):
+        setup = (ROOT / "setup").read_text(encoding="utf-8")
+        installer = (ROOT / "scripts" / "install_kokoro82m_termux.sh").read_text(encoding="utf-8")
+        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
+        self.assertIn("voices-v1.1-zh.bin", setup)
+        self.assertIn("voices-v1.1-zh.bin", installer)
+        self.assertIn("len(english_ids) != 54 or len(chinese_ids) != 103", setup)
+        self.assertIn("value in english_ids", setup)
+        self.assertIn("Exactly one English speaker embedding", setup)
+        self.assertIn("self.base_style = self._load_voice_style(self.selected_voice)", worker)
+        self.assertNotIn("voices-v1.1-zh.bin", worker)
 
     def test_worker_loads_one_model_and_one_speaker_embedding(self):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
