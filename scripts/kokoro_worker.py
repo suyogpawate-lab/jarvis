@@ -12,6 +12,13 @@ import wave
 from collections import OrderedDict
 from pathlib import Path
 
+# Executed as `python /absolute/path/scripts/kokoro_worker.py`, Python places
+# scripts/ (not the repository root) on sys.path. Add the project root before
+# importing the sibling voice package so the worker also starts from Termux.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import numpy as np
 import onnxruntime as ort
 
