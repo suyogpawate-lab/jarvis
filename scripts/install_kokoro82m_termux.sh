@@ -11,6 +11,8 @@ MODEL_DIR="$ROOT/models/kokoro82m"
 MODEL_V1="$MODEL_DIR/kokoro-v1.0.fp16.onnx"
 VOICES_V1="$MODEL_DIR/voices-v1.0.bin"
 MODEL_V11="$MODEL_DIR/kokoro-v1.1-zh.fp16.onnx"
+MODEL_V1_INT8="$MODEL_DIR/kokoro-v1.0.int8.onnx"
+MODEL_V11_INT8="$MODEL_DIR/kokoro-v1.1-zh.int8.onnx"
 VOICES_V11="$MODEL_DIR/voices-v1.1-zh.bin"
 BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
 mkdir -p "$MODEL_DIR"
@@ -56,6 +58,10 @@ fetch() {
 fetch "$BASE/kokoro-v1.0.fp16.onnx" "$MODEL_V1" 150000000 "f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96"
 fetch "$BASE/voices-v1.0.bin" "$VOICES_V1" 25000000 "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
 fetch "$BASE/kokoro-v1.1-zh.fp16.onnx" "$MODEL_V11" 150000000 "a628ea5d6fbde96d1a85f691a6a00847829937f9e488021ba2c5359bc6ea08b5"
+# Official INT8 packs are smaller and use optimized integer kernels on Android CPU.
+# voice/kokoro_tts.py automatically prefers these files when present.
+fetch "$BASE/kokoro-v1.0.int8.onnx" "$MODEL_V1_INT8" 110000000 "ae315a79b623f244700e4afb9246c46a26066782e049ba174bf3ba433970ee9c"
+fetch "$BASE/kokoro-v1.1-zh.int8.onnx" "$MODEL_V11_INT8" 110000000 "11751c087b4bbeed031e2b687b11dda698bd27ba0509472f960b57f835a999f7"
 fetch "$BASE/voices-v1.1-zh.bin" "$VOICES_V11" 50000000 "14cb6186c99e4f6016871405f62046c5df863ae27465cbdc4ee08be7dd703acd"
 
 python - "$VOICES_V1" "$VOICES_V11" <<'PY'
@@ -81,6 +87,6 @@ PY
 
 echo
 echo "Kokoro 157-voice installation verified."
-echo "Both model packs are stored on disk; JARVIS loads only the model for the selected voice."
+echo "FP16 and INT8 model packs are stored on disk; JARVIS prefers INT8 and loads only the selected voice model into RAM."
 echo "The selected voice's normal and matching LPC-whisper styles are preloaded when JARVIS starts."
 echo "This installation does not modify your current TTS provider."

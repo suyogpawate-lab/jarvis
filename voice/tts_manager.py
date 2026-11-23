@@ -215,8 +215,6 @@ class TTSManager:
                             # The public speak() API only queues work; report worker
                             # failures so a silent TTS outage is diagnosable in Termux.
                             print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
-                        elif self.last_provider in {"kokoro", "edge-fallback"}:
-                            print(f"[TTS] Playback completed via {self.last_provider}.", flush=True)
                 finally:
                     self.queue.task_done()
         finally:

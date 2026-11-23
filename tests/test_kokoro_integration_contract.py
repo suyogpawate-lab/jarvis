@@ -27,6 +27,11 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         self.assertIn("len(catalog) != 157", setup)
         self.assertIn("_show_kokoro_voice_catalog(catalog)", setup)
         self.assertIn("voices_loaded", client)
+        self.assertIn("kokoro-v1.0.int8.onnx", installer)
+        self.assertIn("kokoro-v1.1-zh.int8.onnx", installer)
+        self.assertIn("ae315a79b623f244700e4afb9246c46a26066782e049ba174bf3ba433970ee9c", installer)
+        self.assertIn("11751c087b4bbeed031e2b687b11dda698bd27ba0509472f960b57f835a999f7", installer)
+        self.assertIn("kokoro-v1.1-zh.int8.onnx", client)
 
     def test_selected_model_only_and_selected_voice_is_cached_twice(self):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
@@ -44,6 +49,11 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
         self.assertIn('"rtf_target": float(os.environ.get("JARVIS_KOKORO_RTF_TARGET", "0.2"))', worker)
         self.assertIn('JARVIS_KOKORO_THREADS", "4"', worker)
+
+    def test_successful_kokoro_playback_is_not_printed_to_terminal(self):
+        manager = (ROOT / "voice" / "tts_manager.py").read_text(encoding="utf-8")
+        self.assertNotIn("Playback completed via", manager)
+        self.assertIn("[TTS ERROR]", manager)
 
     def test_matching_voice_whisper_uses_lpc_dsp(self):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
