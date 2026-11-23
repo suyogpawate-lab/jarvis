@@ -83,7 +83,8 @@ def _start_worker() -> dict:
     cache.mkdir(parents=True, exist_ok=True)
     _LOG = (cache / "kokoro_worker.log").open("a", encoding="utf-8")
     env = os.environ.copy()
-    env.setdefault("OMP_NUM_THREADS", os.environ.get("JARVIS_KOKORO_THREADS", "2"))
+    env.setdefault("OMP_NUM_THREADS", os.environ.get("JARVIS_KOKORO_THREADS", "4"))
+    env.setdefault("JARVIS_KOKORO_RTF_TARGET", "0.2")
     _PROCESS = subprocess.Popen(
         [
             sys.executable, str(WORKER),
