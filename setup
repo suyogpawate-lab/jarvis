@@ -795,98 +795,6 @@ def step_apps(env):
 
 # ───────────────────────────── voice provider ─────────────────────────────
 
-def _kokoro_voice_catalog():
-    """Read the authoritative voice IDs from the two checksum-verified NPZ archives."""
-    import numpy as np
-
-    model_dir = ROOT / "models" / "kokoro82m"
-    archives = (
-        (model_dir / "voices-v1.0.bin", 54, "v1.0"),
-        (model_dir / "voices-v1.1-zh.bin", 103, "v1.1-zh"),
-    )
-    catalog = {}
-    for archive_path, expected, family in archives:
-        if not archive_path.is_file():
-            raise FileNotFoundError(f"Missing Kokoro voice archive: {archive_path.name}")
-        with np.load(str(archive_path), allow_pickle=False) as archive:
-            names = list(archive.files)
-        if len(names) != expected:
-            raise RuntimeError(
-                f"{archive_path.name} contains {len(names)} voices; expected {expected}."
-            )
-        for name in names:
-            if name in catalog:
-                raise RuntimeError(f"Duplicate Kokoro voice ID: {name}")
-            catalog[name] = family
-    if len(catalog) != 157:
-        raise RuntimeError(f"Expected 157 unique Kokoro voices; found {len(catalog)}.")
-    return catalog
-
-
-def _show_kokoro_voice_catalog(catalog):
-    """Display every installed voice, grouped by language and speaker gender."""
-    languages = {
-        "a": "American English", "b": "British English", "e": "Spanish",
-        "f": "French", "h": "Hindi", "i": "Italian", "j": "Japanese",
-        "p": "Brazilian Portuguese", "z": "Mandarin Chinese",
-    }
-    print(f"\n  Installed Kokoro voices ({len(catalog)}):")
-    for prefix, language in languages.items():
-        for gender_code, gender in (("f", "Female"), ("m", "Male")):
-            names = sorted(
-                name for name in catalog
-                if name.startswith(prefix + gender_code + "_")
-            )
-            if names:
-                print(f"  {language} / {gender}:")
-                for start in range(0, len(names), 8):
-                    print("    " + "  ".join(names[start:start + 8]))
-
-
-def _ensure_kokoro_g2p(voice):
-    """Install the language-specific Misaki frontend only when that voice needs it."""
-    extra = "zh" if voice.startswith(("zf_", "zm_")) else (
-        "ja" if voice.startswith(("jf_", "jm_")) else ""
-    )
-    if not extra:
-        return True
-    if sys.version_info >= (3, 14):
-        warn(
-            f"Misaki {extra.upper()} currently declares Python <3.14. "
-            "Keeping the selected voice available with the eSpeak NG fallback on this Python."
-        )
-        return True
-    try:
-        if extra == "zh":
-            from misaki import zh  # noqa: F401
-        else:
-            from misaki import ja  # noqa: F401
-        return True
-    except ImportError:
-        info(f"The selected {extra} voice needs Misaki's {extra.upper()} phonemizer.")
-        if not yes_no(f"Install misaki[{extra}] now?", default=True):
-            return False
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", f"misaki[{extra}]"],
-            cwd=ROOT, check=False,
-        )
-        if result.returncode != 0:
-            warn(
-                f"Could not install misaki[{extra}]. The selected voice was not saved; "
-                f"retry with: python -m pip install 'misaki[{extra}]'"
-            )
-            return False
-        try:
-            if extra == "zh":
-                from misaki import zh  # noqa: F401
-            else:
-                from misaki import ja  # noqa: F401
-            return True
-        except ImportError as exc:
-            warn(f"Misaki {extra.upper()} phonemizer is still unavailable: {exc}")
-            return False
-
-
 KITTEN_PICO_VOICES = {
     "en": (("eleanor_en", "Eleanor"), ("edith_en", "Edith"), ("otis_en", "Otis"), ("frank_en", "Frank")),
     "de": (("anna_de", "Anna"), ("mia_de", "Mia"), ("lukas_de", "Lukas"), ("paul_de", "Paul")),
@@ -1034,7 +942,7 @@ def step_voice(env):
     print(" [1] Edge TTS — Ryan Neural (online)")
     print(" [2] Local English — ZIP/Sherpa voice")
     print(" [3] Phonon — local Rust TTS (loads a compact q8 model into RAM)")
-    print(" [4] Kokoro-82M — local FP16 ONNX, 157 voices + matching-voice whisper")
+    print(" [4] Kokoro-82M — English-only ONNX, one voice + same-voice whisper DSP")
     print(" [5] KittenTTS Pico — 30 voices, 8 languages (local ONNX)")
     print(" [6] Piper — choose any installed ONNX voice model")
     choice = ask("Choose voice: ",
@@ -1151,13 +1059,11 @@ def step_voice(env):
         required_assets = (
             model_dir / "kokoro-v1.0.fp16.onnx",
             model_dir / "voices-v1.0.bin",
-            model_dir / "kokoro-v1.1-zh.fp16.onnx",
-            model_dir / "voices-v1.1-zh.bin",
         )
         if not all(path.is_file() for path in required_assets):
-            warn("One or more Kokoro model/voice packs are missing.")
+            warn("The English Kokoro model or voice archive is missing.")
             if not yes_no(
-                "Download and checksum-verify both models and all 157 voices now (~390 MB)?",
+                "Download and checksum-verify the English model and voice archive now?",
                 default=True,
             ):
                 info("To install later, run: bash scripts/install_kokoro82m_termux.sh")
@@ -1169,38 +1075,20 @@ def step_voice(env):
             if result.returncode != 0:
                 warn("Kokoro installation failed. Retry: bash scripts/install_kokoro82m_termux.sh")
                 return
-        try:
-            catalog = _kokoro_voice_catalog()
-        except Exception as exc:
-            warn(f"Could not load the complete Kokoro voice catalog: {exc}")
-            return
 
-        _show_kokoro_voice_catalog(catalog)
-        current_voice = (env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric").strip()
-        if current_voice not in catalog:
-            current_voice = "am_eric" if "am_eric" in catalog else sorted(catalog)[0]
-        selected_voice = ask(
-            "Select Kokoro voice ID (all 157 IDs are listed above)",
-            default=current_voice,
+        # Keep exactly one configured English stock voice; do not offer a
+        # multilingual catalog or initialize another speaker at runtime.
+        selected_voice = (
+            env.get("JARVIS_KOKORO_NORMAL_VOICE", "am_eric") or "am_eric"
         ).strip()
-        if selected_voice not in catalog:
-            warn(f"Unknown Kokoro voice ID: {selected_voice!r}. Keeping {current_voice}.")
-            selected_voice = current_voice
-        if not _ensure_kokoro_g2p(selected_voice):
-            return
-
+        if not selected_voice.startswith(("a", "b")):
+            selected_voice = "am_eric"
         env.set("JARVIS_KOKORO_VOICE_MODE", "auto")
         env.set("JARVIS_KOKORO_NORMAL_VOICE", selected_voice)
         env.set("JARVIS_KOKORO_WHISPER_VOICE", "jarvis_whisper")
         env.save()
-        ok(
-            f"Kokoro selected: {selected_voice}. Normal speech and this same voice's "
-            "LPC-whisper style will be preloaded at JARVIS startup."
-        )
-        info(
-            "Only the selected voice's matching ONNX model is loaded into RAM. "
-            "The other model and all voice archives remain on disk."
-        )
+        ok(f"Kokoro selected: {selected_voice}. One English speaker embedding will be loaded.")
+        info("The English v1.0 ONNX session stays resident; whisper mode reuses the same embedding.")
         return
 
     if provider == "phonon":
