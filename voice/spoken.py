@@ -12,15 +12,16 @@ def to_speakable(text, max_words=MAX_WORDS):
     text = re.sub(r"\bjarvis\b", "Jarvis", text, flags=re.IGNORECASE)
     # Remove only the comma immediately before the honorific "sir".
     text = re.sub(r",\s*(?=sir\b)", " ", text, flags=re.IGNORECASE)
+    # A line wrap is formatting, not a spoken sentence boundary. Collapse it
+    # before punctuation handling so TTS never inserts a false pause mid-clause.
     lines = []
     for line in text.splitlines():
-        line = re.sub(r"^\s*(\d+[.)]|[a-zA-Z][.)])\s+", "", line).strip()
-        if not line:
-            continue
-        if line[-1] not in ".!?:":
-            line += "."
-        lines.append(line.rstrip(":") if line.endswith(":") else line)
-    text = re.sub(r"\s+", " ", " ".join(lines)).strip()
+        line = re.sub(r"^\\s*(\\d+[.)]|[a-zA-Z][.)])\\s+", "", line).strip()
+        if line:
+            lines.append(line)
+    text = re.sub(r"\\s+", " ", " ".join(lines)).strip()
+    if text and text[-1] not in ".!?":
+        text += "."
     words = text.split()
     if len(words) <= max_words:
         return text
