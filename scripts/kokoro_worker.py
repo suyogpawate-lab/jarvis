@@ -15,6 +15,9 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
+from voice.onnx_provider_policy import select_onnx_providers
+from voice.text_chunking import bounded_token_runs
+
 SAMPLE_RATE = 24000
 PAUSE_MAP = {".": 0.32, "!": 0.32, "?": 0.34, ";": 0.22, ":": 0.20, "—": 0.20, "-": 0.14, ",": 0.14}
 DTYPES = {
@@ -186,14 +189,11 @@ class PersistentKokoroEngine:
         requested_ep = os.environ.get("JARVIS_KOKORO_EP", "auto").strip().lower()
         quantized_int8 = any(tag in model_path.name.lower() for tag in ("int8", "q8"))
         available = ort.get_available_providers()
-        if requested_ep == "auto":
-            requested_ep = "xnnpack" if quantized_int8 else "cpu"
-        if requested_ep == "xnnpack" and "XnnpackExecutionProvider" in available:
-            providers = ["XnnpackExecutionProvider", "CPUExecutionProvider"]
-        elif requested_ep == "nnapi" and "NnapiExecutionProvider" in available:
-            providers = ["NnapiExecutionProvider", "CPUExecutionProvider"]
-        else:
-            providers = ["CPUExecutionProvider"]
+        providers = select_onnx_providers(
+            requested_ep=requested_ep,
+            quantized_int8=quantized_int8,
+            available=available,
+        )
         started = time.monotonic()
         try:
             self.session = ort.InferenceSession(
@@ -316,24 +316,16 @@ class PersistentKokoroEngine:
         )
 
     def _bounded_token_runs(self, tokens: list[int], limit: int = 510) -> list[list[int]]:
-        """Use one inference for normal replies; split only beyond Kokoro's token window."""
-        if len(tokens) <= limit:
-            return [tokens]
-        punctuation = {self.vocab[ch] for ch in ".!?;:," if ch in self.vocab}
-        runs = []
-        current = []
-        for token in tokens:
-            current.append(token)
-            if len(current) >= limit:
-                boundary = max(
-                    (i + 1 for i, value in enumerate(current) if value in punctuation),
-                    default=len(current),
-                )
-                runs.append(current[:boundary])
-                current = current[boundary:]
-        if current:
-            runs.append(current)
-        return [run for run in runs if run]
+        """Keep each run at a natural boundary; split only beyond Kokoro's token window."""
+        punctuation = {
+            self.vocab[ch] for ch in ".!?;" if ch in self.vocab
+        }
+        return bounded_token_runs(
+            tokens,
+            limit=limit,
+            punctuation_tokens=punctuation,
+            whitespace_token=self.vocab.get(" "),
+        )
 
     def synthesize(self, text: str, voice: str, speed: float, output: Path) -> dict:
         style, lang, mode = self._voice_style(voice)
@@ -402,6 +394,7 @@ def main() -> int:
         "whisper_style_preloaded": True,
         "model_load_seconds": round(engine.model_load_seconds, 3),
         "providers": engine.active_providers,
+        "model_file": engine.model_path.name,
         "sample_rate": SAMPLE_RATE,
     }), flush=True)
 
@@ -422,7 +415,8 @@ def main() -> int:
                 "[KOKORO] "
                 f"phonemize={info['phonemize_ms']}ms inference={info['inference_ms']}ms "
                 f"write={info['write_ms']}ms calls={info['inference_calls']} "
-                f"tokens={info['token_count']} mode={info['mode']}",
+                f"tokens={info['token_count']} rtf={info['rtf']} "
+                f"audio={info['audio_seconds']}s mode={info['mode']}",
                 file=sys.stderr, flush=True,
             )
             print(json.dumps({"ok": True, **info}), flush=True)
