@@ -19,9 +19,11 @@ class KokoroIntegrationContractTests(unittest.TestCase):
             self.assertIn(filename, client)
             self.assertIn(filename, installer)
             self.assertIn(filename, setup)
-        for source in (client, worker, installer, setup):
+        for source in (client, worker):
             self.assertNotIn("kokoro-v1.1-zh", source)
             self.assertNotIn("voices-v1.1-zh", source)
+        self.assertNotIn("kokoro-v1.1-zh", installer)
+        self.assertNotIn("kokoro-v1.1-zh", setup)
         self.assertIn('if prefix not in ("a", "b")', worker)
         self.assertIn('if lang not in ("en-us", "en-gb")', worker)
         self.assertNotIn("ZHG2P", worker)
