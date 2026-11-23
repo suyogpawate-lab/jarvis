@@ -355,7 +355,7 @@ JARVIS keeps Edge TTS as the default and supports local Piper, Sherpa (Alan/Bryc
 jarvis-setup voice
 ```
 
-Choose **Edge** for the network-based en-GB-RyanNeural voice. **Piper** uses the configured local Piper model/runtime. **Alan/Bryce** use the persistent local Sherpa voice server. **Phonon** uses Gradium's compact English Phonon 31m q8 checkpoint through the Rust `ptts` CLI; Edwin is the default JARVIS voice. **Kokoro-82M** uses only the English v1.0 ONNX model and one configured English stock voice (default `am_eric`); the worker loads one speaker embedding and keeps the model resident. The optional whisper effect reuses that same embedding and does not load a second voice. Normal-size replies are sent as one utterance: one phonemizer pass and one ONNX inference, with a context-limit split only when the 510-token window is exceeded. An optional `kokoro-v1.0.int8.onnx` placed in `models/kokoro82m/` is preferred over FP16; XNNPACK is attempted for INT8, with CPU fallback. JARVIS reports standard synthesis RTF (synthesis wall time divided by generated audio duration) and flags whether it meets the 0.2 target. The worker defaults to four bounded ONNX intra-op threads (configurable with `JARVIS_KOKORO_THREADS`); this is a tuning starting point, not a hardware guarantee. Actual RTF remains hardware-dependent and must be benchmarked on the device. Voice setup pre-renders ten wake-word greetings plus a final idle-timeout sign-off with the selected speech provider and voice. After 20 seconds of inactivity, JARVIS plays the sign-off once at 22% playback volume and immediately exits continuous-conversation mode; there is no second listening window. The quiet playback mode works with every selected TTS provider while retaining its voice. It is a low-volume whisper-style effect, not a separately trained breathy-whisper model.
+Choose **Edge** for the network-based en-GB-RyanNeural voice. **Piper** uses the configured local Piper model/runtime. **Alan/Bryce** use the persistent local Sherpa voice server. **Phonon** uses Gradium's compact English Phonon 31m q8 checkpoint through the Rust `ptts` CLI; Edwin is the default JARVIS voice. **Kokoro-82M** loads the model pack matching the selected one of 157 stock voices and preloads a matching LPC-whisper style. Normal-size replies are sent as one utterance: one phonemizer pass and one ONNX inference, with a context-limit split only when the 510-token window is exceeded. An optional `kokoro-v1.0.int8.onnx` / `kokoro-v1.1-zh.int8.onnx` placed in `models/kokoro82m/` is preferred over FP16; XNNPACK is attempted for INT8, with CPU fallback. No INT8 model is bundled or fabricated. Voice setup pre-renders ten wake-word greetings plus a final idle-timeout sign-off with the selected speech provider and voice. After 20 seconds of inactivity, JARVIS plays the sign-off once at 22% playback volume and immediately exits continuous-conversation mode; there is no second listening window. The quiet playback mode works with every selected TTS provider while retaining its voice. It is a low-volume whisper-style effect, not a separately trained breathy-whisper model.
 
 Install Phonon explicitly (the model download and Rust compilation are optional and are not forced on core-only installs):
 
@@ -537,12 +537,6 @@ Useful checks:
 - Gmail uses IMAP/SMTP with an App Password.
 - The HTTP bridge requires an `X-Token` header for protected routes and binds to localhost only.
 
-
-## Kokoro voice selection and memory use
-
-Kokoro setup displays the complete 157-voice catalogue: 54 English voices and 103 Chinese voices. The current JARVIS runtime intentionally uses the English v1.0 model, so setup lets you select any of the 54 English voices and labels the Chinese entries as catalogue-only (they require a separate Chinese synthesis model).
-
-The Chinese voice archive is retained on disk solely so setup can display the full catalogue; the English worker never opens it. At runtime, JARVIS loads one selected English speaker embedding. The whisper style is derived from that same speaker and does not load another voice. Changing the selected voice takes effect after restarting JARVIS.
 
 ## Mission memory and diagnostics
 

@@ -10,7 +10,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODEL_DIR="$ROOT/models/kokoro82m"
 MODEL_V1="$MODEL_DIR/kokoro-v1.0.fp16.onnx"
 VOICES_V1="$MODEL_DIR/voices-v1.0.bin"
-VOICES_ZH="$MODEL_DIR/voices-v1.1-zh.bin"
+MODEL_V11="$MODEL_DIR/kokoro-v1.1-zh.fp16.onnx"
+VOICES_V11="$MODEL_DIR/voices-v1.1-zh.bin"
 BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
 mkdir -p "$MODEL_DIR"
 
@@ -54,59 +55,32 @@ fetch() {
 
 fetch "$BASE/kokoro-v1.0.fp16.onnx" "$MODEL_V1" 150000000 "f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96"
 fetch "$BASE/voices-v1.0.bin" "$VOICES_V1" 25000000 "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+fetch "$BASE/kokoro-v1.1-zh.fp16.onnx" "$MODEL_V11" 150000000 "a628ea5d6fbde96d1a85f691a6a00847829937f9e488021ba2c5359bc6ea08b5"
+fetch "$BASE/voices-v1.1-zh.bin" "$VOICES_V11" 50000000 "14cb6186c99e4f6016871405f62046c5df863ae27465cbdc4ee08be7dd703acd"
 
-# The 103 Chinese embeddings are retained on disk for the full 157-voice
-# setup catalogue only. The English worker never opens this archive.
-if [ ! -s "$VOICES_ZH" ] || [ "$(wc -c < "$VOICES_ZH")" -lt 50000000 ] || \
-   ! python - "$VOICES_ZH" <<'PY'
-import sys, zipfile
-try:
-    with zipfile.ZipFile(sys.argv[1]) as archive:
-        names = [name for name in archive.namelist() if name.endswith(".npy")]
-        valid = len(names) == 103 and archive.testzip() is None
-except Exception:
-    valid = False
-raise SystemExit(0 if valid else 1)
-PY
-then
-  rm -f "$VOICES_ZH.part"
-  echo "Downloading Chinese voice catalogue (catalogue only; not loaded by JARVIS)..."
-  curl --fail --location --retry 3 --retry-delay 2 "$BASE/voices-v1.1-zh.bin" -o "$VOICES_ZH.part"
-  [ "$(wc -c < "$VOICES_ZH.part")" -ge 50000000 ] || {
-    echo "Chinese voice catalogue download is incomplete." >&2
-    rm -f "$VOICES_ZH.part"
-    exit 1
-  }
-  python - "$VOICES_ZH.part" <<'PY'
-import sys, zipfile
-with zipfile.ZipFile(sys.argv[1]) as archive:
-    names = [name for name in archive.namelist() if name.endswith(".npy")]
-    if len(names) != 103 or archive.testzip() is not None:
-        raise SystemExit("Expected a valid archive containing exactly 103 Chinese voice embeddings.")
-PY
-  mv "$VOICES_ZH.part" "$VOICES_ZH"
-fi
-
-python - "$VOICES_V1" "$VOICES_ZH" <<'PY'
+python - "$VOICES_V1" "$VOICES_V11" <<'PY'
 import sys
 import numpy as np
-import zipfile
 
-with np.load(sys.argv[1], allow_pickle=False) as archive:
-    english = list(archive.files)
-if len(english) != 54 or any(not name.startswith(("a", "b")) for name in english):
-    raise SystemExit("Expected exactly 54 English voice embeddings.")
-with zipfile.ZipFile(sys.argv[2]) as archive:
-    chinese = [name for name in archive.namelist() if name.endswith(".npy")]
-    if len(chinese) != 103 or archive.testzip() is not None:
-        raise SystemExit("Expected exactly 103 valid Chinese catalogue embeddings.")
-print(f"Verified 157 voice IDs: {len(english)} English + {len(chinese)} Chinese.")
-print("Only the English archive is opened by the runtime; one selected English embedding is copied into RAM.")
+counts = []
+catalog = {}
+for path, expected in ((sys.argv[1], 54), (sys.argv[2], 103)):
+    with np.load(path, allow_pickle=False) as archive:
+        names = list(archive.files)
+    if len(names) != expected:
+        raise SystemExit(f"{path}: expected {expected} voices, found {len(names)}")
+    counts.append(len(names))
+    for name in names:
+        if name in catalog:
+            raise SystemExit(f"Duplicate voice ID across Kokoro packs: {name}")
+        catalog[name] = path
+if len(catalog) != 157:
+    raise SystemExit(f"Expected 157 unique Kokoro voices, found {len(catalog)}")
+print(f"Verified voice catalog: {counts[0]} v1.0 + {counts[1]} v1.1-zh = {len(catalog)} unique voices.")
 PY
 
 echo
-echo "Kokoro installation verified: 157-voice setup catalogue."
-echo "Only the English v1.0 ONNX model is installed for synthesis."
-echo "The Chinese voice archive is stored on disk for catalogue display and is never loaded by the English worker."
-echo "At startup, only the selected English speaker embedding and its derived whisper style are resident."
+echo "Kokoro 157-voice installation verified."
+echo "Both model packs are stored on disk; JARVIS loads only the model for the selected voice."
+echo "The selected voice's normal and matching LPC-whisper styles are preloaded when JARVIS starts."
 echo "This installation does not modify your current TTS provider."
