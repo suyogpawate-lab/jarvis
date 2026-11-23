@@ -1083,7 +1083,7 @@ def step_voice(env):
                 return sorted(
                     name.rsplit("/", 1)[-1][:-4]
                     for name in archive.namelist()
-                    if name.endswith(".npy") and "/" not in name.rstrip("/").replace("/", "")
+                    if name.endswith(".npy")
                 )
 
         try:
