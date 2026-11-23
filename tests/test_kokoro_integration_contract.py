@@ -78,12 +78,6 @@ class KokoroIntegrationContractTests(unittest.TestCase):
         self.assertIn("str(MODEL_V1), str(VOICES_V1), str(MODEL_V11), str(VOICES_V11), selected", client)
         self.assertIn('ready.get("selected_voice") != selected', client)
         self.assertIn("def model_for_voice", client)
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_android_provider_policy_and_natural_token_boundaries_are_wired(self):
         worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
         self.assertIn("select_onnx_providers(", worker)
@@ -91,3 +85,7 @@ if __name__ == "__main__":
         self.assertIn("whitespace_token=self.vocab.get(\" \")", worker)
         self.assertIn("model_file", worker)
         self.assertIn("audio={info['audio_seconds']}s", worker)
+
+
+if __name__ == "__main__":
+    unittest.main()
