@@ -23,6 +23,9 @@ class KokoroIntegrationContractTests(unittest.TestCase):
             self.assertNotIn("kokoro-v1.1-zh", source)
             self.assertNotIn("voices-v1.1-zh", source)
         self.assertIn('if prefix not in ("a", "b")', worker)
+        self.assertIn('if lang not in ("en-us", "en-gb")', worker)
+        self.assertNotIn("ZHG2P", worker)
+        self.assertNotIn("JAG2P", worker)
         self.assertIn('"voices_loaded": 1', worker)
         self.assertIn('ready.get("voices_loaded", 0) != 1', client)
 
