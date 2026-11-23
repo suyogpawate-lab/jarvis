@@ -25,6 +25,22 @@ def _normal_kokoro_voice():
     return legacy if legacy and legacy != "jarvis_whisper" else "am_eric"
 
 
+def _mpv_raw_audio_command(sample_width: int, sample_rate: int, channels: int) -> list[str]:
+    """Build a deterministic Termux playback command, ignoring user mpv.conf overrides."""
+    formats = {1: "u8", 2: "s16le", 3: "s24le", 4: "s32le"}
+    audio_format = formats.get(int(sample_width))
+    if audio_format is None:
+        raise RuntimeError(f"Unsupported PCM sample width: {sample_width} bytes")
+    return [
+        "mpv", "--no-config", "--no-video", "--no-terminal", "--really-quiet",
+        "--volume=100", "--demuxer=rawaudio",
+        f"--demuxer-rawaudio-format={audio_format}",
+        f"--demuxer-rawaudio-rate={int(sample_rate)}",
+        f"--demuxer-rawaudio-channels={int(channels)}",
+        "-",
+    ]
+
+
 def _provider():
     value = os.environ.get("JARVIS_TTS_PROVIDER", "").strip().lower()
     if value:
@@ -158,7 +174,7 @@ class TTSManager:
                 return True
             except Exception as exc:
                 primary_error = str(exc)
-                if _provider() in ("say", "kitten") and self._gen == gen:
+                if _provider() in ("say", "kitten", "kokoro") and self._gen == gen:
                     print(
                         f"[TTS WARN] Local voice unavailable; falling back to Edge TTS: "
                         f"{type(exc).__name__}: {primary_error}",
@@ -194,10 +210,13 @@ class TTSManager:
                     text, speed, gen, voice = item
                     self.last_spoken_text = str(text).strip()
                     self.last_started = time.monotonic()
-                    if self._gen == gen and not self._speak_with_fallbacks(text, speed, gen, voice=voice):
-                        # The public speak() API only queues work; report worker
-                        # failures so a silent TTS outage is diagnosable in Termux.
-                        print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
+                    if self._gen == gen:
+                        if not self._speak_with_fallbacks(text, speed, gen, voice=voice):
+                            # The public speak() API only queues work; report worker
+                            # failures so a silent TTS outage is diagnosable in Termux.
+                            print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
+                        elif self.last_provider in {"kokoro", "edge-fallback"}:
+                            print(f"[TTS] Playback completed via {self.last_provider}.", flush=True)
                 finally:
                     self.queue.task_done()
         finally:
@@ -338,26 +357,9 @@ class TTSManager:
                         )
                         if audio_format is None:
                             channels, sample_width, sample_rate = params
-                            formats = {
-                                1: "u8",
-                                2: "s16le",
-                                3: "s24le",
-                                4: "s32le",
-                            }
-                            if sample_width not in formats:
-                                raise RuntimeError(
-                                    f"Unsupported PCM sample width: {sample_width} bytes"
-                                )
                             audio_format = params
                             proc = subprocess.Popen(
-                                [
-                                    "mpv", "--no-video", "--no-terminal", "--really-quiet",
-                                    "--demuxer=rawaudio",
-                                    f"--demuxer-rawaudio-format={formats[sample_width]}",
-                                    f"--demuxer-rawaudio-rate={sample_rate}",
-                                    f"--demuxer-rawaudio-channels={channels}",
-                                    "-",
-                                ],
+                                _mpv_raw_audio_command(sample_width, sample_rate, channels),
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,

@@ -1969,6 +1969,20 @@ Rules:
         except Exception as exc:
             print(f"[WORKSPACE ROUTE] {type(exc).__name__}: {exc}", flush=True)
 
+        # Research mission IDs belong to the research controller, not the AIE
+        # persistent-goal matcher. Resolve explicit resume commands before AIE's
+        # broad "resume <goal>" grammar so overnight IDs cannot be misclassified.
+        research_resume = re.fullmatch(
+            r"(?:please\s+)?resume\s+(?:research\s+)?([A-Za-z0-9_-]+)",
+            text, re.IGNORECASE,
+        )
+        if research_resume:
+            research_id = research_resume.group(1)
+            if research_id.startswith("overnight-"):
+                return self.research.resume_overnight(research_id)
+            if re.fullmatch(r"(?:mission|research)-[A-Za-z0-9_-]+", research_id, re.I):
+                return self.research.resume_mission(research_id, self.automation)
+
         # AIE has a natural-language goal interface shared by voice and text.
         aie_nl = getattr(self, "aie_nl", None)
         if re.match(r"^/aie(?:\s|$)", text, re.IGNORECASE):
