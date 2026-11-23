@@ -50,8 +50,11 @@ class KokoroIntegrationContractTests(unittest.TestCase):
     def test_rtf_uses_wall_time_over_generated_audio_duration(self):
         manager = (ROOT / "voice" / "tts_manager.py").read_text(encoding="utf-8")
         self.assertIn('synth_metrics["seconds"] / synth_metrics["audio_seconds"]', manager)
-        self.assertIn('"rtf_target": 0.5', manager)
+        self.assertIn('"rtf_target": float(os.environ.get("JARVIS_KOKORO_RTF_TARGET", "0.2"))', manager)
         self.assertIn('"rtf_within_target"', manager)
+        worker = (ROOT / "scripts" / "kokoro_worker.py").read_text(encoding="utf-8")
+        self.assertIn('"rtf_target": float(os.environ.get("JARVIS_KOKORO_RTF_TARGET", "0.2"))', worker)
+        self.assertIn('JARVIS_KOKORO_THREADS", "4"', worker)
 
 
 if __name__ == "__main__":
