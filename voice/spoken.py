@@ -16,10 +16,10 @@ def to_speakable(text, max_words=MAX_WORDS):
     # before punctuation handling so TTS never inserts a false pause mid-clause.
     lines = []
     for line in text.splitlines():
-        line = re.sub(r"^\\s*(\\d+[.)]|[a-zA-Z][.)])\\s+", "", line).strip()
+        line = re.sub(r"^\s*(\d+[.)]|[a-zA-Z][.)])\s+", "", line).strip()
         if line:
             lines.append(line)
-    text = re.sub(r"\\s+", " ", " ".join(lines)).strip()
+    text = re.sub(r"\s+", " ", " ".join(lines)).strip()
     if text and text[-1] not in ".!?":
         text += "."
     words = text.split()
