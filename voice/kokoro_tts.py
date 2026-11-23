@@ -124,7 +124,8 @@ def warmup() -> bool:
     print(
         "[TTS] Kokoro-82M persistent worker ready; "
         f"{ready['voices_loaded']} voices available; selected={ready['selected_voice']}; "
-        f"model={ready['model_family']}; normal + matching whisper styles preloaded; "
+        f"model={ready['model_family']} ({ready.get('model_file', 'unknown')}); "
+        f"providers={ready.get('providers')}; normal + matching whisper styles preloaded; "
         f"model load {ready.get('model_load_seconds')}s; providers={ready.get('providers')}; "
         "inference warmup complete.",
         flush=True,
