@@ -9,6 +9,9 @@ import importlib.metadata
 import json
 import os
 import socketserver
+
+import numpy as np
+import soundfile as sf
 import time
 import traceback
 import uuid
@@ -73,6 +76,18 @@ print(
 )
 print(f"[Kitten] Loading {MODEL_ID} with ONNX backend...", flush=True)
 from kittenml import KittenTTS
+from kittenml.kittentts2_tiny import frontend as kitten_frontend
+from voice.kitten_audio import KITTEN_MAX_PHONEMES, configure_frontend, synthesize_gapless
+
+# Kitten's default frontend splits at 350 phonemes and generate() inserts
+# 150 ms silence between those pieces. A 500-phoneme cap stays within the
+# 510-position voice-style table, including the two special tokens.
+configure_frontend(kitten_frontend)
+print(
+    f"[Kitten] Frontend chunk cap: {KITTEN_MAX_PHONEMES} phonemes; "
+    "inter-chunk silence disabled",
+    flush=True,
+)
 
 load_started = time.perf_counter()
 model = KittenTTS(MODEL_ID, backend="onnx")
@@ -82,13 +97,10 @@ print(f"[Kitten] Model loaded in {load_seconds:.3f}s", flush=True)
 print("[Kitten] Warming up ONNX inference...", flush=True)
 warmup_path = OUTPUT / f".warmup-{uuid.uuid4().hex}.wav"
 warmup_started = time.perf_counter()
-model.generate_to_file(
-    "Ready.",
-    str(warmup_path),
-    voice="otis",
-    language="en",
-    speed=0.88,
+warmup_audio, _ = synthesize_gapless(
+    model, "Ready.", voice="otis", language="en", speed=0.88
 )
+sf.write(str(warmup_path), warmup_audio, model.sample_rate)
 warmup_seconds = time.perf_counter() - warmup_started
 warmup_path.unlink(missing_ok=True)
 print(f"[Kitten] Warm-up completed in {warmup_seconds:.3f}s", flush=True)
@@ -137,13 +149,12 @@ class Handler(socketserver.StreamRequestHandler):
 
             output = OUTPUT / f"speech-{uuid.uuid4().hex}.wav"
             started = time.perf_counter()
-            model.generate_to_file(
-                text,
-                str(output),
-                voice=voice,
-                language=language,
-                speed=speed,
+            audio, internal_chunks = synthesize_gapless(
+                model, text, voice=voice, language=language, speed=speed
             )
+            if audio.size == 0:
+                raise RuntimeError("KittenTTS produced no audio samples.")
+            sf.write(str(output), audio, model.sample_rate)
             generation_seconds = time.perf_counter() - started
 
             with wave.open(str(output), "rb") as wav:
@@ -166,7 +177,8 @@ class Handler(socketserver.StreamRequestHandler):
             })
             print(
                 f"[Kitten] Generated {output.name}: {generation_seconds:.3f}s, "
-                f"audio {audio_seconds:.2f}s, voice={voice}/{language}",
+                f"audio {audio_seconds:.2f}s, internal_chunks={internal_chunks}, "
+                f"voice={voice}/{language}",
                 flush=True,
             )
         except Exception as exc:
