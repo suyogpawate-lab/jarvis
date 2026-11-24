@@ -13,3 +13,12 @@ def test_paths_conflict_handles_multiple_untracked_paths():
         {"voice/a.py", "voice/b.py"},
         {"data/cache.json", "notes.txt"},
     )
+
+
+
+def test_update_waits_for_explicit_approval(tmp_path):
+    updater = AutoUpdater(tmp_path)
+    updater._pending.set()
+
+    assert updater.apply_if_pending() is False
+    assert updater.pending is True
