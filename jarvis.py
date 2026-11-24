@@ -36,6 +36,7 @@ from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
 from memory.chat_history import ChatHistory
+from terminal_utils import clear_scrollback
 from memory.intent import MemoryIntent
 from monitoring.system_telemetry import get_telemetry
 from monitoring.notification_watcher import NotificationWatcher
@@ -975,8 +976,7 @@ def handle_prompt(prompt, source="external"):
         code = chat_history.new_session()
         return f"Started a new chat. Resume code: {code}", False
     if lower_prompt == "/clear":
-        erased = chat_history.clear()
-        return f"Chat history permanently erased ({erased} messages). Personal and project memories were preserved.", False
+        return "Use /clear in the interactive JARVIS terminal; it clears terminal scrollback only and does not delete chats.", False
 
     # The user pressed Enter: stop talking now, before the new answer is worked out.
     stop_speaking()
@@ -1502,6 +1502,12 @@ def main():
                 shutdown()
                 print("JARVIS OFFLINE")
                 break
+
+            # /clear is a terminal-display command, not a chat/database command.
+            if prompt.strip().lower() == "/clear":
+                if not clear_scrollback():
+                    print("[CLEAR] This terminal does not support scrollback clearing.", flush=True)
+                continue
 
             if (
                 whatsapp_autoreply is not None
