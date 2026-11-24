@@ -78,8 +78,33 @@ class AutoUpdater:
     @property
     def pending(self): return self._pending.is_set()
 
-    def apply_if_pending(self):
-        """Apply a verified fast-forward update. Call only from an idle main loop."""
+    def pending_summary(self, max_items=12):
+        """Return a concise changelog for the pending fast-forward update."""
+        if not self._pending.is_set():
+            return "No update is pending."
+        commits = self._git("log", "--oneline", "--no-decorate", "HEAD..origin/main")
+        files = self._git("diff", "--name-status", "HEAD", "origin/main")
+        commit_lines = [line.strip() for line in commits.stdout.splitlines() if line.strip()]
+        file_lines = [line.strip() for line in files.stdout.splitlines() if line.strip()]
+        lines = [f"JARVIS update available: {len(commit_lines)} commit(s), {len(file_lines)} changed path(s)."]
+        if commit_lines:
+            lines.append("Changes:")
+            lines.extend(f"  - {line[:180]}" for line in commit_lines[:max_items])
+            if len(commit_lines) > max_items:
+                lines.append(f"  - ... and {len(commit_lines) - max_items} more commit(s)")
+        if file_lines:
+            lines.append("Files:")
+            lines.extend(f"  - {line[:180]}" for line in file_lines[:max_items])
+            if len(file_lines) > max_items:
+                lines.append(f"  - ... and {len(file_lines) - max_items} more path(s)")
+        lines.append("Nothing has been installed. Type /update approve to install, or /update later to defer.")
+        return "\n".join(lines)
+
+    def apply_if_pending(self, approved=False):
+        """Apply only after explicit owner approval, from an idle main loop."""
+        if not approved:
+            self._log("Update remains pending: explicit approval is required.")
+            return False
         if not self.enabled or not self._pending.is_set(): return False
         with self._lock:
             if not self._pending.is_set(): return False
