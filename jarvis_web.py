@@ -196,7 +196,12 @@ class H(BaseHTTPRequestHandler):
                 _hist_add("user", text)
             return self._send(200, json.dumps({"result": res}))
         if self.path == "/api/clear":
-            _hist_clear()
+            brain = getattr(ui, "BRAIN", None)
+            history = getattr(brain, "chat_history", None)
+            if history is not None:
+                history.clear()
+            else:
+                _hist_clear()
             return self._send(200, '{"ok":true}')
         if self.path == "/api/workspace/open":
             try:
