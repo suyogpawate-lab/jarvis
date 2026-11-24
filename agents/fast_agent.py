@@ -3164,7 +3164,6 @@ class FastAgent:
 
     def ask(self, prompt):
         """Return a complete answer; compact long output only when safe."""
-        self._last_used_tools = []
         answer = self._ask_unbounded(prompt)
         answer = str(answer or "").strip()
         if not answer:
