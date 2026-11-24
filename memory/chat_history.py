@@ -53,7 +53,7 @@ class ChatHistory:
 
     @staticmethod
     def _description(value):
-        text = re.sub(r"\\s+", " ", str(value or "")).strip()
+        text = re.sub(r"\s+, " ", str(value or "")).strip()
         return (text[:87].rsplit(" ", 1)[0] + "...") if len(text) > 90 else (text or "New chat")
 
     def _active_code(self, db):
