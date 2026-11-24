@@ -1,12 +1,9 @@
 # Lightweight KittenTTS Pico ONNX runtime for Termux.
 # Install kittenml with --no-deps to avoid its heavyweight PyTorch stack.
-# KittenML 0.9.7 has an English G2P fallback to eSpeak NG when its optional
-# PyTorch/Misaki frontend is unavailable; spaCy and NLTK are not required here.
-# Do NOT install Misaki on this Termux path: its POS tagger requires NLTK data,
-# while Pico can use the bundled eSpeak NG fallback without it.
 numpy
 soundfile
 huggingface_hub
 espeakng_loader
 phonemizer>=3.4
 num2words
+nltk
