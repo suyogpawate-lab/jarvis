@@ -186,4 +186,14 @@ class ChatHistory:
             db.execute("DELETE FROM chat_state")
             # Remove legacy transcript rows, but preserve memories and episodes.
             db.execute("DELETE FROM conversations")
-            return int(count)
+        # The web panel maintains a second transcript file; clear that too.
+        try:
+            import jarvis_web
+            jarvis_web._hist_clear()
+        except Exception:
+            web_history = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "web_chat.json")
+            try:
+                os.remove(web_history)
+            except OSError:
+                pass
+        return int(count)
