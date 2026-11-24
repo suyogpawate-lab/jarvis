@@ -1371,7 +1371,7 @@ async def _read_prompt_async():
                         await prompt_task
                     except asyncio.CancelledError:
                         pass
-                    print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
+                    print(f"[{time.strftime('%H:%M:%S')}] YOU (VOICE) > {command.strip()}", flush=True)
                     return command.strip(), "voice"
 
                 active_future = globals().get("_active_task_future")
@@ -1447,7 +1447,7 @@ def main():
 
         print("JARVIS ONLINE")
         print("Type '/memory' to inspect memory.")
-        print("Type '/clear' to clear the terminal.")
+        print("Commands: /clear | /history | /resume CODE | /newchat | /btw question | /update")
         print("Type 'exit' to quit.")
     print()
 
