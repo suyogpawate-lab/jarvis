@@ -11,7 +11,7 @@ class TTY(io.StringIO):
 def test_clear_scrollback_only_emits_terminal_control_sequences():
     stream = TTY()
     assert clear_scrollback(stream) is True
-    assert stream.getvalue() == "\\x1b[3J\\x1b[2J\\x1b[H"
+    assert stream.getvalue() == "\x1b[3J\x1b[2J\x1b[H"
 
 
 def test_clear_scrollback_does_nothing_for_non_tty_output():
