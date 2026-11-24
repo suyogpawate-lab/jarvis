@@ -11,7 +11,7 @@ if ! command -v pkg >/dev/null 2>&1; then
 fi
 
 echo "[Kitten] Installing Android ONNX Runtime and eSpeak..."
-pkg install -y python python-onnxruntime espeak-ng
+pkg install -y python python-onnxruntime espeak
 
 echo "[Kitten] Installing KittenML 0.9.7 without its heavyweight PyTorch stack..."
 python -m pip install --retries 5 --timeout 30 --no-deps --upgrade "kittenml==0.9.7"
