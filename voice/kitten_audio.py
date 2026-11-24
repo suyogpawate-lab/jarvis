@@ -5,12 +5,12 @@ import numpy as np
 
 # Kitten's style table supports 510 input positions. Two are reserved for
 # start/end markers, leaving room for up to 508 phoneme symbols. Keep margin.
-KITTTEN_MAX_PHONEMES = 500
+KITTEN_MAX_PHONEMES = 500
 
 
 def configure_frontend(frontend_module) -> None:
     """Raise Kitten's conservative 350-phoneme split without exceeding style rows."""
-    frontend_module.MAX_PHON = KITTTEN_MAX_PHONEMES
+    frontend_module.MAX_PHON = KITTEN_MAX_PHONEMES
 
 
 def synthesize_gapless(model, text: str, voice: str, language: str, speed: float):
