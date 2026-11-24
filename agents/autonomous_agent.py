@@ -783,11 +783,8 @@ PROCESS CONTROL
         # FAST OSINT ROUTE
         # ======================================================
         # Groq handles OSINT intent/action extraction first.
-        # If it is not OSINT, the normal OmniRoute agent remains
-        # responsible for the request.
+        # Non-OSINT requests continue through the primary Groq execution agent.
         fast_osint = self._fast_osint_route(request)
-                return self._execute(action, value)
-
 
         if fast_osint:
             action, value = self._parse(fast_osint)
