@@ -2708,6 +2708,28 @@ class FastAgent:
         return None
 
     @staticmethod
+    def _is_complex_shell_project(prompt):
+        """Classify substantial local engineering requests without routing them."""
+        raw = str(prompt or "")
+        marker = "CURRENT USER MESSAGE:"
+        if marker in raw:
+            current = raw.split(marker, 1)[1]
+            raw = next((line for line in current.splitlines() if line.strip()), "")
+        text = " ".join(raw.lower().split())
+        project_cues = re.search(
+            r"\b(project|repository|repo|codebase|code base|implement|refactor|"
+            r"debug|fix all|multiple files|across files|build a feature|"
+            r"write a script|automate|shell script|complex command|multi-step)\b",
+            text,
+        )
+        local_cues = re.search(
+            r"\b(shell|bash|termux|command|file|files|script|python|git|"
+            r"install|package|project|repository|repo|code|test|tests)\b",
+            text,
+        )
+        return bool(project_cues and local_cues and len(text) >= 45)
+
+    @staticmethod
     def _simple_direct_request(prompt):
         """Identify short factual questions that do not need tools or project context."""
         text = str(prompt or "").strip()
