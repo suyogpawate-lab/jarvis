@@ -354,8 +354,6 @@ class FastAgent:
             return "Inspecting the current Android screen"
         if name == "screen_control":
             return f"Controlling Android screen ({clip(args.get('action'), 30)})"
-        if name == "escalate_to_expert":
-            return "Asking a stronger model for help"
         if name == "prepare_google_form":
             return "Preparing the Google form"
         if name == "confirm_google_form_submission":
@@ -687,30 +685,6 @@ class FastAgent:
                         "This does not list or inspect installed Android applications."
                     ),
                     "parameters": {"type": "object", "properties": {}, "required": []}
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "escalate_to_expert",
-                    "description": (
-                        "Escalate genuinely complex debugging, engineering, "
-                        "or specialist analysis to OmniRoute. Groq "
-                        "remains the primary agent and reviews the result."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "task": {
-                                "type": "string",
-                                "description": (
-                                    "A self-contained task with relevant "
-                                    "context, constraints, and expected result."
-                                )
-                            }
-                        },
-                        "required": ["task"]
-                    }
                 }
             },
             {
@@ -1853,52 +1827,6 @@ class FastAgent:
                 return {
                     "ok": False,
                     "error": f"Android launch failed: {exc}",
-                }
-
-        if name == "escalate_to_expert":
-            task = arguments.get("task")
-            provider = "omniroute"
-
-            if not isinstance(task, str) or not task.strip():
-                return {"ok": False, "error": "Specialist task is empty."}
-
-            specialist_prompt = (
-                "You are a specialist consultant supporting JARVIS. "
-                "Solve the task accurately. Do not claim you executed device "
-                "commands or changed files. Return findings for Groq to review.\n\n"
-                "TASK:\n" + task.strip()
-            )
-            try:
-                kwargs = {
-                    "messages": [
-                        {"role": "user", "content": specialist_prompt}
-                    ],
-                    "system_prompt": (
-                        "You are JARVIS's specialist worker. Be accurate, "
-                        "practical, and explicit about uncertainty."
-                    ),
-                    "max_tokens": 1200,
-                    "temperature": 0.2,
-                    "timeout": 60,
-                }
-                result = self._omniroute_request(**kwargs)
-
-                if not result:
-                    return {
-                        "ok": False,
-                        "provider": provider,
-                        "error": "Specialist returned an empty result.",
-                    }
-                return {
-                    "ok": True,
-                    "provider": provider,
-                    "result": result,
-                }
-            except Exception as exc:
-                return {
-                    "ok": False,
-                    "provider": provider,
-                    "error": f"Specialist request failed: {exc}",
                 }
 
         return {
