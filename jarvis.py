@@ -49,6 +49,10 @@ from auto_update import AutoUpdater
 
 _auto_updater = AutoUpdater(Path(__file__).resolve().parent)
 _auto_update_restart = False
+_auto_update_notified = False
+_active_task_future = None
+_deferred_prompts = []
+_btw_agent = None
 
 
 def start_auto_updater():
@@ -1370,11 +1374,16 @@ async def _read_prompt_async():
                     print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
                     return command.strip(), "voice"
 
-                if apply_auto_update_if_ready():
+                active_future = globals().get("_active_task_future")
+                if active_future is not None and active_future.done():
                     prompt_task.cancel()
                     try: await prompt_task
                     except asyncio.CancelledError: pass
-                    return "", "update_restart"
+                    return "", "task_done"
+                if _auto_updater.pending and not _auto_update_notified:
+                    global _auto_update_notified
+                    _auto_update_notified = True
+                    print("\\n" + _auto_updater.pending_summary() + "\\n", flush=True)
                 await asyncio.sleep(0.08)
 
             _service_cli_background_events()
@@ -1399,7 +1408,7 @@ def read_prompt():
     """
     while True:
         prompt, source = asyncio.run(_read_prompt_async())
-        if source == "update_restart": return prompt, source
+        if source in {"update_restart", "task_done"}: return prompt, source
         if prompt: return prompt, source
 
 
