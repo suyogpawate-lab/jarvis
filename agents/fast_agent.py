@@ -10,6 +10,7 @@ from tools import mcp_client
 from tools import composio_mcp
 from social import manager as social_manager
 from tools import progress
+from monitoring.token_meter import request_started, request_completed, request_failed
 from agents.groq_keys import get_groq_api_keys
 
 class FastAgent:
@@ -55,20 +56,14 @@ class FastAgent:
             raise RuntimeError("This model ID is disabled. Configure a non-Gemini, non-Claude OmniRoute model in OMNIROUTE_COMPLEX_MODEL.")
         payload_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else [])
         payload_messages.extend(messages)
+        request_started("OmniRoute", model, phase="delegated")
         response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": model, "messages": payload_messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}, timeout=timeout)
         if response.status_code != 200:
             detail = " ".join(str(getattr(response, "text", "")).split())[:300]
             raise RuntimeError(f"OmniRoute request failed (HTTP {response.status_code})" + (f": {detail}" if detail else ""))
         data = response.json()
         usage = data.get("usage") or {}
-        if usage:
-            print(
-                "[TOKEN AUDIT] provider=OmniRoute "
-                f"prompt={usage.get('prompt_tokens', '?')} "
-                f"completion={usage.get('completion_tokens', '?')} "
-                f"total={usage.get('total_tokens', '?')}",
-                flush=True,
-            )
+        request_completed("OmniRoute", model, usage, phase="delegated")
         content = str(data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
         if not content: raise RuntimeError("OmniRoute returned an empty response.")
         return content
@@ -163,6 +158,10 @@ class FastAgent:
         if total == 0:
             raise RuntimeError("No Groq API keys configured.")
 
+        messages = payload.get("messages") or []
+        phase = "tool-follow-up" if any(m.get("role") == "tool" for m in messages) else "initial/final"
+        model = str(payload.get("model", self.model))
+        request_started("Groq", model, phase=phase)
         last = None
         # One bounded sweep per model request. If all keys are rate-limited,
         # return the last 429 immediately instead of sleeping and retrying the
@@ -188,39 +187,11 @@ class FastAgent:
 
             if response.status_code == 200:
                 self.current_key_index = index
-                if True:  # Always report token usage for each Groq completion.
-                    try:
-                        usage = response.json().get("usage") or {}
-                        messages = payload.get("messages") or []
-                        system_chars = sum(
-                            len(str(m.get("content", "")))
-                            for m in messages if m.get("role") == "system"
-                        )
-                        user_chars = sum(
-                            len(str(m.get("content", "")))
-                            for m in messages if m.get("role") == "user"
-                        )
-                        tool_chars = sum(
-                            len(str(m.get("content", "")))
-                            for m in messages if m.get("role") == "tool"
-                        )
-                        tool_rounds = sum(
-                            1 for m in messages if m.get("role") == "tool"
-                        )
-                        phase = "tool-follow-up" if tool_rounds else "initial/final"
-                        print(
-                            "[TOKEN AUDIT] "
-                            f"phase={phase} model={payload.get('model', self.model)} "
-                            f"prompt={usage.get('prompt_tokens', '?')} "
-                            f"completion={usage.get('completion_tokens', '?')} "
-                            f"total={usage.get('total_tokens', '?')} "
-                            f"messages={len(messages)} tools={len(payload.get('tools') or [])} "
-                            f"system_chars={system_chars} user_chars={user_chars} "
-                            f"tool_result_chars={tool_chars}",
-                            flush=True,
-                        )
-                    except Exception as audit_exc:
-                        print(f"[TOKEN AUDIT] usage unavailable: {type(audit_exc).__name__}", flush=True)
+                try:
+                    usage = response.json().get("usage") or {}
+                except (ValueError, TypeError):
+                    usage = {}
+                request_completed("Groq", model, usage, phase=phase)
                 return response
 
             last = response
@@ -232,6 +203,7 @@ class FastAgent:
                 # TPM is commonly model/organization scoped. Rotating
                 # keys repeats the same blocked request, so stop this sweep.
                 if kind == "tokens per minute":
+                    request_failed("Groq", model, phase, f"{kind}; retry in about {wait:.0f}s")
                     return response
                 continue
             if code in (401, 403):
@@ -241,11 +213,14 @@ class FastAgent:
                 print(f" Groq account {index + 1}: server error (HTTP {code})")
                 continue
             # 400/413/other: the request itself is the problem; more keys won't help.
+            request_failed("Groq", model, phase, f"HTTP {code}")
             return response
 
         if last is None:
+            request_failed("Groq", model, phase, "No configured key could complete the request")
             raise RuntimeError("Could not reach Groq with any configured key.")
 
+        request_failed("Groq", model, phase, f"HTTP {last.status_code}")
         return last
 
     def _groq_limit_message(self, response):
