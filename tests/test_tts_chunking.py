@@ -1,6 +1,6 @@
 import unittest
 
-from voice.text_chunking import phonon_chunk_text
+from voice.text_chunking import kitten_chunk_text, phonon_chunk_text
 from voice.spoken import to_speakable
 
 
@@ -35,6 +35,24 @@ class SpeechChunkingTests(unittest.TestCase):
         self.assertEqual([len(chunk.split()) for chunk in chunks], [50, 20, 10])
         self.assertTrue(all(chunk[-1] in ".?!" for chunk in chunks))
 
+
+    def test_kitten_keeps_normal_replies_in_one_prosodic_pass(self):
+        text = " ".join(f"word{i}" for i in range(120)) + "."
+        self.assertEqual(kitten_chunk_text(text), [text])
+
+    def test_kitten_splits_only_very_long_replies(self):
+        text = " ".join(f"word{i}." for i in range(320))
+        chunks = kitten_chunk_text(text)
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(" ".join(chunks), text)
+
+    def test_speech_text_is_not_silently_cut_at_99_words(self):
+        text = " ".join(f"word{i}" for i in range(140)) + "."
+        self.assertEqual(to_speakable(text), text)
+
+    def test_explicit_word_limit_remains_available(self):
+        text = " ".join(f"word{i}" for i in range(140)) + "."
+        self.assertLessEqual(len(to_speakable(text, max_words=99).split()), 99)
 
     def test_comma_immediately_before_sir_is_removed(self):
         self.assertEqual(to_speakable("Certainly, sir."), "Certainly sir.")
