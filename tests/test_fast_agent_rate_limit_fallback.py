@@ -77,11 +77,6 @@ class FastAgentRateLimitFallbackTests(unittest.TestCase):
         self.assertIn("4 seconds", message)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-
     def test_simple_groq_rate_limit_does_not_automatically_delegate(self):
         agent = object.__new__(FastAgent)
         agent.model = "openai/gpt-oss-120b"
@@ -116,3 +111,7 @@ if __name__ == "__main__":
             for item in agent._builtin_tool_definitions()
         }
         self.assertIn("delegate_to_omniroute", names)
+
+
+if __name__ == "__main__":
+    unittest.main()
