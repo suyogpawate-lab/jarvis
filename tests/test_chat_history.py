@@ -41,3 +41,17 @@ def test_chat_sessions_resume_and_clear_only_transcripts(tmp_path):
     assert storage.search_memories("keep this memory", memory_type="personal")
     with sqlite3.connect(db_path) as db:
         assert db.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] == 0
+
+
+
+def test_legacy_conversation_history_is_migrated(tmp_path):
+    db_path = str(tmp_path / "legacy.db")
+    storage = MemoryStorage(db_path=db_path)
+    storage.remember_message("user", "Earlier robotics discussion")
+    storage.remember_message("assistant", "We discussed the motor controller.")
+
+    history = ChatHistory(db_path=db_path)
+    sessions = history.list_sessions()
+    assert len(sessions) == 1
+    assert "Earlier robotics discussion" in sessions[0]["description"]
+    assert len(history.messages(sessions[0]["code"])) == 2
