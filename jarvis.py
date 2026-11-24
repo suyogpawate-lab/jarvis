@@ -1336,7 +1336,7 @@ def _service_cli_background_events():
         summary = pop_notification()
         if summary is None:
             break
-        print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+        print(f"[{time.strftime('%H:%M:%S')}] JARVIS [NOTIFICATIONS] > {summary}", flush=True)
         _web_notify(summary)
 
 
@@ -1371,11 +1371,14 @@ async def _read_prompt_async():
                         await prompt_task
                     except asyncio.CancelledError:
                         pass
-                    print(f"[{time.strftime('%H:%M:%S')}] YOU (VOICE) > {command.strip()}", flush=True)
                     return command.strip(), "voice"
 
                 active_future = globals().get("_active_task_future")
                 if active_future is not None and active_future.done():
+                    try:
+                        _cli_pending_text = _cli_prompt_session.default_buffer.text
+                    except Exception:
+                        _cli_pending_text = ""
                     prompt_task.cancel()
                     try: await prompt_task
                     except asyncio.CancelledError: pass
@@ -1537,7 +1540,8 @@ def main():
                 print_memory()
                 continue
 
-            print(f"[{time.strftime('%H:%M:%S')}] YOU > {prompt}", flush=True)
+            user_label = "YOU (VOICE)" if prompt_source == "voice" else "YOU"
+            print(f"[{time.strftime('%H:%M:%S')}] {user_label} > {prompt}", flush=True)
             dispatcher.fast_agent._last_used_tools = []
             future = task_pool.submit(handle_prompt, prompt, prompt_source)
             _active_task_future = future
@@ -1559,6 +1563,7 @@ def main():
                     side_answer = _answer_btw(side_question)
                     save_message("user", "[BTW] " + side_question)
                     save_message("assistant", side_answer)
+                    print("[TOOLS/SKILLS] none (text-only side question)", flush=True)
                     print(f"[{time.strftime('%H:%M:%S')}] JARVIS (BTW) > {side_answer}\n", flush=True)
                 else:
                     _deferred_prompts.append((incoming, incoming_source))
