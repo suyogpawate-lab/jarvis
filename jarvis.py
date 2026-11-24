@@ -35,6 +35,7 @@ from android.command_guard import handle_user_reply as handle_guard_reply
 from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
+from memory.chat_history import ChatHistory
 from memory.intent import MemoryIntent
 from monitoring.system_telemetry import get_telemetry
 from monitoring.notification_watcher import NotificationWatcher
@@ -54,10 +55,10 @@ def start_auto_updater():
     return _auto_updater.start()
 
 
-def apply_auto_update_if_ready():
+def apply_auto_update_if_ready(approved=False):
     global _auto_update_restart
     if _auto_update_restart: return True
-    _auto_update_restart = _auto_updater.apply_if_pending()
+    _auto_update_restart = _auto_updater.apply_if_pending(approved=approved)
     return _auto_update_restart
 
 
@@ -70,6 +71,8 @@ def restart_after_update():
 jarvis = Jarvis()
 discussion = DiscussionCoordinator()
 memory = MemoryManager()
+chat_history = ChatHistory()
+chat_history.ensure_active()
 dispatcher = CommandDispatcher(
     jarvis,
     discussion,
@@ -343,28 +346,27 @@ def process_automatic_memory(prompt):
 # SAVE CONVERSATION
 # ==============================================================
 
-def save_message(
-    role,
-    content,
-):
-
+def save_message(role, content):
     try:
-
-        memory.remember_message(
-            role,
-            content,
-        )
-
+        chat_history.save(role, content)
+        memory.remember_message(role, content)
     except Exception as exc:
+        print(f"[MEMORY WARN] Conversation save failed: {exc}")
 
-        print(
-            f"[MEMORY WARN] Conversation save failed: {exc}"
+
+def format_chat_history():
+    sessions = chat_history.list_sessions(limit=30)
+    if not sessions:
+        return "No saved chats."
+    lines = ["SAVED JARVIS CHATS (resume with /resume CODE):"]
+    for item in sessions:
+        stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["updated_at"]))
+        lines.append(
+            f'{item["code"]} | {item["description"]} | '
+            f'{item["message_count"]} messages | {stamp}'
         )
+    return "\n".join(lines)
 
-
-# ==============================================================
-# MEMORY CONTEXT
-# ==============================================================
 
 def get_memory_context(prompt):
 
