@@ -957,6 +957,23 @@ def handle_prompt(prompt, source="external"):
     if not prompt:
         return None, False
 
+    lower_prompt = prompt.strip().lower()
+    if lower_prompt in {"/history", "jarvis-chat-history", "chat history"}:
+        return format_chat_history(), False
+    resume_match = re.fullmatch(r"/resume\\s+(JH-[A-Z0-9]+)", prompt.strip(), re.IGNORECASE)
+    if resume_match:
+        session = chat_history.resume(resume_match.group(1))
+        if not session:
+            return "That resume code was not found. Use /history to see saved chats.", False
+        count = len(chat_history.messages(resume_match.group(1), limit=100))
+        return f"Resumed {resume_match.group(1).upper()}: {session['description']} ({count} messages).", False
+    if lower_prompt in {"/newchat", "/new-chat"}:
+        code = chat_history.new_session()
+        return f"Started a new chat. Resume code: {code}", False
+    if lower_prompt == "/clear":
+        erased = chat_history.clear()
+        return f"Chat history permanently erased ({erased} messages). Personal and project memories were preserved.", False
+
     # The user pressed Enter: stop talking now, before the new answer is worked out.
     stop_speaking()
 
