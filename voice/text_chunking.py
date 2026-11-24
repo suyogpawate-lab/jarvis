@@ -176,7 +176,7 @@ def kitten_chunk_text(
     if len(chunks) > 1:
         tail_words = len(chunks[-1].split())
         combined_words = len(chunks[-2].split()) + tail_words
-        if tail_words < max(1, int(min_tail_words)) and combined_words <= 55:
+        if tail_words < max(1, int(min_tail_words)) and combined_words <= target_words + 35:
             chunks[-2] = chunks[-2].rstrip() + " " + chunks[-1].lstrip()
             chunks.pop()
     return chunks
