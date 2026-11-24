@@ -946,8 +946,6 @@ class CommandDispatcher:
         project_markers = (
             "jarvis",
             "omniroute",
-            "owl",
-            "freebuff",
             "our router",
             "our routing",
             "our code",
@@ -2743,8 +2741,7 @@ Rules:
             except Exception as exc:
                 return f"[ERROR] System status check failed: {exc}"
 
-        # Programming work goes to the selected coding CLI, not the OmniRoute
-        # workflow planner. The agent runs in the configured workspace.
+        # Programming work goes to the selected coding CLI in the configured workspace.
         if source != "agent_step" and self._looks_like_coding_task(text):
             return self.coding_backend.run(text)
 
@@ -2815,7 +2812,7 @@ Rules:
             return ""
 
         # Groq selects web/deep research through FastAgent tool calling.
-        # Legacy route methods remain available as manual fallback helpers.
+        # OmniRoute is available only as an explicit Groq-selected delegate tool.
 
 
         commands = self.split_commands(text)
