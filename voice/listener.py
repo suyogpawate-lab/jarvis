@@ -11,8 +11,6 @@ import warnings
 from collections import deque
 from pathlib import Path
 
-import numpy as np
-import sounddevice as sd
 
 # Termux ONNX Runtime emits this known Android platform warning on every import.
 # Suppress only that specific warning; all other warnings remain visible.
@@ -21,7 +19,6 @@ warnings.filterwarnings(
     message=r"Unsupported platform \(android\).*",
     category=UserWarning,
 )
-from openwakeword.model import Model
 
 
 class WhistleWakeListener:
@@ -124,6 +121,8 @@ class WhistleWakeListener:
 
     @staticmethod
     def _rms(audio):
+        import numpy as np
+
         if audio.size == 0:
             return 0.0
         values = audio.astype(np.float32)
@@ -144,6 +143,8 @@ class WhistleWakeListener:
 
     def _transcribe(self, audio):
         """Transcribe one completed in-memory command using a transient WAV."""
+        import numpy as np
+
         if audio.size < int(self.RATE * self.MIN_COMMAND_SECONDS):
             return ""
 
@@ -244,6 +245,21 @@ class WhistleWakeListener:
             return False
 
     def _loop(self):
+        # Audio capture dependencies are loaded only when the microphone worker
+        # starts. Importing this class for text-only echo checks must not require
+        # a microphone device or native audio runtime.
+        try:
+            import numpy as np
+            import sounddevice as sd
+            from openwakeword.model import Model
+        except Exception as exc:
+            self._log(
+                f"[VOICE INIT FAILED] Microphone runtime dependency unavailable: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            self.running = False
+            return
+
         # Try the Termux-packaged ONNX Runtime first, then TFLite if available.
         frameworks = ["onnx", "tflite"]  # Prefer Termux ONNX Runtime; fall back to TFLite
         self._wake_model = None
