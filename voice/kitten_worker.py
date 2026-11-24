@@ -81,7 +81,7 @@ from voice.kitten_audio import KITTEN_MAX_PHONEMES, configure_frontend, synthesi
 
 # Kitten's default frontend splits at 350 phonemes and generate() inserts
 # 150 ms silence between those pieces. A 500-phoneme cap stays within the
-# 510-position voice-style table, including the two special tokens.
+# 510-position voice-style table, including the three special tokens.
 configure_frontend(kitten_frontend)
 print(
     f"[Kitten] Frontend chunk cap: {KITTEN_MAX_PHONEMES} phonemes; "
