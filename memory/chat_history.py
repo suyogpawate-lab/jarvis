@@ -1,7 +1,7 @@
 """Persistent, resumable JARVIS chat sessions.
 
-Long-term memories and episodic notes remain separate. /clear removes only
-conversation transcripts and session metadata, not personal/project memories.
+Long-term memories and episodic notes remain separate. The explicit clear()
+method deletes transcript/session data; the CLI /clear command does not call it.
 """
 import os
 import re
