@@ -176,7 +176,7 @@ class FastAgent:
 
         messages = payload.get("messages") or []
         phase = "tool-follow-up" if any(m.get("role") == "tool" for m in messages) else "initial/final"
-        model = str(payload.get("model", self.model))
+        model = str(payload.get("model") or getattr(self, "model", "unknown"))
         request_started("Groq", model, phase=phase)
         last = None
         # One bounded sweep per model request. If all keys are rate-limited,
