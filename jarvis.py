@@ -35,6 +35,7 @@ from android.command_guard import handle_user_reply as handle_guard_reply
 from automation.command_dispatcher import CommandDispatcher
 from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
+from memory.chat_history import ChatHistory
 from memory.intent import MemoryIntent
 from monitoring.system_telemetry import get_telemetry
 from monitoring.notification_watcher import NotificationWatcher
@@ -48,16 +49,20 @@ from auto_update import AutoUpdater
 
 _auto_updater = AutoUpdater(Path(__file__).resolve().parent)
 _auto_update_restart = False
+_auto_update_notified = False
+_active_task_future = None
+_deferred_prompts = []
+_btw_agent = None
 
 
 def start_auto_updater():
     return _auto_updater.start()
 
 
-def apply_auto_update_if_ready():
+def apply_auto_update_if_ready(approved=False):
     global _auto_update_restart
     if _auto_update_restart: return True
-    _auto_update_restart = _auto_updater.apply_if_pending()
+    _auto_update_restart = _auto_updater.apply_if_pending(approved=approved)
     return _auto_update_restart
 
 
@@ -70,6 +75,8 @@ def restart_after_update():
 jarvis = Jarvis()
 discussion = DiscussionCoordinator()
 memory = MemoryManager()
+chat_history = ChatHistory()
+chat_history.ensure_active()
 dispatcher = CommandDispatcher(
     jarvis,
     discussion,
@@ -343,28 +350,27 @@ def process_automatic_memory(prompt):
 # SAVE CONVERSATION
 # ==============================================================
 
-def save_message(
-    role,
-    content,
-):
-
+def save_message(role, content):
     try:
-
-        memory.remember_message(
-            role,
-            content,
-        )
-
+        chat_history.save(role, content)
+        memory.remember_message(role, content)
     except Exception as exc:
+        print(f"[MEMORY WARN] Conversation save failed: {exc}")
 
-        print(
-            f"[MEMORY WARN] Conversation save failed: {exc}"
+
+def format_chat_history():
+    sessions = chat_history.list_sessions(limit=30)
+    if not sessions:
+        return "No saved chats."
+    lines = ["SAVED JARVIS CHATS (resume with /resume CODE):"]
+    for item in sessions:
+        stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["updated_at"]))
+        lines.append(
+            f'{item["code"]} | {item["description"]} | '
+            f'{item["message_count"]} messages | {stamp}'
         )
+    return "\n".join(lines)
 
-
-# ==============================================================
-# MEMORY CONTEXT
-# ==============================================================
 
 def get_memory_context(prompt):
 
@@ -955,6 +961,23 @@ def handle_prompt(prompt, source="external"):
     if not prompt:
         return None, False
 
+    lower_prompt = prompt.strip().lower()
+    if lower_prompt in {"/history", "jarvis-chat-history", "chat history"}:
+        return format_chat_history(), False
+    resume_match = re.fullmatch(r"/resume\s+(JH-[A-Z0-9]+)", prompt.strip(), re.IGNORECASE)
+    if resume_match:
+        session = chat_history.resume(resume_match.group(1))
+        if not session:
+            return "That resume code was not found. Use /history to see saved chats.", False
+        count = len(chat_history.messages(resume_match.group(1), limit=100))
+        return f"Resumed {resume_match.group(1).upper()}: {session['description']} ({count} messages).", False
+    if lower_prompt in {"/newchat", "/new-chat"}:
+        code = chat_history.new_session()
+        return f"Started a new chat. Resume code: {code}", False
+    if lower_prompt == "/clear":
+        erased = chat_history.clear()
+        return f"Chat history permanently erased ({erased} messages). Personal and project memories were preserved.", False
+
     # The user pressed Enter: stop talking now, before the new answer is worked out.
     stop_speaking()
 
@@ -966,7 +989,7 @@ def handle_prompt(prompt, source="external"):
     # Explicit sqlmap CLI route (scoped launcher; no LLM rewriting)
     # ----------------------------------------------------------
     sqlmap_match = re.match(
-        r"^(?:jarvis[,\\s]+)?(?:run\\s+)?sqlmap(?:\\s+(.*))?$",
+        r"^(?:jarvis[,\s]+)?(?:run\s+)?sqlmap(?:\s+(.*))?$",
         prompt,
         re.IGNORECASE | re.DOTALL,
     )
@@ -1313,12 +1336,12 @@ def _service_cli_background_events():
         summary = pop_notification()
         if summary is None:
             break
-        print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+        print(f"[{time.strftime('%H:%M:%S')}] JARVIS [NOTIFICATIONS] > {summary}", flush=True)
         _web_notify(summary)
 
 
 async def _read_prompt_async():
-    global _cli_pending_text
+    global _cli_pending_text, _auto_update_notified
     with patch_stdout():
         prompt_task = asyncio.create_task(
             _cli_prompt_session.prompt_async(
@@ -1348,14 +1371,21 @@ async def _read_prompt_async():
                         await prompt_task
                     except asyncio.CancelledError:
                         pass
-                    print(f"\nYOU (VOICE) > {command.strip()}\n", flush=True)
                     return command.strip(), "voice"
 
-                if apply_auto_update_if_ready():
+                active_future = globals().get("_active_task_future")
+                if active_future is not None and active_future.done():
+                    try:
+                        _cli_pending_text = _cli_prompt_session.default_buffer.text
+                    except Exception:
+                        _cli_pending_text = ""
                     prompt_task.cancel()
                     try: await prompt_task
                     except asyncio.CancelledError: pass
-                    return "", "update_restart"
+                    return "", "task_done"
+                if _auto_updater.pending and not _auto_update_notified:
+                    _auto_update_notified = True
+                    print("\n" + _auto_updater.pending_summary() + "\n", flush=True)
                 await asyncio.sleep(0.08)
 
             _service_cli_background_events()
@@ -1380,7 +1410,7 @@ def read_prompt():
     """
     while True:
         prompt, source = asyncio.run(_read_prompt_async())
-        if source == "update_restart": return prompt, source
+        if source in {"update_restart", "task_done"}: return prompt, source
         if prompt: return prompt, source
 
 
@@ -1420,35 +1450,52 @@ def main():
 
         print("JARVIS ONLINE")
         print("Type '/memory' to inspect memory.")
-        print("Type '/clear' to clear the terminal.")
+        print("Commands: /clear | /history | /resume CODE | /newchat | /btw question | /update")
         print("Type 'exit' to quit.")
     print()
 
+    from concurrent.futures import ThreadPoolExecutor
+    global _active_task_future, _auto_update_notified
+    task_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jarvis-chat")
+
     while True:
-
         try:
-
-            # Deliver only from the main thread, never over an active prompt.
             while True:
                 summary = pop_notification()
-
                 if summary is None:
                     break
-
-                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                print(f"\n[{time.strftime('%H:%M:%S')}] JARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
                 _web_notify(summary)
 
-            prompt, prompt_source = read_prompt()
+            if _deferred_prompts:
+                prompt, prompt_source = _deferred_prompts.pop(0)
+            else:
+                prompt, prompt_source = read_prompt()
+
             if prompt_source == "update_restart":
                 print("\n[JARVIS UPDATE] Update installed. Restarting into the new version...", flush=True)
                 shutdown()
                 restart_after_update()
-            if not prompt:
+            if prompt_source == "task_done" or not prompt:
                 continue
 
-            if prompt.strip().lower() == "/clear":
-                # ANSI clear-screen + cursor-home works in Termux and standard VT terminals.
-                print("\033[2J\033[H", end="", flush=True)
+            update_command = re.fullmatch(r"/update(?:\s+(approve|later))?", prompt.strip(), re.IGNORECASE)
+            if update_command:
+                action = (update_command.group(1) or "").lower()
+                if not _auto_updater.pending:
+                    print("[JARVIS UPDATE] No update is pending.\n", flush=True)
+                elif action == "approve":
+                    if apply_auto_update_if_ready(approved=True):
+                        print("[JARVIS UPDATE] Approved and installed. Restarting...", flush=True)
+                        shutdown()
+                        restart_after_update()
+                    else:
+                        print("[JARVIS UPDATE] Update could not be installed; see data/auto_update.log.\n", flush=True)
+                elif action == "later":
+                    _auto_update_notified = True
+                    print("[JARVIS UPDATE] Deferred. It will not install without explicit approval.\n", flush=True)
+                else:
+                    print(_auto_updater.pending_summary() + "\n", flush=True)
                 continue
 
             if prompt.lower() in {"exit", "quit"}:
@@ -1456,20 +1503,19 @@ def main():
                 print("JARVIS OFFLINE")
                 break
 
-            # Explicit YES/NO controls apply only while a group message is pending.
             if (
                 whatsapp_autoreply is not None
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"yes", "y", "confirm"}
             ):
-                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
+                print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
                 continue
             if (
                 whatsapp_autoreply is not None
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"no", "n", "cancel"}
             ):
-                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
+                print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
                 continue
 
             review_match = re.fullmatch(
@@ -1485,7 +1531,7 @@ def main():
                         result = whatsapp_autoreply.resolve_reply_review(
                             review_match.group(1), review_match.group(2)
                         )
-                        print(f"JARVIS > {result}\n")
+                        print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {result}\n")
                     except Exception as exc:
                         print(f"JARVIS > Could not process reply decision: {exc}\n")
                 continue
@@ -1494,22 +1540,47 @@ def main():
                 print_memory()
                 continue
 
-            answer, should_speak = handle_prompt(prompt, source=prompt_source)
+            user_label = "YOU (VOICE)" if prompt_source == "voice" else "YOU"
+            print(f"[{time.strftime('%H:%M:%S')}] {user_label} > {prompt}", flush=True)
+            dispatcher.fast_agent._last_used_tools = []
+            future = task_pool.submit(handle_prompt, prompt, prompt_source)
+            _active_task_future = future
+
+            # While the task runs, keep the input prompt alive. /btw is answered
+            # by a separate text-only Groq agent; ordinary messages are queued.
+            while True:
+                incoming, incoming_source = read_prompt()
+                if incoming_source == "task_done":
+                    break
+                if not incoming:
+                    continue
+                if incoming.strip().lower().startswith("/btw"):
+                    side_question = re.sub(r"^/btw\s*", "", incoming.strip(), flags=re.IGNORECASE)
+                    if not side_question:
+                        print("[JARVIS BTW] Usage: /btw your side question", flush=True)
+                        continue
+                    print(f"[{time.strftime('%H:%M:%S')}] YOU (BTW) > {side_question}", flush=True)
+                    side_answer = _answer_btw(side_question)
+                    save_message("user", "[BTW] " + side_question)
+                    save_message("assistant", side_answer)
+                    print("[TOOLS/SKILLS] none (text-only side question)", flush=True)
+                    print(f"[{time.strftime('%H:%M:%S')}] JARVIS (BTW) > {side_answer}\n", flush=True)
+                else:
+                    _deferred_prompts.append((incoming, incoming_source))
+                    print("[JARVIS] Current task is still running. Message queued; use /btw for a side question.", flush=True)
+
+            _active_task_future = None
+            try:
+                answer, should_speak = future.result()
+            except Exception as exc:
+                answer, should_speak = f"[ERROR] {type(exc).__name__}: {exc}", False
 
             if not answer:
                 continue
 
-            print()
-
-            if parse_discuss_command(prompt):
-                print("--- SYNTHESIS ---")
-                print()
-                print(f"JARVIS >> {answer}")
-            else:
-                print(f"JARVIS > {answer}")
-
-            print()
-
+            used = list(dict.fromkeys(getattr(dispatcher.fast_agent, "_last_used_tools", []) or []))
+            print("[TOOLS/SKILLS] " + (", ".join(used) if used else "none"), flush=True)
+            print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {answer}\n", flush=True)
             if should_speak:
                 speak(answer, user_prompt=prompt)
 
@@ -1517,15 +1588,13 @@ def main():
             shutdown()
             print("\nJARVIS OFFLINE")
             break
-
         except EOFError:
             shutdown()
             print("\nJARVIS OFFLINE")
             break
-
         except Exception as exc:
+            _active_task_future = None
             print(f"\n[FATAL ERROR] {exc}\n")
-
 
 if __name__ == "__main__":
     main()

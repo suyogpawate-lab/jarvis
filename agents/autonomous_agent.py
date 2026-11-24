@@ -1,4 +1,3 @@
-from workers.registry import build_worker_registry
 """
 JARVIS autonomous execution loop.
 """
@@ -37,52 +36,7 @@ class AutonomousAgent:
         self.email = EmailManager()
         self.whatsapp = WhatsAppManager()
         self.osint = build_osint_team()
-        self.workers = build_worker_registry()
         self.fast = fast_agent or FastAgent()
-
-    def _fast_worker_route(self, user_text):
-        """
-        Detect explicit implementation/development requests.
-
-        This deliberately avoids routing ordinary technical questions
-        to a coding worker.
-        """
-
-        text = str(user_text).strip()
-        lower = text.lower()
-
-        implementation_patterns = (
-            "implement ",
-            "implement:",
-            "write the code",
-            "write code",
-            "fix the bug",
-            "fix this bug",
-            "debug this code",
-            "debug the code",
-            "refactor ",
-            "add this feature",
-            "add a feature",
-            "modify the code",
-            "modify this code",
-            "create a function",
-            "create the function",
-            "build this feature",
-            "develop this feature",
-            "make this change in the code",
-        )
-
-        if not any(
-            pattern in lower
-            for pattern in implementation_patterns
-        ):
-            return None
-
-        return (
-            "ACTION: WORKER\n"
-            "OPENCODE|"
-            + text
-        )
 
     def _fast_osint_route(self, user_text):
         prompt = f"""
@@ -163,6 +117,10 @@ USER REQUEST:
     def _parse(self, response):
         text = response.strip()
 
+        # Never reinterpret a stale worker directive as a shell command.
+        if re.match(r"^ACTION:\s*WORKER\b", text, re.IGNORECASE):
+            return "final", "The legacy worker adapter has been removed. Use the Groq coding route."
+
         if text.startswith("FINAL:"):
             return "final", text[6:].strip()
 
@@ -210,10 +168,6 @@ USER REQUEST:
             (
                 r"ACTION:\s*WHATSAPP_SEND\s*([\s\S]+)",
                 "whatsapp_send",
-            ),
-            (
-                r"ACTION:\s*WORKER\s*([\s\S]+)",
-                "worker",
             ),
             (
                 r"ACTION:\s*```(?:bash|sh)?\s*(.*?)```",
@@ -498,9 +452,6 @@ PROCESS CONTROL
         return "WhatsApp message sent."
 
     def _execute(self, action, value):
-        if action == "worker":
-            return self._execute_worker(value)
-
 
         if action == "shell":
             return self.shell.execute(value)
@@ -814,63 +765,6 @@ PROCESS CONTROL
             f"[ERROR] Unknown action: {action}"
         )
 
-    def _execute_worker(self, value):
-        """
-        Delegate bounded implementation work to OpenCode.
-
-        Format:
-            OPENCODE|task
-        """
-
-        value = str(value).strip()
-
-        if "|" not in value:
-            raise ValueError(
-                "WORKER action requires WORKER|task"
-            )
-
-        worker_name, task = value.split("|", 1)
-        worker_name = worker_name.strip().lower()
-        task = task.strip()
-
-        if not task:
-            raise ValueError(
-                "Worker task is empty"
-            )
-
-        workspace = str(
-            __import__("pathlib").Path.cwd()
-        )
-
-        worker = self.workers.get(worker_name)
-
-        if worker is None:
-            raise ValueError(
-                f"Unknown worker: {worker_name}"
-            )
-
-        if not worker.available():
-            raise RuntimeError(
-                f"Worker unavailable: {worker_name}"
-            )
-
-        result = worker.execute(
-            task=task,
-            workspace=workspace,
-        )
-
-        print(
-            f"[WORKER] {worker_name}: "
-            f"{'SUCCESS' if result.get('success') else 'FAILED'}",
-            flush=True,
-        )
-
-        output = result.get("stdout") or ""
-        if output:
-            print(output, end="", flush=True)
-
-        return result
-
     def run(self, request):
 
         request = str(request).strip()
@@ -889,15 +783,8 @@ PROCESS CONTROL
         # FAST OSINT ROUTE
         # ======================================================
         # Groq handles OSINT intent/action extraction first.
-        # If it is not OSINT, the normal OmniRoute agent remains
-        # responsible for the request.
+        # Non-OSINT requests continue through the primary Groq execution agent.
         fast_osint = self._fast_osint_route(request)
-        fast_worker = self._fast_worker_route(request)
-        if fast_worker:
-            action, value = self._parse(fast_worker)
-            if action == "worker":
-                return self._execute(action, value)
-
 
         if fast_osint:
             action, value = self._parse(fast_osint)
