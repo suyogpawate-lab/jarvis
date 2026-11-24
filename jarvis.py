@@ -1347,6 +1347,7 @@ async def _read_prompt_async():
             _cli_prompt_session.prompt_async(
                 "J> " if is_float_mode() else "YOU  > ",
                 default=_cli_pending_text,
+                bottom_toolbar=_cli_bottom_toolbar,
             )
         )
         _cli_pending_text = ""
@@ -1400,6 +1401,51 @@ async def _read_prompt_async():
                 await prompt_task
             except BaseException:
                 pass
+
+
+def _answer_btw(question):
+    """Answer an ephemeral side question without changing the active task or chat history."""
+    global _btw_agent
+    question = str(question or "").strip()
+    if not question:
+        return "Usage: /btw your side question"
+    try:
+        if _btw_agent is None:
+            from agents.fast_agent import FastAgent
+            _btw_agent = FastAgent(enable_extensions=False)
+        prompt = (
+            "This is an ephemeral side question asked while JARVIS is working on another task. "
+            "Answer only this question, briefly and directly. Do not use tools, do not modify "
+            "the active task, do not claim to have performed actions, and do not add this "
+            "exchange to the active task's context.\n\n"
+            f"Side question: {question}"
+        )
+        answer = _btw_agent._answer_simple_direct(prompt, allow_omniroute_fallback=False)
+        return str(answer or "").strip() or "I couldn't produce a side answer."
+    except Exception as exc:
+        return f"[BTW ERROR] {type(exc).__name__}: {exc}"
+
+
+def _cli_bottom_toolbar():
+    """Live, non-notification token meter shown at the bottom of the prompt."""
+    try:
+        from monitoring.token_meter import snapshot
+        usage = snapshot()
+    except Exception:
+        usage = {}
+    active = _active_task_future is not None and not _active_task_future.done()
+    provider = usage.get("provider") or "JARVIS"
+    model = usage.get("model") or ""
+    if usage.get("phase") == "running":
+        return f" WORKING · {provider} {model} · token usage updates when response arrives"
+    if usage.get("total_tokens") is not None:
+        suffix = " · task still running" if active else ""
+        return (
+            f" LAST CALL · {provider} · in {usage.get('prompt_tokens', 0)}"
+            f" / out {usage.get('completion_tokens', 0)}"
+            f" / total {usage.get('total_tokens', 0)}{suffix}"
+        )
+    return " JARVIS WORKING" if active else " JARVIS READY"
 
 
 def read_prompt():
@@ -1567,9 +1613,6 @@ def main():
                         continue
                     print(f"[{time.strftime('%H:%M:%S')}] YOU (BTW) > {side_question}", flush=True)
                     side_answer = _answer_btw(side_question)
-                    save_message("user", "[BTW] " + side_question)
-                    save_message("assistant", side_answer)
-                    print("[TOOLS/SKILLS] none (text-only side question)", flush=True)
                     print(f"[{time.strftime('%H:%M:%S')}] JARVIS (BTW) > {side_answer}\n", flush=True)
                 else:
                     _deferred_prompts.append((incoming, incoming_source))
