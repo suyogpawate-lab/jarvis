@@ -9,6 +9,7 @@ Security: loopback only, Host/Origin checks, and POSTs need the per-run token em
 """
 import json, os, re, secrets, threading, time
 from workspace.manager import WorkspaceManager
+from monitoring.token_meter import snapshot as token_usage_snapshot
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOME = os.path.dirname(os.path.abspath(__file__))
@@ -111,7 +112,8 @@ def _watch_replies(ui):
 def _snap(ui):
     S = ui.S
     return {"state": S["state"], "busy": bool(S["busy"] and S.get("thinking")), "reply": S["reply"],
-            "reply_t": S["reply_t"], "theme": ui.TH_NAME, "pending": ui.pending_items(), "hn": _hist["n"]}
+            "reply_t": S["reply_t"], "theme": ui.TH_NAME, "pending": ui.pending_items(),
+            "usage": token_usage_snapshot(), "hn": _hist["n"]}
 
 
 class H(BaseHTTPRequestHandler):
