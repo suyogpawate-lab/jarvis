@@ -21,6 +21,23 @@ MODEL_ID = os.environ.get("JARVIS_KITTEN_MODEL", "KittenML/kitten-tts-2-pico")
 OUTPUT = Path(__file__).resolve().parents[1] / "cache" / "kitten_tts" / "worker"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
+# KittenML's English frontend uses Misaki's NLTK POS tagger. Keep its
+# required corpus repository-local and explicitly visible to this worker.
+NLTK_DATA = Path(__file__).resolve().parents[1] / "cache" / "nltk_data"
+NLTK_DATA.mkdir(parents=True, exist_ok=True)
+os.environ["NLTK_DATA"] = str(NLTK_DATA)
+import nltk
+if str(NLTK_DATA) not in nltk.data.path:
+    nltk.data.path.insert(0, str(NLTK_DATA))
+try:
+    nltk.data.find("taggers/averaged_perceptron_tagger_eng", paths=[str(NLTK_DATA)])
+except LookupError as exc:
+    raise RuntimeError(
+        "Required NLTK English POS tagger is missing. Run "
+        "'bash scripts/install_kitten_tts.sh' from ~/jarvis."
+    ) from exc
+print(f"[Kitten] NLTK English POS tagger verified in {NLTK_DATA}", flush=True)
+
 # Keep Hugging Face's normal cache unless the user explicitly configured one.
 cache_home = os.environ.get("JARVIS_KITTEN_HOME", "").strip()
 if cache_home:
