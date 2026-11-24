@@ -50,6 +50,29 @@ class ChatHistory:
                     value TEXT NOT NULL
                 );
             """)
+            # Migrate the pre-session conversation table once so chats created
+            # before this feature remain visible and resumable.
+            existing = db.execute("SELECT COUNT(*) FROM chat_sessions").fetchone()[0]
+            legacy = db.execute(
+                "SELECT role, content, created_at FROM conversations ORDER BY id"
+            ).fetchall()
+            if not existing and legacy:
+                code = "JH-" + uuid.uuid4().hex[:7].upper()
+                first_user = next((row for row in legacy if row["role"] == "user"), legacy[0])
+                created = float(legacy[0]["created_at"])
+                updated = float(legacy[-1]["created_at"])
+                db.execute(
+                    "INSERT INTO chat_sessions(code,description,created_at,updated_at) VALUES(?,?,?,?)",
+                    (code, self._description(first_user["content"]), created, updated),
+                )
+                db.executemany(
+                    "INSERT INTO chat_messages(session_code,role,content,created_at) VALUES(?,?,?,?)",
+                    [(code, row["role"], row["content"], row["created_at"]) for row in legacy],
+                )
+                db.execute(
+                    "INSERT OR REPLACE INTO chat_state(key,value) VALUES('active_session',?)",
+                    (code,),
+                )
 
     @staticmethod
     def _description(value):
@@ -180,7 +203,9 @@ class ChatHistory:
 
     def clear(self):
         with self._lock, self._connect() as db:
-            count = db.execute("SELECT COUNT(*) FROM chat_messages").fetchone()[0]
+            chat_count = db.execute("SELECT COUNT(*) FROM chat_messages").fetchone()[0]
+            legacy_count = db.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            count = max(chat_count, legacy_count)
             db.execute("DELETE FROM chat_messages")
             db.execute("DELETE FROM chat_sessions")
             db.execute("DELETE FROM chat_state")
