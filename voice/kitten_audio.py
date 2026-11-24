@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-# Kitten's style table supports 510 input positions. Two are reserved for
-# start/end markers, leaving room for up to 508 phoneme symbols. Keep margin.
+# Kitten's style table supports 510 input positions. Three are reserved for
+# start/end markers, leaving room for up to 507 phoneme symbols. Keep margin.
 KITTEN_MAX_PHONEMES = 500
 
 
