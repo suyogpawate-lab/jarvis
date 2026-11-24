@@ -57,7 +57,8 @@ class FastAgent:
         payload_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else [])
         payload_messages.extend(messages)
         request_started("OmniRoute", model, phase="delegated")
-        response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": model, "messages": payload_messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}, timeout=timeout)
+        try:
+            response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": model, "messages": payload_messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}, timeout=timeout)
         if response.status_code != 200:
             detail = " ".join(str(getattr(response, "text", "")).split())[:300]
             raise RuntimeError(f"OmniRoute request failed (HTTP {response.status_code})" + (f": {detail}" if detail else ""))
