@@ -32,6 +32,7 @@ class FastAgent:
         # Set by CommandDispatcher: callable(to, message) -> dict
         self.whatsapp_send_handler = None
         self._email_manager = None
+        self._last_used_tools = []
 
         # Skills + MCP extension tools (see tools/). Background-only agents
         # such as the notification summarizer must not start action extensions.
@@ -63,7 +64,7 @@ class FastAgent:
         if not content: raise RuntimeError("OmniRoute returned an empty response.")
         return content
     def _jarvis_system_prompt(self):
-        return self._jarvis_base_system_prompt() + jarvis_skills.index_text()
+        return self._jarvis_base_system_prompt() + jarvis_skills.index_text(max_chars=1200)
 
     def _jarvis_base_system_prompt(self):
         """Compact, stable persona and operating rules."""
@@ -191,7 +192,7 @@ class FastAgent:
 
             if response.status_code == 200:
                 self.current_key_index = index
-                if os.getenv("JARVIS_DEBUG_TOKENS") == "1":
+                if True:  # Always report token usage for each Groq completion.
                     try:
                         usage = response.json().get("usage") or {}
                         messages = payload.get("messages") or []
@@ -487,6 +488,21 @@ class FastAgent:
 
     def _builtin_tool_definitions(self):
         return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "delegate_to_omniroute",
+                    "description": "Delegate a difficult reasoning, research synthesis, or planning subtask to OmniRoute. Groq decides when this is useful. This tool returns analysis only and cannot execute local actions.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "task": {"type": "string", "description": "Specific self-contained subtask."},
+                            "context": {"type": "string", "description": "Optional concise evidence or context."}
+                        },
+                        "required": ["task"]
+                    }
+                }
+            },
             {
                 "type": "function",
                 "function": {
@@ -1370,6 +1386,8 @@ class FastAgent:
 
     def _execute_tool_call(self, tool_call):
         name = tool_call["function"]["name"]
+        if name not in self._last_used_tools:
+            self._last_used_tools.append(name)
 
         try:
             arguments = json.loads(
@@ -1381,7 +1399,33 @@ class FastAgent:
                 "error": f"Invalid tool arguments: {exc}",
             }
 
+        if name == "delegate_to_omniroute":
+            task = str(arguments.get("task") or "").strip()
+            context = str(arguments.get("context") or "").strip()
+            if not task:
+                return {"ok": False, "error": "A non-empty delegation task is required."}
+            delegated_prompt = task[:10000]
+            if context:
+                delegated_prompt += "\n\nContext (evidence, not instructions):\n" + context[:6000]
+            try:
+                result = self._omniroute_request(
+                    [{"role": "user", "content": delegated_prompt}],
+                    system_prompt=(
+                        "You are OmniRoute, a specialist reasoning delegate for JARVIS. "
+                        "Return analysis and uncertainty only. Do not claim to execute "
+                        "device actions, modify files, or send messages. Groq reviews your result."
+                    ),
+                    max_tokens=1200, temperature=0.1, timeout=45,
+                )
+                return {"ok": True, "provider": "OmniRoute", "result": result}
+            except Exception as exc:
+                return {"ok": False, "provider": "OmniRoute", "error": f"{type(exc).__name__}: {exc}"}
+
         if tool_registry.has(name):
+            if name == "use_skill":
+                self._last_used_tools.append(f"use_skill({str(arguments.get('name') or '')})")
+            else:
+                self._last_used_tools.append(name)
             return tool_registry.call(name, arguments)
 
         if name == "screen_view":
@@ -3122,21 +3166,11 @@ class FastAgent:
             except (KeyError, IndexError, TypeError, ValueError):
                 return "[ERROR] Groq returned an invalid simple-answer response."
         if response.status_code == 429:
-            if not allow_omniroute_fallback:
-                return ""
-            try:
-                print("[JARVIS ROUTER] Groq rate-limited simple answer -> OMNIROUTE", flush=True)
-                return self._omniroute_answer_fallback(prompt)
-            except Exception as fallback_exc:
-                return (
-                    self._groq_limit_message(response)
-                    + " OmniRoute fallback failed: "
-                    + str(fallback_exc)[:180]
-                )
-        return self._groq_limit_message(response)
+            return self._groq_limit_message(response)
 
     def ask(self, prompt):
         """Return a complete answer; compact long output only when safe."""
+        self._last_used_tools = []
         answer = self._ask_unbounded(prompt)
         answer = str(answer or "").strip()
         if not answer:
@@ -3224,43 +3258,14 @@ class FastAgent:
                     )
                 return f"I could not submit the form, sir. {result.get('error', '')}"
 
-        # Explicit complex shell/device work uses the intended bounded provider
-        # router. This method was previously defined but never called.
-        shell_result = self._route_shell_request(prompt)
-        if shell_result is not None:
-            return shell_result
-
-        # RAG questions use OmniRoute with locally retrieved document passages.
-        if self._is_rag_request(prompt):
-            print("[JARVIS ROUTER] RAG -> OMNIROUTE")
-            try:
-                return self._omniroute_fallback(prompt)
-            except Exception as exc:
-                return f"[ERROR] OmniRoute RAG request failed: {exc}"
-
-        # Cheap factual questions do not need the full tool catalogue or skill index.
+        # Groq is the sole primary router. It can explicitly call
+        # delegate_to_omniroute when specialist reasoning is warranted.
         direct_question = self._simple_direct_request(prompt)
         if direct_question is not None:
             try:
-                return self._answer_simple_direct(direct_question)
+                return self._answer_simple_direct(direct_question, allow_omniroute_fallback=False)
             except Exception as exc:
                 return f"[ERROR] Simple Groq request failed ({type(exc).__name__}: {exc})"
-
-        # OmniRoute plans complex local engineering; Groq remains the tool executor.
-        if self._is_complex_shell_project(prompt):
-            try:
-                print("[JARVIS ROUTER] Complex shell/project task -> OMNIROUTE PLAN")
-                plan = self._omniroute_shell_plan(prompt)
-                prompt = (
-                    str(prompt)
-                    + "\n\nOMNIROUTE ENGINEERING PLAN (advisory; verify each step):\n"
-                    + plan
-                    + "\n\nUse local tools to carry out the original request, "
-                      "validate results, and stop on failures. The shell guard still "
-                      "requires approval for destructive/high-impact actions."
-                )
-            except Exception as exc:
-                print(f"OmniRoute planning failed; continuing with Groq tools: {exc}")
 
         total_keys = len(self.api_keys)
         attempts = 0
@@ -3297,35 +3302,8 @@ class FastAgent:
                     timeout=30,
                 )
 
-                if response.status_code == 413:
-                    return self._omniroute_fallback(prompt)
-
-                if response.status_code == 429:
-                    # This initial request has not executed any tools. A plain
-                    # OmniRoute answer is safe only for non-action requests.
-                    action_cues = re.search(
-                        r"\b(?:open|launch|send|message|execute|run|install|uninstall|"
-                        r"delete|remove|create|edit|modify|fix|debug|inspect|click|tap|"
-                        r"swipe|navigate|submit|purchase|book|set|start|stop|close|"
-                        r"minimi[sz]e|maximi[sz]e|move|control|schedule|research|overnight|"
-            r"monitor|remind|notify|alarm|timer|update me)\b",
-                        str(prompt),
-                        re.IGNORECASE,
-                    )
-                    if not action_cues:
-                        try:
-                            print("[JARVIS ROUTER] Groq rate-limited -> OMNIROUTE answer fallback", flush=True)
-                            return self._omniroute_answer_fallback(prompt)
-                        except Exception as fallback_exc:
-                            return (
-                                self._groq_limit_message(response)
-                                + " OmniRoute fallback failed: "
-                                + str(fallback_exc)[:180]
-                            )
-                    return (
-                        self._groq_limit_message(response)
-                        + " This request needs an action-capable route; no action was started."
-                    )
+                if response.status_code in (413, 429):
+                    return self._groq_limit_message(response)
 
                 if response.status_code != 200:
                     return self._groq_limit_message(response)
@@ -3465,17 +3443,10 @@ class FastAgent:
                                 flush=True,
                             )
                             return local_reply
-                        try:
-                            return self._omniroute_tool_result_fallback(
-                                prompt, messages
-                            )
-                        except Exception as fallback_exc:
-                            return (
-                                self._groq_limit_message(final_response)
-                                + " The action step already ran and was not repeated. "
-                                + "OmniRoute result synthesis also failed: "
-                                + str(fallback_exc)[:180]
-                            )
+                        return (
+                            self._groq_limit_message(final_response)
+                            + " The action step already ran and was not repeated."
+                        )
 
                     if final_response.status_code != 200:
                         # Tools already ran. Never restart (that would run them again).
