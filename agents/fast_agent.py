@@ -58,16 +58,31 @@ class FastAgent:
         payload_messages.extend(messages)
         request_started("OmniRoute", model, phase="delegated")
         try:
-            response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": model, "messages": payload_messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}, timeout=timeout)
-        if response.status_code != 200:
-            detail = " ".join(str(getattr(response, "text", "")).split())[:300]
-            raise RuntimeError(f"OmniRoute request failed (HTTP {response.status_code})" + (f": {detail}" if detail else ""))
-        data = response.json()
-        usage = data.get("usage") or {}
-        request_completed("OmniRoute", model, usage, phase="delegated")
-        content = str(data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
-        if not content: raise RuntimeError("OmniRoute returned an empty response.")
-        return content
+            response = requests.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model, "messages": payload_messages,
+                    "temperature": temperature, "max_tokens": max_tokens, "stream": False,
+                },
+                timeout=timeout,
+            )
+            if response.status_code != 200:
+                detail = " ".join(str(getattr(response, "text", "")).split())[:300]
+                raise RuntimeError(
+                    f"OmniRoute request failed (HTTP {response.status_code})"
+                    + (f": {detail}" if detail else "")
+                )
+            data = response.json()
+            usage = data.get("usage") or {}
+            request_completed("OmniRoute", model, usage, phase="delegated")
+            content = str(data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+            if not content:
+                raise RuntimeError("OmniRoute returned an empty response.")
+            return content
+        except Exception as exc:
+            request_failed("OmniRoute", model, "delegated", f"{type(exc).__name__}: {exc}")
+            raise
     def _jarvis_system_prompt(self):
         return self._jarvis_base_system_prompt() + jarvis_skills.index_text(max_chars=1200)
 
