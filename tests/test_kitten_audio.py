@@ -44,7 +44,7 @@ def test_kitten_chunks_are_joined_without_inserted_silence():
 
 def test_empty_kitten_stream_returns_empty_audio():
     class EmptyModel:
-        def generate_stream(self, **kwargs):
+        def generate_stream(self, *args, **kwargs):
             return iter(())
 
     audio, chunk_count = synthesize_gapless(
