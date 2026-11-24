@@ -14,6 +14,6 @@ def clear_scrollback(stream=None) -> bool:
     isatty = getattr(target, "isatty", None)
     if not callable(isatty) or not isatty():
         return False
-    target.write("\\x1b[3J\\x1b[2J\\x1b[H")
+    target.write("\x1b[3J\x1b[2J\x1b[H")
     target.flush()
     return True
