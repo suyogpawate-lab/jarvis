@@ -165,7 +165,6 @@ USER REQUEST:
                 r"ACTION:\s*WHATSAPP_SEND\s*([\s\S]+)",
                 "whatsapp_send",
             ),
-            ),
             (
                 r"ACTION:\s*```(?:bash|sh)?\s*(.*?)```",
                 "shell",
