@@ -88,6 +88,10 @@ def ensure_server(timeout: float = 180.0) -> dict:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "kitten_tts_worker.log"
         env = os.environ.copy()
+        # Keep the English POS-tagger corpus local to this JARVIS checkout.
+        nltk_data_dir = ROOT / "cache" / "nltk_data"
+        nltk_data_dir.mkdir(parents=True, exist_ok=True)
+        env["NLTK_DATA"] = str(nltk_data_dir)
         cache_dir = _kitten_cache()
         if cache_dir is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
