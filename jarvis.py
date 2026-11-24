@@ -1538,6 +1538,7 @@ def main():
                 continue
 
             print(f"[{time.strftime('%H:%M:%S')}] YOU > {prompt}", flush=True)
+            dispatcher.fast_agent._last_used_tools = []
             future = task_pool.submit(handle_prompt, prompt, prompt_source)
             _active_task_future = future
 
