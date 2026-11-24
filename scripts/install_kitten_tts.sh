@@ -1,6 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Install the lightweight ONNX-only KittenTTS path; do not pull the full
-# PyTorch/CUDA-oriented dependency set from kittenml.
+# Install the lightweight ONNX-only KittenTTS path; reuse all existing assets.
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -10,28 +9,82 @@ if ! command -v pkg >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "[Kitten] Installing Android ONNX Runtime and eSpeak..."
-pkg install -y python python-onnxruntime espeak
+# Xet is an optional transfer accelerator and is not needed by the runtime.
+export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
 
-echo "[Kitten] Installing KittenML 0.9.7 without its heavyweight PyTorch stack..."
-python -m pip install --retries 5 --timeout 30 --no-deps --upgrade "kittenml==0.9.7"
+echo "[Kitten] Checking Termux packages..."
+missing_apt=()
+for package in python python-onnxruntime espeak; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"; then
+        missing_apt+=("$package")
+    else
+        echo "[Kitten] Reusing installed Termux package: $package"
+    fi
+done
+if (("${#missing_apt[@]}" )); then
+    echo "[Kitten] Installing missing Termux packages: ${missing_apt[*]}"
+    pkg install -y "${missing_apt[@]}"
+else
+    echo "[Kitten] All required Termux packages already exist; skipping pkg install."
+fi
 
-echo "[Kitten] Installing declared lightweight packages without optional dependency resolution..."
-# huggingface_hub currently advertises hf-xet as a dependency. It is only
-# an optional transfer accelerator for our use; HF_HUB_DISABLE_XET=1 selects
-# the regular HTTP path. --no-deps prevents pip trying to compile hf-xet.
-python -m pip install --retries 5 --timeout 30 --no-deps -r requirements-kitten.txt
+echo "[Kitten] Checking Python distributions..."
+python - <<'PY'
+from importlib.metadata import PackageNotFoundError, distribution
+from packaging.requirements import Requirement
+from packaging.version import Version
+from pathlib import Path
+import subprocess
+import sys
 
-# KittenML's active English frontend calls Misaki -> nltk.pos_tag().
-# Provision the exact NLTK model it requests inside the JARVIS tree so worker
-# startup is deterministic and does not depend on a user-global NLTK install.
-echo "[Kitten] Provisioning English POS tagger..."
+root = Path.cwd()
+requirements_file = root / "requirements-kitten.txt"
+requirements = []
+for raw in requirements_file.read_text().splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        continue
+    requirements.append(Requirement(line))
+
+def is_satisfied(req):
+    if req.marker and not req.marker.evaluate():
+        return True
+    try:
+        installed = distribution(req.name)
+    except PackageNotFoundError:
+        return False
+    return not req.specifier or Version(installed.version) in req.specifier
+
+missing = [req for req in requirements if not is_satisfied(req)]
+try:
+    kitten = distribution("kittenml")
+    if Version(kitten.version) != Version("0.9.7"):
+        missing.insert(0, Requirement("kittenml==0.9.7"))
+    else:
+        print("[Kitten] Reusing KittenML 0.9.7")
+except PackageNotFoundError:
+    missing.insert(0, Requirement("kittenml==0.9.7"))
+
+if not missing:
+    print("[Kitten] All declared Python distributions already satisfy requirements; skipping pip.")
+else:
+    for req in missing:
+        print(f"[Kitten] Installing missing/incompatible distribution: {req}")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--retries", "5",
+             "--timeout", "30", "--no-deps", str(req)],
+            check=True,
+        )
+PY
+
+# KittenML's English frontend calls Misaki -> nltk.pos_tag(). Keep the
+# required corpus repository-local and download it only when absent.
+echo "[Kitten] Checking English POS tagger..."
 python - <<'PY'
 from pathlib import Path
 import nltk
 
-root = Path.cwd()
-data_dir = root / "cache" / "nltk_data"
+data_dir = Path.cwd() / "cache" / "nltk_data"
 data_dir.mkdir(parents=True, exist_ok=True)
 if str(data_dir) not in nltk.data.path:
     nltk.data.path.insert(0, str(data_dir))
@@ -39,20 +92,17 @@ if str(data_dir) not in nltk.data.path:
 resource = "taggers/averaged_perceptron_tagger_eng"
 try:
     nltk.data.find(resource, paths=[str(data_dir)])
-    print("NLTK English POS tagger already present.")
+    print("[Kitten] Reusing existing NLTK English POS tagger.")
 except LookupError:
-    if not nltk.download(
-        "averaged_perceptron_tagger_eng",
-        download_dir=str(data_dir),
-        quiet=False,
-    ):
+    print("[Kitten] English POS tagger missing; downloading it once...")
+    if not nltk.download("averaged_perceptron_tagger_eng", download_dir=str(data_dir), quiet=False):
         raise SystemExit("NLTK English POS tagger download failed.")
+    nltk.data.find(resource, paths=[str(data_dir)])
 
-nltk.data.find(resource, paths=[str(data_dir)])
-print("NLTK English POS tagger verified:", data_dir / resource)
+print("[Kitten] English POS tagger verified.")
 PY
 
-echo "[Kitten] Checking runtime imports and package origin..."
+echo "[Kitten] Verifying runtime imports..."
 python - <<'PY'
 from importlib.metadata import version
 from pathlib import Path
@@ -87,6 +137,6 @@ print("English POS tagger: present")
 print("KittenTTS import OK")
 PY
 
-echo "[Kitten] Runtime and English frontend data installed."
-echo "[Kitten] The worker preloads the Pico model and runs ONNX warm-up before READY."
+echo "[Kitten] Installer checks complete. Existing packages and NLTK data were reused."
+echo "[Kitten] The worker's Hugging Face cache is also reused automatically when present."
 echo "Select it with: jarvis-setup voice"
