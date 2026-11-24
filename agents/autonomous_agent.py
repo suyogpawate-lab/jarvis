@@ -117,6 +117,10 @@ USER REQUEST:
     def _parse(self, response):
         text = response.strip()
 
+        # Never reinterpret a stale worker directive as a shell command.
+        if re.match(r"^ACTION:\\s*WORKER\\b", text, re.IGNORECASE):
+            return "final", "The legacy worker adapter has been removed. Use the Groq coding route."
+
         if text.startswith("FINAL:"):
             return "final", text[6:].strip()
 
