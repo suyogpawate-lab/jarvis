@@ -159,6 +159,9 @@ PICO_VOICES = {
 def synth(text: str, speed: float = 0.88, voice: str | None = None) -> Path:
     """Generate a WAV with a selected built-in Pico voice for JARVIS playback."""
     text = str(text).strip()
+    # Enforce spoken-text cleanup at the provider boundary as well as in the
+    # shared speech pipeline, so direct Kitten callers cannot pronounce this pause.
+    text = re.sub(r",\s*(?=sir\b)", " ", text, flags=re.IGNORECASE)
     # Kitten phonemization should receive the spoken proper name, not an initialism.
     text = re.sub(r"\bjarvis\b", "Jarvis", text, flags=re.IGNORECASE)
     if not text:

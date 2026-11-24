@@ -1,12 +1,11 @@
-"""Turn any reply into speakable prose: no lists/markdown, max 99 words."""
+"""Turn a reply into speakable prose without silently truncating its content."""
 import re
 from voice.tts import strip_markdown
 from voice.text_chunking import sentence_list
 
-MAX_WORDS = 99
 
 
-def to_speakable(text, max_words=MAX_WORDS):
+def to_speakable(text, max_words=None):
     text = strip_markdown(text)
     # Treat the product name as a proper name, not an all-caps initialism.
     text = re.sub(r"\bjarvis\b", "Jarvis", text, flags=re.IGNORECASE)
@@ -23,8 +22,9 @@ def to_speakable(text, max_words=MAX_WORDS):
     if text and text[-1] not in ".!?":
         text += "."
     words = text.split()
-    if len(words) <= max_words:
+    if max_words is None or len(words) <= max(1, int(max_words)):
         return text
+    max_words = max(1, int(max_words))
     out, count = [], 0
     for s in sentence_list(text):
         n = len(s.split())

@@ -160,15 +160,15 @@ def chunk_text(text: str, target_words: int = 22, threshold_words: int = 60) -> 
 
 def kitten_chunk_text(
     text: str,
-    target_words: int = 40,
-    threshold_words: int = 50,
-    min_tail_words: int = 18,
+    target_words: int = 220,
+    threshold_words: int = 300,
+    min_tail_words: int = 35,
 ) -> list[str]:
-    """Chunk Kitten Pico into longer phrases to preserve prosody between calls.
+    """Keep normal Kitten Pico replies in one synthesis pass.
 
-    Keep replies up to 50 words in one synthesis. Longer replies target about
-    40 words at sentence boundaries, and a tiny final remainder is merged
-    back into the previous phrase when the result stays at or below 55 words.
+    A single pass preserves sentence-to-sentence prosody and avoids audible
+    gaps caused by waiting for another ONNX synthesis request. Only unusually
+    long replies are split, at sentence boundaries, into large phrases.
     """
     chunks = chunk_text(
         text, target_words=target_words, threshold_words=threshold_words
@@ -176,7 +176,7 @@ def kitten_chunk_text(
     if len(chunks) > 1:
         tail_words = len(chunks[-1].split())
         combined_words = len(chunks[-2].split()) + tail_words
-        if tail_words < max(1, int(min_tail_words)) and combined_words <= 55:
+        if tail_words < max(1, int(min_tail_words)) and combined_words <= target_words + 35:
             chunks[-2] = chunks[-2].rstrip() + " " + chunks[-1].lstrip()
             chunks.pop()
     return chunks
