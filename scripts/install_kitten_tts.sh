@@ -16,8 +16,11 @@ pkg install -y python python-onnxruntime espeak-ng
 echo "[Kitten] Installing KittenML 0.9.7 without its heavyweight PyTorch stack..."
 python -m pip install --retries 5 --timeout 30 --no-deps --upgrade "kittenml==0.9.7"
 
-echo "[Kitten] Installing lightweight ONNX, phonemization and NLTK dependencies..."
-python -m pip install --retries 5 --timeout 30 -r requirements-kitten.txt
+echo "[Kitten] Installing declared lightweight packages without optional dependency resolution..."
+# huggingface_hub currently advertises hf-xet as a dependency. It is only
+# an optional transfer accelerator for our use; HF_HUB_DISABLE_XET=1 selects
+# the regular HTTP path. --no-deps prevents pip trying to compile hf-xet.
+python -m pip install --retries 5 --timeout 30 --no-deps -r requirements-kitten.txt
 
 # KittenML's active English frontend calls Misaki -> nltk.pos_tag().
 # Provision the exact NLTK model it requests inside the JARVIS tree so worker
@@ -27,10 +30,11 @@ python - <<'PY'
 from pathlib import Path
 import nltk
 
-root = Path(__file__).resolve().parent
+root = Path.cwd()
 data_dir = root / "cache" / "nltk_data"
 data_dir.mkdir(parents=True, exist_ok=True)
-nltk.data.path.insert(0, str(data_dir))
+if str(data_dir) not in nltk.data.path:
+    nltk.data.path.insert(0, str(data_dir))
 
 resource = "taggers/averaged_perceptron_tagger_eng"
 try:
@@ -58,7 +62,7 @@ import onnxruntime
 import soundfile
 from kittenml import KittenTTS
 
-root = Path(__file__).resolve().parent
+root = Path.cwd()
 data_dir = root / "cache" / "nltk_data"
 nltk.data.find("taggers/averaged_perceptron_tagger_eng", paths=[str(data_dir)])
 
