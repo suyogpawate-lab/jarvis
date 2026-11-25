@@ -117,6 +117,7 @@ import nltk
 import onnxruntime
 import soundfile
 from kittenml import KittenTTS
+from voice.kitten_misaki import nltk_misaki_class
 
 root = Path.cwd()
 data_dir = root / "cache" / "nltk_data"
@@ -140,6 +141,11 @@ print("ONNX Runtime:", onnxruntime.__version__)
 print("SoundFile:", soundfile.__version__)
 print("NLTK:", nltk.__version__)
 print("English POS tagger: present")
+g2p = nltk_misaki_class()()
+phonemes, _tokens = g2p("Hello from JARVIS.", preprocess=False)
+if not phonemes:
+    raise SystemExit("Misaki + NLTK produced no English phonemes.")
+print("Misaki + NLTK English G2P:", phonemes)
 print("KittenTTS import OK")
 PY
 
