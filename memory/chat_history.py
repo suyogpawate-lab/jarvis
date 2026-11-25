@@ -49,6 +49,17 @@ class ChatHistory:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                -- ChatHistory can be initialized independently of MemoryStorage.
+                -- Keep the legacy transcript table available for one-time migration
+                -- and compatibility with existing memory/context consumers.
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_conversations_created
+                    ON conversations(created_at);
             """)
             # Migrate the pre-session conversation table once so chats created
             # before this feature remain visible and resumable.
