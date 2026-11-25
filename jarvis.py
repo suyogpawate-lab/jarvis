@@ -1464,16 +1464,9 @@ def _cli_bottom_toolbar():
     active = _active_task_future is not None and not _active_task_future.done()
     provider = usage.get("provider") or "JARVIS"
     model = usage.get("model") or ""
-    if usage.get("phase") == "running":
-        return f" WORKING · {provider} {model} · token usage updates when response arrives"
-    if usage.get("total_tokens") is not None:
-        suffix = " · task still running" if active else ""
-        return (
-            f" LAST CALL · {provider} · in {usage.get('prompt_tokens', 0)}"
-            f" / out {usage.get('completion_tokens', 0)}"
-            f" / total {usage.get('total_tokens', 0)}{suffix}"
-        )
-    return " JARVIS WORKING" if active else " JARVIS READY"
+    if active:
+        return " JARVIS WORKING"
+    return " JARVIS READY"
 
 
 def read_prompt():
@@ -1655,8 +1648,7 @@ def main():
             if not answer:
                 continue
 
-            used = list(dict.fromkeys(getattr(dispatcher.fast_agent, "_last_used_tools", []) or []))
-                        print(f"JARVIS > {answer}\n", flush=True)
+            print(f"JARVIS > {answer}\n", flush=True)
             if should_speak:
                 speak(answer, user_prompt=prompt)
 
