@@ -8,9 +8,12 @@ import numpy as np
 KITTEN_MAX_PHONEMES = 500
 
 
-def configure_frontend(frontend_module) -> None:
-    """Raise Kitten's conservative 350-phoneme split without exceeding style rows."""
+def configure_frontend(frontend_module, *, misaki_nltk: bool = False) -> None:
+    """Set a safe phoneme window and optionally install lightweight Misaki G2P."""
     frontend_module.MAX_PHON = KITTEN_MAX_PHONEMES
+    if misaki_nltk:
+        from voice.kitten_misaki import MisakiNltkEnglishG2P
+        frontend_module.EnglishG2P = MisakiNltkEnglishG2P
 
 
 def synthesize_gapless(model, text: str, voice: str, language: str, speed: float):
