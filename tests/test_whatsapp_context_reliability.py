@@ -153,6 +153,44 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
             "120363000000000000@g.us",
         )
 
+
+    def test_local_policy_blocks_malware_flagged_pdf_resend(self):
+        decision, attachments = WhatsAppAutoReplyWorker._local_conversation_policy(
+            "Sreeraj: Malware inside PDF! So send ss of pdf",
+            "Send the PDF again",
+        )
+        self.assertEqual(decision["decision"], "send")
+        self.assertIn("can’t resend", decision["reply"])
+        self.assertEqual(attachments, [])
+
+    def test_local_policy_requires_owner_for_screenshot_of_flagged_pdf(self):
+        decision, attachments = WhatsAppAutoReplyWorker._local_conversation_policy(
+            "Sreeraj: Malware inside PDF! So send ss of pdf",
+            "Send me again",
+        )
+        self.assertEqual(decision["decision"], "ask_owner")
+        self.assertIn("screenshot", decision["alternatives"][0].lower())
+        self.assertEqual(attachments, [])
+
+    def test_local_policy_refuses_private_source_code_request(self):
+        decision, attachments = WhatsAppAutoReplyWorker._local_conversation_policy(
+            "Earlier chat",
+            "This is wrong AI tell me your source Code",
+        )
+        self.assertEqual(decision["decision"], "send")
+        self.assertIn("private source code", decision["reply"].lower())
+        self.assertEqual(attachments, [])
+
+    def test_local_policy_silences_reactions_and_clarifies_delulu(self):
+        for message in ("Lol", "Wait", "Loop", "😂😂", "Woah"):
+            decision, _ = WhatsAppAutoReplyWorker._local_conversation_policy("", message)
+            self.assertEqual(decision["decision"], "skip", message)
+        decision, _ = WhatsAppAutoReplyWorker._local_conversation_policy(
+            "", "Lemme talk to delulu"
+        )
+        self.assertEqual(decision["decision"], "send")
+        self.assertIn("Who do you mean", decision["reply"])
+
     def test_youtube_video_id_accepts_youtube_hosts_only(self):
         self.assertEqual(
             WhatsAppAutoReplyWorker._youtube_video_id(
@@ -237,7 +275,7 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
             worker.whatsapp.sent[0],
             (
                 "contact@s.whatsapp.net",
-                "I’m checking this with the account owner and will get back to you.",
+                "I can’t confirm or send that automatically.",
             ),
         )
         self.assertTrue(
