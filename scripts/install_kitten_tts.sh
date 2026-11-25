@@ -56,8 +56,12 @@ def is_satisfied(req):
     return not req.specifier or Version(installed.version) in req.specifier
 
 missing = [req for req in requirements if not is_satisfied(req)]
-# The PyPI 0.9.7 wheel does not contain the kittentts2_tiny frontend
-# used by JARVIS. Install the matching upstream source revision when absent.
+misaki_missing = any(req.name.lower() == "misaki" for req in missing)
+regular_missing = [req for req in missing if req.name.lower() != "misaki"]
+kitten_missing = False
+
+# The PyPI 0.9.7 wheel does not contain the kittentts2_tiny frontend used by
+# JARVIS. Install the matching upstream source revision when absent.
 KITTEN_SOURCE = (
     "git+https://github.com/KittenML/KittenTTS.git@"
     "5802f6b956844919ecf210f4e55f4750a6ad7c6f"
@@ -66,28 +70,42 @@ try:
     kitten = distribution("kittenml")
     import kittenml.kittentts2_tiny
     if Version(kitten.version) != Version("0.9.7"):
-        missing.insert(0, Requirement("kittenml==0.9.7"))
+        kitten_missing = True
     else:
         print("[Kitten] Reusing KittenML 0.9.7 with tiny ONNX frontend")
 except (PackageNotFoundError, ImportError):
-    missing.insert(0, Requirement("kittenml==0.9.7"))
+    kitten_missing = True
 
-if not missing:
-    print("[Kitten] All declared Python distributions already satisfy requirements; skipping pip.")
+if regular_missing:
+    print("[Kitten] Installing missing Python packages with their required dependencies:")
+    for req in regular_missing:
+        print("  -", req)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--retries", "5",
+         "--timeout", "30", *[str(req) for req in regular_missing]],
+        check=True,
+    )
 else:
-    for req in missing:
-        print(f"[Kitten] Installing missing/incompatible distribution: {req}")
-        command = [
-            sys.executable, "-m", "pip", "install", "--retries", "5",
-            "--timeout", "30", "--no-deps",
-        ]
-        # Misaki 0.9.4 is pure Python but upstream caps Requires-Python at
-        # <3.14. JARVIS uses only its lexicon/rules and avoids its spaCy/torch
-        # extras; allow the package on Termux Python 3.14 after runtime checks.
-        if req.name.lower() == "misaki":
-            command.append("--ignore-requires-python")
-        command.append(KITTEN_SOURCE if req.name.lower() == "kittenml" else str(req))
-        subprocess.run(command, check=True)
+    print("[Kitten] All non-Misaki Python dependencies are already satisfied.")
+
+if misaki_missing:
+    print("[Kitten] Installing lightweight Misaki 0.9.4 without optional spaCy/torch extras.")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--retries", "5",
+         "--timeout", "30", "--no-deps", "--ignore-requires-python", "misaki==0.9.4"],
+        check=True,
+    )
+else:
+    print("[Kitten] Reusing Misaki 0.9.4.")
+
+if kitten_missing:
+    print("[Kitten] Installing KittenML source with the Pico/Nano ONNX frontend.")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--retries", "5",
+         "--timeout", "30", "--no-deps", KITTEN_SOURCE],
+        check=True,
+    )
+
 PY
 
 # KittenML's English frontend calls Misaki -> nltk.pos_tag(). Keep the
