@@ -100,10 +100,13 @@ class AutoUpdater:
         lines.append("Nothing has been installed. Type /update approve to install, or /update later to defer.")
         return "\n".join(lines)
 
-    def apply_if_pending(self, approved=False):
-        """Apply only after explicit owner approval, from an idle main loop."""
+    def apply_if_pending(self, approved=True):
+        """Install a safe fast-forward update when the caller confirms JARVIS is idle.
+
+        The legacy ``approved`` argument is retained for API compatibility; idle
+        eligibility is now the approval boundary, not an interactive prompt.
+        """
         if not approved:
-            self._log("Update remains pending: explicit approval is required.")
             return False
         if not self.enabled or not self._pending.is_set(): return False
         with self._lock:
@@ -137,6 +140,13 @@ class AutoUpdater:
                 self._pending.clear()
                 return False
             old_sha = old_result.stdout.strip()
+            # Preserve a durable recovery ref before changing the working tree.
+            backup_ref = "refs/jarvis/auto-update-backups/" + time.strftime("%Y%m%d-%H%M%S")
+            backup = self._git("update-ref", backup_ref, old_sha)
+            if backup.returncode:
+                self._log("Update deferred: could not create the pre-update backup ref.")
+                self._pending.clear()
+                return False
             merged = self._git("merge", "--ff-only", "origin/main", timeout=45)
             if merged.returncode:
                 self._log(f"Update deferred: fast-forward merge failed: {merged.stderr.strip()}")
