@@ -1613,8 +1613,8 @@ def main():
                 print_memory()
                 continue
 
-            user_label = "YOU (VOICE)" if prompt_source == "voice" else "YOU"
-            print(f"{user_label} > {prompt}", flush=True)
+            if prompt_source == "voice":
+                print(f"YOU (VOICE) > {prompt}", flush=True)
             dispatcher.fast_agent._last_used_tools = []
             future = task_pool.submit(handle_prompt, prompt, prompt_source)
             _active_task_future = future
