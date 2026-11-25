@@ -25,6 +25,7 @@ jobs:
         run: python -m pip install numpy pytest
       - name: Run syntax and regression tests
         run: |
+          bash -n scripts/install_kitten_tts.sh
           python scripts/smoke_test.py
           python -m pytest -q tests
 
