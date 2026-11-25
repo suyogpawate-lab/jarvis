@@ -53,7 +53,7 @@ jobs:
           assert phonemes.strip(), "Misaki + NLTK returned no phonemes"
           assert tokens, "NLTK returned no tokens"
           vocab = {symbol: index for index, symbol in enumerate(
-              " AIOWYbdfhijklmnpstuvwzæðŋɑɔəɛɜɡɪɹɾʃʊʌʒʤʧˈˌθᵊᵻ,?!"
+              " AIOWYbdfhijklmnpstuvwzæðŋɑɔəɛɜɡɪɹɾʃʊʌʒʤʧˈˌθᵊᵻ,.?!"
           )}
           adapter = MisakiNltkEnglishG2P(vocab, "")
           result = adapter("Hello from JARVIS.")
