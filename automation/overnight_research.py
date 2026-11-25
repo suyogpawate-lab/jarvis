@@ -1,10 +1,8 @@
-"""Persistent, model-free collection followed by OmniRoute-only overnight analysis.
+"""Persistent local evidence collection followed by Groq overnight analysis.
 
-The collector is deliberately deterministic. It searches configured providers, crawls
-public HTTPS pages with redirect/SSRF guards, searches the local Knowledge Hub and
-configured text directories, and writes evidence incrementally to disk. No model is
-called until collection ends. The analysis stage calls only FastAgent's OmniRoute
-transport; it never falls back to Groq.
+The collector is deterministic. It searches configured providers, crawls public HTTPS
+pages with redirect/SSRF guards, searches the local Knowledge Hub and permitted text
+directories, and writes evidence incrementally. Groq is used only for analysis/synthesis.
 """
 from __future__ import annotations
 
@@ -801,7 +799,9 @@ class OvernightResearch:
             remaining = float(mission["delivery_deadline"]) - time.time()
             if remaining <= 4:
                 raise TimeoutError("Research delivery deadline reached.")
-            timeout = max(5, min(float(timeout), remaining - 2))
+            if remaining <= 7:
+                raise TimeoutError("Not enough time remains for another Groq request; writing the deadline evidence report.")
+            timeout = min(float(timeout), remaining - 5)
         payload_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else [])
         payload_messages.extend(messages)
         response = self.fast_agent._groq_post({
@@ -843,6 +843,7 @@ class OvernightResearch:
                 f"{item.get('url') or item.get('path') or item.get('provider')}\n"
             )
         self._write_atomic(mission["report_file"], "".join(report))
+        mission["deadline_report_written"] = True
         return sum(1 for _ in self._iter_evidence(mission))
 
     def _notify_complete(self, mission, deadline_met):
@@ -918,7 +919,7 @@ class OvernightResearch:
                         f"Consolidate these evidence analyses for: {mission['query']}\n"
                         + text[:MAX_EVIDENCE_CHARS]
                         + "\nPreserve all important findings, source IDs, conflicts and caveats."
-                    )}], system, max_tokens=1800, timeout=120,
+                    )}], system, max_tokens=1800, timeout=120, mission=mission,
                 ))
             level = next_level
 
@@ -1005,15 +1006,23 @@ class OvernightResearch:
             self._update(mission_id, status="ANALYZING", phase="analysis",
                          progress="Collection window complete. Starting Groq analysis.")
             count = self._analyze(mission, cancel)
-            completed_at = time.time()
             delivery_deadline = mission.get("delivery_deadline")
-            if delivery_deadline and completed_at > float(delivery_deadline):
+            if delivery_deadline and (
+                time.time() > float(delivery_deadline)
+                or mission.get("deadline_report_written")
+            ):
                 count = self._write_deadline_report(mission)
-            deadline_met = not delivery_deadline or completed_at <= float(delivery_deadline)
+            report_ready_at = time.time()
+            deadline_met = (
+                not delivery_deadline
+                or (report_ready_at <= float(delivery_deadline)
+                    and not mission.get("deadline_report_written"))
+            )
             self._update(mission_id, status="COMPLETED", phase="complete",
-                         completed_at=completed_at, source_count=count,
+                         completed_at=report_ready_at, source_count=count,
                          evidence_bytes=mission.get("evidence_bytes", 0),
                          deadline_met=deadline_met,
+                         partial_report=not deadline_met,
                          progress=f"Report ready: {mission['report_file']}")
             self._notify_complete(mission, deadline_met)
         except InterruptedError:
