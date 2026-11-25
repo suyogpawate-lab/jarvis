@@ -21,12 +21,12 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install core dependencies
         run: python -m pip install -r requirements.txt
-      - name: Install test-only numerical dependency
-        run: python -m pip install numpy
+      - name: Install test dependencies
+        run: python -m pip install numpy pytest
       - name: Run syntax and regression tests
         run: |
           python scripts/smoke_test.py
-          python -m unittest discover -s tests -p 'test_*.py'
+          python -m pytest -q tests
 
   javascript-syntax:
     runs-on: ubuntu-latest
