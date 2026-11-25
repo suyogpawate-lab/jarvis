@@ -2039,7 +2039,7 @@ Rules:
 
         # Overnight research is model-free. Run it after explicit local controls
         # and scheduler-management commands, but before conversational research.
-        overnight_request = self.research.parse_request(text)
+        overnight_request = self.research.parse_request_natural(text)
         if overnight_request and overnight_request.get("timing") == "overnight":
             return self.research.start_overnight(overnight_request["query"], delivery_at=overnight_request.get("delivery_at"))
 
@@ -2110,7 +2110,7 @@ Rules:
                 )
             return "Research missions:\n" + "\n".join(lines)
 
-        research_request = self.research.parse_request(text)
+        research_request = overnight_request
         if research_request:
             if research_request["timing"] == "scheduled_overnight":
                 try:

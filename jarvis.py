@@ -60,7 +60,7 @@ def start_auto_updater():
     return _auto_updater.start()
 
 
-def apply_auto_update_if_ready(approved=False):
+def apply_auto_update_if_ready(approved=True):
     global _auto_update_restart
     if _auto_update_restart: return True
     _auto_update_restart = _auto_updater.apply_if_pending(approved=approved)
@@ -1145,6 +1145,11 @@ def handle_prompt(prompt, source="external"):
 # Notification summaries are queued by the background watcher.
 notification_queue = queue.Queue()
 notification_watcher = None
+# Overnight reports are delivered through the existing notification path.
+try:
+    dispatcher.research.overnight.on_complete = lambda message: notification_queue.put(str(message))
+except Exception:
+    pass
 
 # VOICE LISTENER INTEGRATION
 voice_command_queue = queue.Queue()
@@ -1336,12 +1341,13 @@ def _service_cli_background_events():
         summary = pop_notification()
         if summary is None:
             break
-        print(f"[{time.strftime('%H:%M:%S')}] JARVIS [NOTIFICATIONS] > {summary}", flush=True)
+        print(f"JARVIS [NOTIFICATIONS] > {summary}", flush=True)
         _web_notify(summary)
 
 
 async def _read_prompt_async():
     global _cli_pending_text, _auto_update_notified
+    pending_idle_since = None
     with patch_stdout():
         prompt_task = asyncio.create_task(
             _cli_prompt_session.prompt_async(
@@ -1384,9 +1390,31 @@ async def _read_prompt_async():
                     try: await prompt_task
                     except asyncio.CancelledError: pass
                     return "", "task_done"
-                if _auto_updater.pending and not _auto_update_notified:
-                    _auto_update_notified = True
-                    print("\n" + _auto_updater.pending_summary() + "\n", flush=True)
+                # Apply updates silently only after a sustained idle window.
+                # Never restart while a task is running or while the user has a draft.
+                if _auto_updater.pending:
+                    try:
+                        has_draft = bool(_cli_prompt_session.default_buffer.text.strip())
+                    except Exception:
+                        has_draft = False
+                    active = globals().get("_active_task_future")
+                    if not has_draft and (active is None or active.done()):
+                        if pending_idle_since is None:
+                            pending_idle_since = time.monotonic()
+                        idle_seconds = max(30.0, float(os.getenv("JARVIS_UPDATE_IDLE_SECONDS", "90")))
+                        if time.monotonic() - pending_idle_since >= idle_seconds:
+                            if apply_auto_update_if_ready(approved=True):
+                                prompt_task.cancel()
+                                try:
+                                    await prompt_task
+                                except asyncio.CancelledError:
+                                    pass
+                                return "", "update_restart"
+                            pending_idle_since = None
+                    else:
+                        pending_idle_since = None
+                else:
+                    pending_idle_since = None
                 await asyncio.sleep(0.08)
 
             _service_cli_background_events()
@@ -1436,16 +1464,9 @@ def _cli_bottom_toolbar():
     active = _active_task_future is not None and not _active_task_future.done()
     provider = usage.get("provider") or "JARVIS"
     model = usage.get("model") or ""
-    if usage.get("phase") == "running":
-        return f" WORKING · {provider} {model} · token usage updates when response arrives"
-    if usage.get("total_tokens") is not None:
-        suffix = " · task still running" if active else ""
-        return (
-            f" LAST CALL · {provider} · in {usage.get('prompt_tokens', 0)}"
-            f" / out {usage.get('completion_tokens', 0)}"
-            f" / total {usage.get('total_tokens', 0)}{suffix}"
-        )
-    return " JARVIS WORKING" if active else " JARVIS READY"
+    if active:
+        return " JARVIS WORKING"
+    return " JARVIS READY"
 
 
 def read_prompt():
@@ -1510,7 +1531,7 @@ def main():
                 summary = pop_notification()
                 if summary is None:
                     break
-                print(f"\n[{time.strftime('%H:%M:%S')}] JARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
                 _web_notify(summary)
 
             if _deferred_prompts:
@@ -1539,7 +1560,7 @@ def main():
                         print("[JARVIS UPDATE] Update could not be installed; see data/auto_update.log.\n", flush=True)
                 elif action == "later":
                     _auto_update_notified = True
-                    print("[JARVIS UPDATE] Deferred. It will not install without explicit approval.\n", flush=True)
+                    print("[JARVIS UPDATE] Still queued; it will install automatically after a safe idle window.\n", flush=True)
                 else:
                     print(_auto_updater.pending_summary() + "\n", flush=True)
                 continue
@@ -1560,14 +1581,14 @@ def main():
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"yes", "y", "confirm"}
             ):
-                print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
+                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
                 continue
             if (
                 whatsapp_autoreply is not None
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"no", "n", "cancel"}
             ):
-                print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
+                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
                 continue
 
             review_match = re.fullmatch(
@@ -1583,7 +1604,7 @@ def main():
                         result = whatsapp_autoreply.resolve_reply_review(
                             review_match.group(1), review_match.group(2)
                         )
-                        print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {result}\n")
+                        print(f"JARVIS > {result}\n")
                     except Exception as exc:
                         print(f"JARVIS > Could not process reply decision: {exc}\n")
                 continue
@@ -1593,7 +1614,7 @@ def main():
                 continue
 
             user_label = "YOU (VOICE)" if prompt_source == "voice" else "YOU"
-            print(f"[{time.strftime('%H:%M:%S')}] {user_label} > {prompt}", flush=True)
+            print(f"{user_label} > {prompt}", flush=True)
             dispatcher.fast_agent._last_used_tools = []
             future = task_pool.submit(handle_prompt, prompt, prompt_source)
             _active_task_future = future
@@ -1611,9 +1632,9 @@ def main():
                     if not side_question:
                         print("[JARVIS BTW] Usage: /btw your side question", flush=True)
                         continue
-                    print(f"[{time.strftime('%H:%M:%S')}] YOU (BTW) > {side_question}", flush=True)
+                    print(f"YOU (BTW) > {side_question}", flush=True)
                     side_answer = _answer_btw(side_question)
-                    print(f"[{time.strftime('%H:%M:%S')}] JARVIS (BTW) > {side_answer}\n", flush=True)
+                    print(f"JARVIS (BTW) > {side_answer}\n", flush=True)
                 else:
                     _deferred_prompts.append((incoming, incoming_source))
                     print("[JARVIS] Current task is still running. Message queued; use /btw for a side question.", flush=True)
@@ -1627,9 +1648,7 @@ def main():
             if not answer:
                 continue
 
-            used = list(dict.fromkeys(getattr(dispatcher.fast_agent, "_last_used_tools", []) or []))
-            print("[TOOLS/SKILLS] " + (", ".join(used) if used else "none"), flush=True)
-            print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {answer}\n", flush=True)
+            print(f"JARVIS > {answer}\n", flush=True)
             if should_speak:
                 speak(answer, user_prompt=prompt)
 

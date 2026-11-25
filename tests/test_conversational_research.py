@@ -39,6 +39,47 @@ class ConversationalResearchTests(unittest.TestCase):
         self.assertEqual(scheduled["timing"], "tomorrow")
         self.assertEqual(scheduled["query"], "robotics")
 
+    def test_natural_language_research_uses_groq_intent_parser(self):
+        agent = Mock()
+        agent.model = "openai/gpt-oss-120b"
+        agent._groq_post.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": json.dumps({
+                "intent": True,
+                "query": "small transformer inference on Android 10",
+            })}}]},
+        )
+        manager = ConversationalResearch(
+            Mock(), SimpleNamespace(fast_agent=agent),
+        )
+        parsed = manager.parse_request_natural(
+            "Could you dig into small transformer inference on Android 10?"
+        )
+        self.assertEqual(parsed["query"], "small transformer inference on Android 10")
+        self.assertEqual(parsed["timing"], "now")
+        self.assertIsNone(parsed["delivery_at"])
+        agent._groq_post.assert_called_once()
+        self.assertEqual(agent._groq_post.call_args.kwargs["timeout"], 8)
+
+    def test_natural_language_parser_never_invents_a_delivery_time(self):
+        agent = Mock()
+        agent.model = "openai/gpt-oss-120b"
+        agent._groq_post.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": json.dumps({
+                "intent": True, "query": "Android memory management",
+            })}}]},
+        )
+        manager = ConversationalResearch(
+            Mock(), SimpleNamespace(fast_agent=agent),
+        )
+        parsed = manager.parse_request_natural(
+            "Can you dig into Android memory management?"
+        )
+        self.assertIsNone(parsed["schedule_at"])
+        self.assertIsNone(parsed["start_at"])
+        self.assertIsNone(parsed["delivery_at"])
+
     def test_scheduler_management_text_is_not_research_intent(self):
         requests = (
             "Reschedule auto-96307a83 to 2026-11-06 at 05:00 IST",

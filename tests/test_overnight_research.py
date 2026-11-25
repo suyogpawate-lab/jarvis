@@ -79,18 +79,44 @@ class OvernightResearchTests(unittest.TestCase):
             self.assertIn("[REDACTED", saved["content"])
             self.assertEqual(mission["source_count"], 1)
 
-    def test_model_analysis_uses_only_omniroute_transport(self):
+    def test_model_analysis_uses_only_groq_transport(self):
         agent = Mock()
-        agent._omniroute_request.return_value = "Analysis complete."
+        agent.model = "openai/gpt-oss-120b"
+        response = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": "Analysis complete."}}]},
+        )
+        agent._groq_post.return_value = response
         with tempfile.TemporaryDirectory() as directory:
             manager = OvernightResearch(Mock(), agent, Path(directory) / "state.json")
-            answer = manager._omni(
+            answer = manager._groq(
                 [{"role": "user", "content": "Analyze this evidence."}],
                 "Research analyst",
             )
             self.assertEqual(answer, "Analysis complete.")
-            agent._omniroute_request.assert_called_once()
-            self.assertEqual(agent._omniroute_request.call_args.kwargs["timeout"], 90)
+            agent._groq_post.assert_called_once()
+            self.assertEqual(agent._groq_post.call_args.kwargs["timeout"], 90)
+
+    def test_deadline_report_is_explicitly_marked_partial(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = root / "evidence.jsonl"
+            evidence.write_text(json.dumps({
+                "id": "S0001", "title": "Fixture source",
+                "provider": "fixture", "content": "A short evidence excerpt.",
+            }) + "\n", encoding="utf-8")
+            manager = OvernightResearch(Mock(), Mock(), root / "state.json")
+            mission = {
+                "id": "overnight-test", "query": "JARVIS reliability",
+                "evidence_file": str(evidence),
+                "report_file": str(root / "FINAL_REPORT.md"),
+            }
+            count = manager._write_deadline_report(mission)
+            report = Path(mission["report_file"]).read_text(encoding="utf-8")
+            self.assertEqual(count, 1)
+            self.assertTrue(mission["deadline_report_written"])
+            self.assertIn("not a synthesized conclusion", report)
+            self.assertIn("[S0001]", report)
 
     def test_deterministic_query_expansion_does_not_call_a_model(self):
         agent = Mock()
@@ -99,7 +125,7 @@ class OvernightResearchTests(unittest.TestCase):
             queries = manager._queries("JARVIS Android 10 1GB RAM")
             self.assertEqual(len(queries), 6)
             self.assertIn("JARVIS Android 10 1GB RAM research papers studies", queries)
-            agent._omniroute_request.assert_not_called()
+            agent._groq_post.assert_not_called()
 
     def test_streamed_batches_preserve_every_evidence_record(self):
         with tempfile.TemporaryDirectory() as directory:

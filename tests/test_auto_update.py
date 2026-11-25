@@ -16,9 +16,14 @@ def test_paths_conflict_handles_multiple_untracked_paths():
 
 
 
-def test_update_waits_for_explicit_approval(tmp_path):
+def test_update_can_be_deferred_and_rejects_non_main_checkout(tmp_path):
     updater = AutoUpdater(tmp_path)
     updater._pending.set()
 
-    assert updater.apply_if_pending() is False
+    # Explicit deferral remains supported for callers that request it.
+    assert updater.apply_if_pending(approved=False) is False
     assert updater.pending is True
+
+    # The idle updater must not mutate a directory that is not a JARVIS main checkout.
+    assert updater.apply_if_pending(approved=True) is False
+    assert updater.pending is False

@@ -32,6 +32,7 @@ class ConversationalResearch:
                  knowledge_hub_url="http://127.0.0.1:8766/api/search"):
         self.search_hub = search_hub
         self.deep_search = deep_search
+        self.fast_agent = getattr(deep_search, "fast_agent", None)
         self.state_path = Path(state_path)
         self.overnight = OvernightResearch(
             search_hub, getattr(deep_search, "fast_agent", None),
@@ -285,6 +286,62 @@ class ConversationalResearch:
             "schedule_at": schedule_at,
             "start_at": start_at,
             "delivery_at": delivery_at,
+        }
+
+    def parse_request_natural(self, text: str) -> dict[str, Any] | None:
+        """Use Groq only to recognize research intent; never let it invent timing."""
+        raw = _clean(text)
+        if not raw or not re.search(
+            r"\b(research|investigate|look into|study|explore|dig into|find out|monitor|track)\b",
+            raw, re.I,
+        ):
+            return None
+        deterministic = self.parse_request(raw)
+        if deterministic is not None:
+            return deterministic
+        if self.fast_agent is None or not callable(getattr(self.fast_agent, "_groq_post", None)):
+            return None
+        system = (
+            "Extract a research request from the user's message. Return JSON only with "
+            "keys intent (boolean) and query (string). intent is true only when the user "
+            "is asking JARVIS to research, investigate, study, explore, monitor, or track "
+            "a topic. query must be only the topic, preserving technical terms. Do not "
+            "invent dates, times, deadlines, sources, or actions. If intent is false, query is empty."
+        )
+        payload = {
+            "model": getattr(self.fast_agent, "model", "openai/gpt-oss-120b"),
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": raw},
+            ],
+            "temperature": 0,
+            "max_tokens": 180,
+            "response_format": {"type": "json_object"},
+            "stream": False,
+        }
+        try:
+            response = self.fast_agent._groq_post(payload, timeout=8)
+            if response.status_code != 200:
+                return None
+            data = response.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content") or "{}"
+            parsed = json.loads(content)
+        except Exception:
+            return None
+        if not isinstance(parsed, dict) or parsed.get("intent") is not True:
+            return None
+        query = _clean(parsed.get("query"))
+        if len(query) < 4:
+            return None
+        # Model-recognized phrasing starts immediately unless the user explicitly
+        # said overnight. Explicit clocks/dates stay on the deterministic parser.
+        timing = "overnight" if re.search(r"\bovernight\b", raw, re.I) else "now"
+        return {
+            "query": query[:MAX_QUERY],
+            "timing": timing,
+            "schedule_at": None,
+            "start_at": None,
+            "delivery_at": None,
         }
 
     def _load(self):
