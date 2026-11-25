@@ -922,7 +922,7 @@ class OvernightResearch:
                 ))
             level = next_level
 
-        final = self._omni(
+        final = self._groq(
             [{"role": "user", "content": (
                 "Write the comprehensive final research report for this question: "
                 + mission["query"] + "\n\nEvidence analyses:\n"
@@ -1005,16 +1005,35 @@ class OvernightResearch:
             self._update(mission_id, status="ANALYZING", phase="analysis",
                          progress="Collection window complete. Starting Groq analysis.")
             count = self._analyze(mission, cancel)
+            completed_at = time.time()
+            delivery_deadline = mission.get("delivery_deadline")
+            if delivery_deadline and completed_at > float(delivery_deadline):
+                count = self._write_deadline_report(mission)
+            deadline_met = not delivery_deadline or completed_at <= float(delivery_deadline)
             self._update(mission_id, status="COMPLETED", phase="complete",
-                         completed_at=time.time(), source_count=count,
+                         completed_at=completed_at, source_count=count,
                          evidence_bytes=mission.get("evidence_bytes", 0),
+                         deadline_met=deadline_met,
                          progress=f"Report ready: {mission['report_file']}")
+            self._notify_complete(mission, deadline_met)
         except InterruptedError:
             current = self._mission(mission_id) or {}
             paused_phase = "analysis_paused" if str(current.get("phase", "")).startswith("analysis") else "paused"
             self._update(mission_id, status="CANCELLED", phase=paused_phase,
                          progress="Mission cancelled; evidence and completed batches preserved.")
         except Exception as exc:
+            delivery_deadline = mission.get("delivery_deadline")
+            if delivery_deadline and time.time() >= float(delivery_deadline) - 4:
+                try:
+                    count = self._write_deadline_report(mission)
+                    self._update(mission_id, status="COMPLETED", phase="complete",
+                                 completed_at=time.time(), source_count=count,
+                                 deadline_met=False,
+                                 progress=f"Deadline evidence report ready: {mission['report_file']}")
+                    self._notify_complete(mission, False)
+                    return
+                except Exception as report_exc:
+                    self._log_recovery_failure(mission_id, report_exc)
             # Read the latest persisted phase safely. A missing mission must
             # not cause a second exception while recording the original failure.
             current = self._mission(mission_id) or {}
