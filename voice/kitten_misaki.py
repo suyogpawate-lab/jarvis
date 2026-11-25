@@ -45,6 +45,25 @@ def _import_misaki_en():
                 sys.modules[name] = old
 
 
+def _nltk_tokens(text, nltk, mtoken_type, tokenizer):
+    """Tokenize with NLTK spans while preserving exact source whitespace."""
+    spans = list(tokenizer.span_tokenize(text))
+    if not spans:
+        return []
+    words = [text[start:end] for start, end in spans]
+    tagged = nltk.pos_tag(words)
+    mutable = []
+    for index, ((start, end), (word, tag)) in enumerate(zip(spans, tagged)):
+        next_start = spans[index + 1][0] if index + 1 < len(spans) else len(text)
+        mutable.append(mtoken_type(
+            text=word,
+            tag=tag,
+            whitespace=text[end:next_start],
+            _=mtoken_type.Underscore(is_head=True, num_flags="", prespace=False),
+        ))
+    return mutable
+
+
 def nltk_misaki_class():
     """Build a Misaki G2P class whose tokenizer/POS tagger are NLTK-backed."""
     en = _import_misaki_en()
@@ -64,27 +83,7 @@ def nltk_misaki_class():
             self._tokenizer = TreebankWordTokenizer()
 
         def tokenize(self, text, tokens, features):
-            spans = list(self._tokenizer.span_tokenize(text))
-            if not spans:
-                return []
-
-            words = [text[start:end] for start, end in spans]
-            tagged = self._nltk.pos_tag(words)
-            mutable = []
-            for index, ((start, end), (word, tag)) in enumerate(zip(spans, tagged)):
-                next_start = spans[index + 1][0] if index + 1 < len(spans) else len(text)
-                whitespace = text[end:next_start]
-                mutable.append(en.MToken(
-                    text=word,
-                    tag=tag,
-                    whitespace=whitespace,
-                    _=en.MToken.Underscore(
-                        is_head=True,
-                        num_flags="",
-                        prespace=False,
-                    ),
-                ))
-            return mutable
+            return _nltk_tokens(text, self._nltk, en.MToken, self._tokenizer)
 
     return NltkMisakiG2P
 
