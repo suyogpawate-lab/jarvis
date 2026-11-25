@@ -45,13 +45,16 @@ jobs:
         run: |
           python - <<'PY'
           import nltk
+          import sys
           nltk.download("averaged_perceptron_tagger_eng", quiet=True)
           from voice.kitten_misaki import nltk_misaki_class
           g2p = nltk_misaki_class()()
           phonemes, tokens = g2p("Hello from JARVIS.", preprocess=False)
           assert phonemes.strip(), "Misaki + NLTK returned no phonemes"
           assert tokens, "NLTK returned no tokens"
+          assert not ({"spacy", "torch", "transformers"} & set(sys.modules)), "heavy G2P stack was imported"
           print("Misaki + NLTK OK:", phonemes)
+          print("No spaCy/PyTorch/Transformers imports")
           PY
 
   javascript-syntax:
