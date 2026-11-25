@@ -47,8 +47,8 @@ def test_chat_sessions_resume_and_clear_only_transcripts(tmp_path):
 def test_legacy_conversation_history_is_migrated(tmp_path):
     db_path = str(tmp_path / "legacy.db")
     storage = MemoryStorage(db_path=db_path)
-    storage.remember_message("user", "Earlier robotics discussion")
-    storage.remember_message("assistant", "We discussed the motor controller.")
+    storage.add_conversation("user", "Earlier robotics discussion")
+    storage.add_conversation("assistant", "We discussed the motor controller.")
 
     history = ChatHistory(db_path=db_path)
     sessions = history.list_sessions()
