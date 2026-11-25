@@ -24,8 +24,8 @@ MODEL_ID = os.environ.get("JARVIS_KITTEN_MODEL", "KittenML/kitten-tts-2-pico")
 OUTPUT = Path(__file__).resolve().parents[1] / "cache" / "kitten_tts" / "worker"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
-# KittenML's English frontend uses Misaki's NLTK POS tagger. Keep its
-# required corpus repository-local and explicitly visible to this worker.
+# JARVIS's lightweight Misaki adapter uses NLTK for English POS tagging.
+# Keep the required corpus repository-local and explicitly visible to worker.
 NLTK_DATA = Path(__file__).resolve().parents[1] / "cache" / "nltk_data"
 NLTK_DATA.mkdir(parents=True, exist_ok=True)
 os.environ["NLTK_DATA"] = str(NLTK_DATA)
