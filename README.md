@@ -147,7 +147,7 @@ JARVIS can resolve names from Android contacts and send messages through the lin
 
 #### Conservative WhatsApp auto-replies
 
-The optional direct-message auto-reply worker uses recent chat history and, when allowed, Knowledge Hub search. It sends a reply only when Groq returns a supported answer with confidence at or above the configured threshold and a stated evidence basis. If facts are missing, intent is ambiguous, or a personal decision is required, JARVIS queues a review instead of sending a guess. In the terminal CLI, review prompts show the incoming message and up to two drafts:
+The optional direct-message auto-reply worker runs in the background and uses recent chat history, Groq tool calls, Knowledge Hub search, and filename-only search in approved shared media folders. It sends grounded replies automatically. If a request only lacks a detail, it asks the contact a concise clarification rather than interrupting the owner. Only genuine owner-only decisions and security/privacy incidents create a local review; JARVIS does not send a generic "I'll check with the owner" acknowledgement.
 
 ```text
 wa-reply <review-id> 1
@@ -155,7 +155,7 @@ wa-reply <review-id> 2
 wa-reply <review-id> skip
 ```
 
-Review the draft before approving it. `skip` sends nothing. Messages that need no response are silently skipped. Auto-replies are direct-message only; group messages are not auto-replied to. Replies that require Knowledge Hub attachments are restricted to phone numbers listed in `JARVIS_WA_FILE_CONTACTS` (comma-separated numbers including country code) so private files are not sent to arbitrary contacts. Set `JARVIS_WA_AUTOREPLY=0` to disable the worker.
+Owner reviews are local-only and are reserved for security/privacy decisions or genuine personal commitments. `skip` sends nothing. Messages that need no response are silently skipped. Auto-replies are direct-message only; group messages are not auto-replied to. Automatic file/media sending is restricted to phone numbers listed in `JARVIS_WA_FILE_CONTACTS` (comma-separated numbers including country code). Device lookup searches only Pictures, DCIM, Downloads, Documents, Movies, Music, and the standard WhatsApp Media folder under shared storage; optional additional directories can be configured in `JARVIS_WA_MEDIA_DIRS` (paths separated by the platform path separator). It does not read WhatsApp's private database or Android app-private storage. Filename search is limited to common image/video/audio/document types, files up to 25 MB, and paths inside those approved folders. Executables, archives, credential-like names, and files reported as malicious are not automatically sent. Termux must have shared-storage permission for these folders to be visible. Set `JARVIS_WA_AUTOREPLY=0` to disable the worker.
 
 To link or relink WhatsApp, use `jarvis-setup whatsapp`. Start the bridge separately if it is not already running:
 
