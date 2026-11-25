@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from pathlib import Path
 
 
 _MISSING = object()
@@ -68,6 +69,13 @@ def nltk_misaki_class():
     """Build a Misaki G2P class whose tokenizer/POS tagger are NLTK-backed."""
     en = _import_misaki_en()
     import nltk
+
+    # The installer stores NLTK resources inside the JARVIS tree.
+    # Register that directory in every process that runs the G2P adapter.
+    data_dir = str(Path(__file__).resolve().parents[1] / "cache" / "nltk_data")
+    if data_dir not in nltk.data.path:
+        nltk.data.path.insert(0, data_dir)
+
     from nltk.tokenize import TreebankWordTokenizer
     from kittenml.kittentts2_tiny.frontend import espeak
 
