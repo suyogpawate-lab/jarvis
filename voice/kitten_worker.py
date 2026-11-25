@@ -82,15 +82,19 @@ from voice.kitten_audio import KITTEN_MAX_PHONEMES, configure_frontend, synthesi
 # Kitten's default frontend splits at 350 phonemes and generate() inserts
 # 150 ms silence between those pieces. A 500-phoneme cap stays within the
 # 510-position voice-style table, including the three special tokens.
-configure_frontend(kitten_frontend)
+configure_frontend(kitten_frontend, misaki_nltk=True)
 print(
     f"[Kitten] Frontend chunk cap: {KITTEN_MAX_PHONEMES} phonemes; "
+    "Misaki + NLTK POS tagging enabled; spaCy/PyTorch G2P disabled; "
     "inter-chunk silence disabled",
     flush=True,
 )
 
 load_started = time.perf_counter()
 model = KittenTTS(MODEL_ID, backend="onnx")
+# The NLTK/Misaki adapter uses the packaged pronunciation lexicon and eSpeak
+# fallback; Kitten's optional BART G2P assets are not needed or downloaded.
+model._g2p_dir = lambda: ""
 load_seconds = time.perf_counter() - load_started
 print(f"[Kitten] Model loaded in {load_seconds:.3f}s", flush=True)
 
