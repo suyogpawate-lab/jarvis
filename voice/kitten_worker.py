@@ -17,6 +17,13 @@ import traceback
 import uuid
 import wave
 from pathlib import Path
+import sys
+
+# This file is launched by absolute path; make the JARVIS repository root
+# importable so `from voice...` works regardless of the caller's cwd.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("JARVIS_KITTEN_PORT", "18765"))
