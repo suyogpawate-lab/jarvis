@@ -163,6 +163,14 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
         self.assertIn("can’t resend", decision["reply"])
         self.assertEqual(attachments, [])
 
+    def test_local_policy_recognizes_ss_as_screenshot_not_pdf_transfer(self):
+        decision, attachments = WhatsAppAutoReplyWorker._local_conversation_policy(
+            "", "Malware inside PDF! So send ss of pdf"
+        )
+        self.assertEqual(decision["decision"], "ask_owner")
+        self.assertEqual(attachments, [])
+        self.assertIn("screenshot", decision["alternatives"][0].lower())
+
     def test_local_policy_requires_owner_for_screenshot_of_flagged_pdf(self):
         decision, attachments = WhatsAppAutoReplyWorker._local_conversation_policy(
             "Sreeraj: Malware inside PDF! So send ss of pdf",
