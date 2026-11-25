@@ -1604,7 +1604,7 @@ def main():
                         result = whatsapp_autoreply.resolve_reply_review(
                             review_match.group(1), review_match.group(2)
                         )
-                        print(f"[{time.strftime('%H:%M:%S')}] JARVIS > {result}\n")
+                        print(f"JARVIS > {result}\n")
                     except Exception as exc:
                         print(f"JARVIS > Could not process reply decision: {exc}\n")
                 continue
