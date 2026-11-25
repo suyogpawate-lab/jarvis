@@ -97,7 +97,7 @@ class AutoUpdater:
             lines.extend(f"  - {line[:180]}" for line in file_lines[:max_items])
             if len(file_lines) > max_items:
                 lines.append(f"  - ... and {len(file_lines) - max_items} more path(s)")
-        lines.append("Nothing has been installed. Type /update approve to install, or /update later to defer.")
+        lines.append("Nothing has been installed. JARVIS will install it automatically after a safe idle window.")
         return "\n".join(lines)
 
     def apply_if_pending(self, approved=True):
