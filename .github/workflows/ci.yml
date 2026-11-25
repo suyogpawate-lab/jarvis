@@ -40,7 +40,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y espeak-ng
           python -m pip install numpy soundfile huggingface_hub espeakng_loader phonemizer num2words nltk misaki==0.9.4 addict regex
-          python -m pip install --no-deps kittenml==0.9.7
+          python -m pip install --no-deps git+https://github.com/KittenML/KittenTTS.git@5802f6b956844919ecf210f4e55f4750a6ad7c6f
       - name: Verify Misaki lexicon with NLTK and eSpeak fallback
         run: |
           python - <<'PY'
