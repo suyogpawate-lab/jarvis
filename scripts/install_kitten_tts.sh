@@ -70,11 +70,17 @@ if not missing:
 else:
     for req in missing:
         print(f"[Kitten] Installing missing/incompatible distribution: {req}")
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--retries", "5",
-             "--timeout", "30", "--no-deps", str(req)],
-            check=True,
-        )
+        command = [
+            sys.executable, "-m", "pip", "install", "--retries", "5",
+            "--timeout", "30", "--no-deps",
+        ]
+        # Misaki 0.9.4 is pure Python but upstream caps Requires-Python at
+        # <3.14. JARVIS uses only its lexicon/rules and avoids its spaCy/torch
+        # extras; allow the package on Termux Python 3.14 after runtime checks.
+        if req.name.lower() == "misaki":
+            command.append("--ignore-requires-python")
+        command.append(str(req))
+        subprocess.run(command, check=True)
 PY
 
 # KittenML's English frontend calls Misaki -> nltk.pos_tag(). Keep the
