@@ -1560,7 +1560,7 @@ def main():
                         print("[JARVIS UPDATE] Update could not be installed; see data/auto_update.log.\n", flush=True)
                 elif action == "later":
                     _auto_update_notified = True
-                    print("[JARVIS UPDATE] Deferred. It will not install without explicit approval.\n", flush=True)
+                    print("[JARVIS UPDATE] Still queued; it will install automatically after a safe idle window.\n", flush=True)
                 else:
                     print(_auto_updater.pending_summary() + "\n", flush=True)
                 continue
