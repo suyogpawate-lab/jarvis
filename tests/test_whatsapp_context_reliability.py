@@ -181,7 +181,8 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
             "Send me again",
         )
         self.assertEqual(decision["decision"], "ask_owner")
-        self.assertIn("screenshot", decision["alternatives"][0].lower())
+        self.assertEqual(decision["alternatives"], [])
+        self.assertIn("security review", decision["reason"].lower())
         self.assertEqual(attachments, [])
 
     def test_local_policy_refuses_private_source_code_request(self):
