@@ -1392,7 +1392,7 @@ async def _read_prompt_async():
     with patch_stdout():
         prompt_task = asyncio.create_task(
             _cli_prompt_session.prompt_async(
-                ANSI(f"{_J}J❯ {_R}") if is_float_mode() else ANSI(f"{_U}YOU  ❯ {_R}"),
+                HTML('<style fg="#2fe39a"><b>J❯</b></style> ') if is_float_mode() else HTML('<style fg="#5af78e"><b>YOU</b></style>  <style fg="#606060">❯</style> '),
                 default=_cli_pending_text,
                 bottom_toolbar=_cli_bottom_toolbar,
             )
