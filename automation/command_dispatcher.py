@@ -2110,7 +2110,7 @@ Rules:
                 )
             return "Research missions:\n" + "\n".join(lines)
 
-        research_request = self.research.parse_request(text)
+        research_request = overnight_request
         if research_request:
             if research_request["timing"] == "scheduled_overnight":
                 try:
