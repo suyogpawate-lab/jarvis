@@ -55,3 +55,9 @@ def test_legacy_conversation_history_is_migrated(tmp_path):
     assert len(sessions) == 1
     assert "Earlier robotics discussion" in sessions[0]["description"]
     assert len(history.messages(sessions[0]["code"])) == 2
+
+def test_chat_history_initializes_without_memory_storage(tmp_path):
+    history = ChatHistory(db_path=str(tmp_path / "standalone.db"))
+    code = history.ensure_active()
+    assert code.startswith("JH-")
+    assert history.list_sessions()[0]["code"] == code
