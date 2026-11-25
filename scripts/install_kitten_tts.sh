@@ -56,13 +56,20 @@ def is_satisfied(req):
     return not req.specifier or Version(installed.version) in req.specifier
 
 missing = [req for req in requirements if not is_satisfied(req)]
+# The PyPI 0.9.7 wheel does not contain the kittentts2_tiny frontend
+# used by JARVIS. Install the matching upstream source revision when absent.
+KITTEN_SOURCE = (
+    "git+https://github.com/KittenML/KittenTTS.git@"
+    "5802f6b956844919ecf210f4e55f4750a6ad7c6f"
+)
 try:
     kitten = distribution("kittenml")
+    import kittenml.kittentts2_tiny
     if Version(kitten.version) != Version("0.9.7"):
         missing.insert(0, Requirement("kittenml==0.9.7"))
     else:
-        print("[Kitten] Reusing KittenML 0.9.7")
-except PackageNotFoundError:
+        print("[Kitten] Reusing KittenML 0.9.7 with tiny ONNX frontend")
+except (PackageNotFoundError, ImportError):
     missing.insert(0, Requirement("kittenml==0.9.7"))
 
 if not missing:
@@ -79,7 +86,7 @@ else:
         # extras; allow the package on Termux Python 3.14 after runtime checks.
         if req.name.lower() == "misaki":
             command.append("--ignore-requires-python")
-        command.append(str(req))
+        command.append(KITTEN_SOURCE if req.name.lower() == "kittenml" else str(req))
         subprocess.run(command, check=True)
 PY
 
