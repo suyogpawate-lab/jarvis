@@ -1060,8 +1060,8 @@ class WhatsAppAutoReplyWorker:
             "confidence (0 to 1), evidence (short explanation of what supports the answer), "
             "reply (string), alternatives (array of up to 2 strings), and reason (string). "
             "For send, reply must contain the complete short natural message. For ask_owner, "
-            "reply is only a draft for the owner; the worker sends a separate brief "
-            "acknowledgement to the contact. For skip, reply must be empty."
+            "reply is only a private note for the owner; do not send any acknowledgement or "
+            "promise to the contact. For skip, reply must be empty."
         )
         system_prompt += " " + style_instructions("auto_reply")
         # Link-inspection tools are only relevant when the incoming text
