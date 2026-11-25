@@ -108,8 +108,8 @@ if kitten_missing:
 
 PY
 
-# KittenML's English frontend calls Misaki -> nltk.pos_tag(). Keep the
-# required corpus repository-local and download it only when absent.
+# JARVIS's Misaki adapter uses NLTK's English POS tagger. Keep the small
+# tagger corpus repository-local and download it only when absent.
 echo "[Kitten] Checking English POS tagger..."
 python - <<'PY'
 from pathlib import Path
