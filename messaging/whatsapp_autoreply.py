@@ -840,7 +840,7 @@ class WhatsAppAutoReplyWorker:
             latest,
         ))
 
-        if flagged_pdf and asks_pdf:
+        if flagged_pdf and asks_pdf and not asks_screenshot:
             return ({
                 "decision": "send",
                 "confidence": 1.0,
