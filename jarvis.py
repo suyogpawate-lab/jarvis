@@ -8,6 +8,7 @@ from pathlib import Path
 import readline
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.formatted_text import HTML, ANSI
 """
 JARVIS CLI
 
@@ -42,6 +43,46 @@ from monitoring.system_telemetry import get_telemetry
 from monitoring.notification_watcher import NotificationWatcher
 import service_launcher
 from auto_update import AutoUpdater
+
+
+# ==============================================================
+# JARVIS CLI COLOR PALETTE
+# ==============================================================
+
+_R = "\033[0m"          # reset
+_B = "\033[1m"          # bold
+_D = "\033[2m"          # dim
+_CYAN = "\033[36m"
+_BCYAN = "\033[96m"
+_GREEN = "\033[32m"
+_BGREEN = "\033[92m"
+_GOLD = "\033[33m"
+_BGOLD = "\033[93m"
+_RED = "\033[31m"
+_BRED = "\033[91m"
+_MAG = "\033[35m"
+_BMAG = "\033[95m"
+_WHITE = "\033[97m"
+_GRAY = "\033[90m"
+_BBLUE = "\033[94m"
+
+_J = f"{_B}{_BCYAN}"       # JARVIS accent
+_U = f"{_B}{_BGREEN}"      # user accent
+_TAG = f"{_B}{_GOLD}"      # status tags
+_ERR = f"{_B}{_BRED}"      # errors
+_WARN = f"{_B}{_BGOLD}"    # warnings
+_OK = f"{_B}{_BGREEN}"     # success
+_DIM = f"{_D}{_GRAY}"      # secondary text
+_ACCENT = f"{_B}{_BCYAN}"  # general accent
+
+
+def _c(style, text):
+    return f"{style}{text}{_R}"
+
+
+def _tag(label, style=None):
+    s = style or _TAG
+    return f"{s}[{label}]{_R}"
 
 
 # ==============================================================
@@ -215,7 +256,7 @@ def parse_memory_command(prompt):
 def print_memory():
 
     print()
-    print("===== PERSONAL MEMORY =====")
+    print(_c(_J, "━━━━━ PERSONAL MEMORY ━━━━━"))
 
     personal = memory.personal(
         limit=20,
@@ -230,14 +271,14 @@ def print_memory():
             ).strip()
 
             if content:
-                print(f"- {content}")
+                print(f"  {_c(_BCYAN, '▸')} {content}")
 
     else:
 
-        print("(empty)")
+        print(f"  {_c(_DIM, '(empty)')}")
 
     print()
-    print("===== PROJECT MEMORY =====")
+    print(_c(_J, "━━━━━ PROJECT MEMORY ━━━━━"))
 
     projects = memory.project(
         limit=20,
@@ -252,14 +293,14 @@ def print_memory():
             ).strip()
 
             if content:
-                print(f"- {content}")
+                print(f"  {_c(_BGREEN, '▸')} {content}")
 
     else:
 
-        print("(empty)")
+        print(f"  {_c(_DIM, '(empty)')}")
 
     print()
-    print("===== RECENT EPISODES =====")
+    print(_c(_J, "━━━━━ RECENT EPISODES ━━━━━"))
 
     episodes = memory.recent_episodes(
         limit=10,
@@ -278,12 +319,12 @@ def print_memory():
             ).strip()
 
             print(
-                f"- {topic}: {summary}"
+                f"  {_c(_BGOLD, '▸')} {_c(_B + _WHITE, topic)}{_c(_DIM, ':')} {summary}"
             )
 
     else:
 
-        print("(empty)")
+        print(f"  {_c(_DIM, '(empty)')}")
 
     print()
 
@@ -318,7 +359,7 @@ def process_automatic_memory(prompt):
             )
 
             print(
-                f"[MEMORY] Personal memory saved."
+                f"{_tag('MEMORY', _OK)} Personal memory saved."
             )
 
         elif kind == "project":
@@ -329,7 +370,7 @@ def process_automatic_memory(prompt):
             )
 
             print(
-                f"[MEMORY] Project memory saved."
+                f"{_tag('MEMORY', _OK)} Project memory saved."
             )
 
         else:
@@ -341,7 +382,7 @@ def process_automatic_memory(prompt):
     except Exception as exc:
 
         print(
-            f"[MEMORY ERROR] {exc}"
+            f"{_tag('MEMORY ERROR', _ERR)} {exc}"
         )
 
         return False
@@ -356,19 +397,19 @@ def save_message(role, content):
         chat_history.save(role, content)
         memory.remember_message(role, content)
     except Exception as exc:
-        print(f"[MEMORY WARN] Conversation save failed: {exc}")
+        print(f"{_tag('MEMORY WARN', _WARN)} Conversation save failed: {exc}")
 
 
 def format_chat_history():
     sessions = chat_history.list_sessions(limit=30)
     if not sessions:
-        return "No saved chats."
-    lines = ["SAVED JARVIS CHATS (resume with /resume CODE):"]
+        return f"{_c(_DIM, 'No saved chats.')}"
+    lines = [_c(_J, "━━━━━ SAVED CHATS ━━━━━") + f"  {_c(_DIM, '(resume with /resume CODE)')}"]
     for item in sessions:
         stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["updated_at"]))
         lines.append(
-            f'{item["code"]} | {item["description"]} | '
-            f'{item["message_count"]} messages | {stamp}'
+            f'  {_c(_BCYAN, item["code"])} {_c(_DIM, "│")} {item["description"]} {_c(_DIM, "│")} '
+            f'{_c(_DIM, str(item["message_count"]) + " msgs")} {_c(_DIM, "│")} {_c(_DIM, stamp)}'
         )
     return "\n".join(lines)
 
@@ -388,7 +429,7 @@ def get_memory_context(prompt):
     except Exception as exc:
 
         print(
-            f"[MEMORY WARN] Context retrieval failed: {exc}"
+            f"{_tag('MEMORY WARN', _WARN)} Context retrieval failed: {exc}"
         )
 
         return "(No relevant memory found.)"
@@ -410,7 +451,7 @@ def ensure_http_bridge():
     bridge_url = "http://127.0.0.1:21339/health"
 
     if not bridge_script.is_file():
-        print("[HTTP BRIDGE ERROR] jarvis_http_bridge.py not found.", flush=True)
+        print(f"{_tag('HTTP BRIDGE ERROR', _ERR)} jarvis_http_bridge.py not found.", flush=True)
         return False
 
     # Reuse an existing healthy bridge; never launch a duplicate process.
@@ -419,7 +460,7 @@ def ensure_http_bridge():
         if response.ok:
             data = response.json()
             if data.get("ok") and data.get("service") == "JARVIS":
-                print("[HTTP BRIDGE] Already running.", flush=True)
+                print(f"{_tag('HTTP BRIDGE', _OK)} Already running.", flush=True)
                 return True
     except Exception:
         pass
@@ -439,7 +480,7 @@ def ensure_http_bridge():
                 close_fds=True,
             )
     except Exception as exc:
-        print(f"[HTTP BRIDGE ERROR] Could not start bridge: {type(exc).__name__}: {exc}", flush=True)
+        print(f"{_tag('HTTP BRIDGE ERROR', _ERR)} Could not start bridge: {type(exc).__name__}: {exc}", flush=True)
         return False
 
     # Give Python a moment to bind the port, but do not block startup for long.
@@ -450,14 +491,14 @@ def ensure_http_bridge():
             if response.ok:
                 data = response.json()
                 if data.get("ok") and data.get("service") == "JARVIS":
-                    print("[HTTP BRIDGE] Started on http://127.0.0.1:21339.", flush=True)
+                    print(f"{_tag('HTTP BRIDGE', _OK)} Started on http://127.0.0.1:21339.", flush=True)
                     return True
         except Exception:
             pass
         time.sleep(0.25)
 
     print(
-        f"[HTTP BRIDGE WARN] Startup was not confirmed. Check {cache_dir / 'http_bridge.log'}; "
+        f"{_tag('HTTP BRIDGE WARN', _WARN)} Startup was not confirmed. Check {cache_dir / 'http_bridge.log'}; "
         "JARVIS will continue starting.",
         flush=True,
     )
@@ -486,7 +527,7 @@ def ensure_whatsapp_daemon():
             if data.get("connected"):
 
                 print(
-                    "[WHATSAPP] Bridge already connected."
+                    f"{_tag('WHATSAPP', _OK)} Bridge already connected."
                 )
 
                 return True
@@ -514,7 +555,7 @@ def ensure_whatsapp_daemon():
     if not launcher.exists():
 
         print(
-            "[WHATSAPP ERROR] whatsapp_daemon.sh not found."
+            f"{_tag('WHATSAPP ERROR', _ERR)} whatsapp_daemon.sh not found."
         )
 
         return False
@@ -539,7 +580,7 @@ def ensure_whatsapp_daemon():
     except Exception as exc:
 
         print(
-            f"[WHATSAPP ERROR] Failed to start bridge: {exc}"
+            f"{_tag('WHATSAPP ERROR', _ERR)} Failed to start bridge: {exc}"
         )
 
         return False
@@ -566,7 +607,7 @@ def ensure_whatsapp_daemon():
                 if data.get("connected"):
 
                     print(
-                        "[WHATSAPP] Bridge connected."
+                        f"{_tag('WHATSAPP', _OK)} Bridge connected."
                     )
 
                     return True
@@ -577,12 +618,12 @@ def ensure_whatsapp_daemon():
         time.sleep(0.5)
 
     print(
-        "[WHATSAPP WARN] Bridge started but connection "
+        f"{_tag('WHATSAPP WARN', _WARN)} Bridge started but connection "
         "was not confirmed."
     )
 
     print(
-        f"[WHATSAPP] Log: {log_file}"
+        f"{_tag('WHATSAPP', _ACCENT)} Log: {log_file}"
     )
 
     return False
@@ -935,7 +976,7 @@ def speak(text, quiet=False, user_prompt=""):
         return True
     except Exception as exc:
         if not quiet:
-            print(f"[TTS ERROR] {exc}", flush=True)
+            print(f"{_tag('TTS ERROR', _ERR)} {exc}", flush=True)
         return False
 
 
@@ -1111,7 +1152,7 @@ def handle_prompt(prompt, source="external"):
             return None, False
 
     except Exception as exc:
-        print(f"\n[DISPATCH WARN] {type(exc).__name__}: {exc}; trying core fallback.\n", flush=True)
+        print(f"\n{_tag('DISPATCH WARN', _WARN)} {type(exc).__name__}: {exc}; trying core fallback.\n", flush=True)
 
     # ----------------------------------------------------------
     # Fallback: plain JARVIS with memory context
@@ -1173,7 +1214,7 @@ def start_whatsapp_autoreply():
     global whatsapp_autoreply
 
     if os.getenv("JARVIS_WA_AUTOREPLY", "1").strip().lower() in {"0", "false", "no", "off"}:
-        print("[WHATSAPP AUTO] Disabled (JARVIS_WA_AUTOREPLY=0).", flush=True)
+        print(f"{_tag('WHATSAPP AUTO', _DIM)} Disabled (JARVIS_WA_AUTOREPLY=0).", flush=True)
         return
 
     import importlib
@@ -1189,14 +1230,14 @@ def start_whatsapp_autoreply():
             break
         except ModuleNotFoundError as exc:
             if exc.name and not module_name.endswith(exc.name):
-                print(f"[WHATSAPP AUTO DISABLED] Missing module: {exc.name}", flush=True)
+                print(f"{_tag('WHATSAPP AUTO DISABLED', _WARN)} Missing module: {exc.name}", flush=True)
                 return
         except Exception as exc:
-            print(f"[WHATSAPP AUTO DISABLED] {exc}", flush=True)
+            print(f"{_tag('WHATSAPP AUTO DISABLED', _WARN)} {exc}", flush=True)
             return
 
     if worker_class is None:
-        print("[WHATSAPP AUTO DISABLED] whatsapp_autoreply.py not found.", flush=True)
+        print(f"{_tag('WHATSAPP AUTO DISABLED', _WARN)} whatsapp_autoreply.py not found.", flush=True)
         return
 
     try:
@@ -1207,9 +1248,9 @@ def start_whatsapp_autoreply():
         # Attach it before accepting CLI requests so group sends can be queued.
         dispatcher.set_whatsapp_confirmation_worker(whatsapp_autoreply)
         if whatsapp_autoreply.start():
-            print("[WHATSAPP AUTO] Auto-reply is ON for direct messages.", flush=True)
+            print(f"{_tag('WHATSAPP AUTO', _OK)} Auto-reply is ON for direct messages.", flush=True)
     except Exception as exc:
-        print(f"[WHATSAPP AUTO DISABLED] {exc}", flush=True)
+        print(f"{_tag('WHATSAPP AUTO DISABLED', _WARN)} {exc}", flush=True)
 
 
 def init_services():
@@ -1234,7 +1275,7 @@ def init_services():
         from voice.listener import WhistleWakeListener
         voice_listener = WhistleWakeListener(voice_command_queue).start()
     except Exception as exc:
-        print(f"[VOICE DISABLED] {exc}", flush=True)
+        print(f"{_tag('VOICE DISABLED', _WARN)} {exc}", flush=True)
 
 
 def shutdown():
@@ -1243,32 +1284,32 @@ def shutdown():
         if active_dispatcher is not None:
             active_dispatcher.stop_background_services()
     except Exception as exc:
-        print(f"[SHUTDOWN WARN] Dispatcher-owned services: {exc}", flush=True)
+        print(f"{_tag('SHUTDOWN WARN', _WARN)} Dispatcher-owned services: {exc}", flush=True)
 
     try:
         if whatsapp_autoreply is not None:
             whatsapp_autoreply.stop()
     except Exception as exc:
-        print(f"[SHUTDOWN WARN] WhatsApp auto-reply: {exc}", flush=True)
+        print(f"{_tag('SHUTDOWN WARN', _WARN)} WhatsApp auto-reply: {exc}", flush=True)
 
     try:
         if voice_listener is not None:
             voice_listener.stop()
     except Exception as exc:
-        print(f"[SHUTDOWN WARN] Voice listener: {exc}", flush=True)
+        print(f"{_tag('SHUTDOWN WARN', _WARN)} Voice listener: {exc}", flush=True)
 
     try:
         if notification_watcher is not None:
             notification_watcher.stop()
     except Exception as exc:
-        print(f"[SHUTDOWN WARN] Notification watcher: {exc}", flush=True)
+        print(f"{_tag('SHUTDOWN WARN', _WARN)} Notification watcher: {exc}", flush=True)
 
     try:
         scheduler = getattr(dispatcher, "automation", None)
         if scheduler is not None:
             scheduler.shutdown()
     except Exception as exc:
-        print(f"[SHUTDOWN WARN] Automation scheduler: {exc}", flush=True)
+        print(f"{_tag('SHUTDOWN WARN', _WARN)} Automation scheduler: {exc}", flush=True)
 
 
 def pop_notification():
@@ -1291,9 +1332,9 @@ def _show_whatsapp_group_events():
     for event in events:
         group = str(event.get("group_subject") or event.get("chat_jid") or "WhatsApp group")
         message = str(event.get("text") or event.get("suggested_reply") or "")
-        print(f"\n[JARVIS WHATSAPP GROUP CONFIRMATION] {group}:")
-        print(f"  Message: {message}")
-        print("  Reply YES to send or NO to cancel.")
+        print(f"\n{_tag('JARVIS WHATSAPP GROUP', _BGOLD)} {_c(_WHITE, group)}:")
+        print(f"  {_c(_DIM, 'Message:')} {message}")
+        print(f"  {_c(_DIM, 'Reply')} {_c(_BGREEN, 'YES')} {_c(_DIM, 'to send or')} {_c(_BRED, 'NO')} {_c(_DIM, 'to cancel.')}")
     return True
 
 
@@ -1310,19 +1351,19 @@ def _show_whatsapp_review_events():
     for event in events:
         review_id = str(event.get("review_id", ""))
         sender = str(event.get("sender", "Unknown contact"))
-        print(f"\n[JARVIS WHATSAPP REVIEW] Message from {sender}:")
-        print(f"  Message: {event.get('incoming', '')}")
-        print(f"  Why review is needed: {event.get('reason', 'Not enough reliable context.')}")
+        print(f"\n{_tag('JARVIS WHATSAPP REVIEW', _BGOLD)} Message from {_c(_WHITE, sender)}:")
+        print(f"  {_c(_DIM, 'Message:')} {event.get('incoming', '')}")
+        print(f"  {_c(_DIM, 'Why review is needed:')} {event.get('reason', 'Not enough reliable context.')}")
         evidence = str(event.get("evidence", "")).strip()
         if evidence:
-            print(f"  Available evidence: {evidence}")
+            print(f"  {_c(_DIM, 'Available evidence:')} {evidence}")
         drafts = []
         if str(event.get("suggested_reply", "")).strip():
             drafts.append(str(event["suggested_reply"]).strip())
         drafts.extend(str(x).strip() for x in event.get("alternatives", []) if str(x).strip())
         for index, draft in enumerate(drafts[:2], 1):
-            print(f"  Draft {index}: {draft}")
-        print(f"  Decide: wa-reply {review_id} 1 | wa-reply {review_id} 2")
+            print(f"  {_c(_BCYAN, f'Draft {index}:')} {draft}")
+        print(f"  {_c(_DIM, 'Decide:')} {_c(_BGREEN, f'wa-reply {review_id} 1')} {_c(_DIM, '|')} {_c(_BGOLD, f'wa-reply {review_id} 2')}")
 
 def is_float_mode():
     """True when launched through the compact Termux:Float entry point."""
@@ -1341,7 +1382,7 @@ def _service_cli_background_events():
         summary = pop_notification()
         if summary is None:
             break
-        print(f"JARVIS [NOTIFICATIONS] > {summary}", flush=True)
+        print(f"{_c(_J, 'JARVIS')} {_tag('NOTIFICATIONS', _BMAG)} {_c(_WHITE, summary)}", flush=True)
         _web_notify(summary)
 
 
@@ -1351,7 +1392,7 @@ async def _read_prompt_async():
     with patch_stdout():
         prompt_task = asyncio.create_task(
             _cli_prompt_session.prompt_async(
-                "J> " if is_float_mode() else "YOU  > ",
+                ANSI(f"{_J}J❯ {_R}") if is_float_mode() else ANSI(f"{_U}YOU  ❯ {_R}"),
                 default=_cli_pending_text,
                 bottom_toolbar=_cli_bottom_toolbar,
             )
@@ -1455,7 +1496,6 @@ def _answer_btw(question):
 
 
 def _cli_bottom_toolbar():
-    """Live, non-notification token meter shown at the bottom of the prompt."""
     try:
         from monitoring.token_meter import snapshot
         usage = snapshot()
@@ -1465,8 +1505,8 @@ def _cli_bottom_toolbar():
     provider = usage.get("provider") or "JARVIS"
     model = usage.get("model") or ""
     if active:
-        return " JARVIS WORKING"
-    return " JARVIS READY"
+        return HTML('<style bg="#1a2a1a" fg="#2fe39a"><b> ⟐ JARVIS WORKING </b></style>')
+    return HTML('<style bg="#0a1a2a" fg="#3fd8ff"><b> ⟐ JARVIS READY </b></style>')
 
 
 def read_prompt():
@@ -1494,31 +1534,36 @@ def main():
         if _provider() == "say":
             from voice.jarvis_voice_runtime import ensure_server
             ensure_server()
-            print("[VOICE] ZIP say server is ready.", flush=True)
+            print(f"{_tag('VOICE', _OK)} ZIP say server is ready.", flush=True)
     except Exception as exc:
-        print(f"[VOICE WARN] Local ZIP voice server unavailable: {exc}", flush=True)
+        print(f"{_tag('VOICE WARN', _WARN)} Local ZIP voice server unavailable: {exc}", flush=True)
 
     init_services()
     start_auto_updater()
 
     if is_float_mode():
-        # Termux:Float is a small terminal surface; keep the CLI compact and
-        # avoid starting the separate Rich full-screen UI/web companion.
-        print("JARVIS FLOAT ONLINE")
-        print("Commands: /memory | /clear | exit")
+        print(f"{_J}JARVIS FLOAT ONLINE{_R}")
+        print(f"{_DIM}Commands: /memory | /clear | exit{_R}")
     else:
         try:
             import jarvis_ui, jarvis_web
             url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
             if url:
-                print(f"Web UI: {url}")
+                print(f"{_tag('WEB UI', _OK)} {url}")
         except Exception as exc:
-            print(f"[WEB UI DISABLED] {exc}")
+            print(f"{_tag('WEB UI DISABLED', _WARN)} {exc}")
 
-        print("JARVIS ONLINE")
-        print("Type '/memory' to inspect memory.")
-        print("Commands: /clear | /history | /resume CODE | /newchat | /btw question | /update")
-        print("Type 'exit' to quit.")
+        print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
+        print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Online{_R}        {_B}{_BCYAN}┃{_R}")
+        print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/memory')}    {_c(_DIM, 'Inspect memory')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/clear')}     {_c(_DIM, 'Clear terminal')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/history')}   {_c(_DIM, 'Chat sessions')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/resume')}    {_c(_DIM, 'Resume a chat  (+ CODE)')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/newchat')}   {_c(_DIM, 'Start fresh session')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/btw')}       {_c(_DIM, 'Side question while working')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/update')}    {_c(_DIM, 'Check for updates')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'exit')}       {_c(_DIM, 'Shut down')}")
     print()
 
     from concurrent.futures import ThreadPoolExecutor
@@ -1531,7 +1576,7 @@ def main():
                 summary = pop_notification()
                 if summary is None:
                     break
-                print(f"\nJARVIS [NOTIFICATIONS] > {summary}\n", flush=True)
+                print(f"\n{_c(_J, 'JARVIS')} {_tag('NOTIFICATIONS', _BMAG)} {_c(_WHITE, summary)}\n", flush=True)
                 _web_notify(summary)
 
             if _deferred_prompts:
@@ -1540,7 +1585,7 @@ def main():
                 prompt, prompt_source = read_prompt()
 
             if prompt_source == "update_restart":
-                print("\n[JARVIS UPDATE] Update installed. Restarting into the new version...", flush=True)
+                print(f"\n{_tag('JARVIS UPDATE', _OK)} Update installed. Restarting into the new version...", flush=True)
                 shutdown()
                 restart_after_update()
             if prompt_source == "task_done" or not prompt:
@@ -1550,30 +1595,32 @@ def main():
             if update_command:
                 action = (update_command.group(1) or "").lower()
                 if not _auto_updater.pending:
-                    print("[JARVIS UPDATE] No update is pending.\n", flush=True)
+                    print(f"{_tag('JARVIS UPDATE', _ACCENT)} No update is pending.\n", flush=True)
                 elif action == "approve":
                     if apply_auto_update_if_ready(approved=True):
-                        print("[JARVIS UPDATE] Approved and installed. Restarting...", flush=True)
+                        print(f"{_tag('JARVIS UPDATE', _OK)} Approved and installed. Restarting...", flush=True)
                         shutdown()
                         restart_after_update()
                     else:
-                        print("[JARVIS UPDATE] Update could not be installed; see data/auto_update.log.\n", flush=True)
+                        print(f"{_tag('JARVIS UPDATE', _ERR)} Update could not be installed; see data/auto_update.log.\n", flush=True)
                 elif action == "later":
                     _auto_update_notified = True
-                    print("[JARVIS UPDATE] Still queued; it will install automatically after a safe idle window.\n", flush=True)
+                    print(f"{_tag('JARVIS UPDATE', _ACCENT)} Still queued; it will install automatically after a safe idle window.\n", flush=True)
                 else:
                     print(_auto_updater.pending_summary() + "\n", flush=True)
                 continue
 
             if prompt.lower() in {"exit", "quit"}:
                 shutdown()
-                print("JARVIS OFFLINE")
+                print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
+                print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Offline{_R}       {_B}{_BCYAN}┃{_R}")
+                print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
                 break
 
             # /clear is a terminal-display command, not a chat/database command.
             if prompt.strip().lower() == "/clear":
                 if not clear_scrollback():
-                    print("[CLEAR] This terminal does not support scrollback clearing.", flush=True)
+                    print(f"{_tag('CLEAR', _WARN)} This terminal does not support scrollback clearing.", flush=True)
                 continue
 
             if (
@@ -1581,14 +1628,14 @@ def main():
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"yes", "y", "confirm"}
             ):
-                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
+                print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
                 continue
             if (
                 whatsapp_autoreply is not None
                 and whatsapp_autoreply.pending_group_replies
                 and prompt.strip().lower() in {"no", "n", "cancel"}
             ):
-                print(f"JARVIS > {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
+                print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
                 continue
 
             review_match = re.fullmatch(
@@ -1598,15 +1645,15 @@ def main():
             )
             if review_match:
                 if whatsapp_autoreply is None:
-                    print("WhatsApp auto-reply worker is not running.")
+                    print(f"{_tag('WHATSAPP', _WARN)} Auto-reply worker is not running.")
                 else:
                     try:
                         result = whatsapp_autoreply.resolve_reply_review(
                             review_match.group(1), review_match.group(2)
                         )
-                        print(f"JARVIS > {result}\n")
+                        print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {result}\n")
                     except Exception as exc:
-                        print(f"JARVIS > Could not process reply decision: {exc}\n")
+                        print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {_c(_ERR, 'Could not process reply decision:')} {exc}\n")
                 continue
 
             if prompt.lower() in MEMORY_VIEW_COMMANDS:
@@ -1614,7 +1661,7 @@ def main():
                 continue
 
             if prompt_source == "voice":
-                print(f"YOU (VOICE) > {prompt}", flush=True)
+                print(f"{_c(_U, 'YOU')} {_c(_BGOLD, '(VOICE)')} {_c(_DIM, '❯')} {prompt}", flush=True)
             dispatcher.fast_agent._last_used_tools = []
             future = task_pool.submit(handle_prompt, prompt, prompt_source)
             _active_task_future = future
@@ -1630,14 +1677,14 @@ def main():
                 if incoming.strip().lower().startswith("/btw"):
                     side_question = re.sub(r"^/btw\s*", "", incoming.strip(), flags=re.IGNORECASE)
                     if not side_question:
-                        print("[JARVIS BTW] Usage: /btw your side question", flush=True)
+                        print(f"{_tag('JARVIS BTW', _ACCENT)} Usage: /btw your side question", flush=True)
                         continue
-                    print(f"YOU (BTW) > {side_question}", flush=True)
+                    print(f"{_c(_U, 'YOU')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_question}", flush=True)
                     side_answer = _answer_btw(side_question)
-                    print(f"JARVIS (BTW) > {side_answer}\n", flush=True)
+                    print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\n", flush=True)
                 else:
                     _deferred_prompts.append((incoming, incoming_source))
-                    print("[JARVIS] Current task is still running. Message queued; use /btw for a side question.", flush=True)
+                    print(f"{_tag('JARVIS', _ACCENT)} Current task is still running. Message queued; use {_c(_BCYAN, '/btw')} for a side question.", flush=True)
 
             _active_task_future = None
             try:
@@ -1648,21 +1695,21 @@ def main():
             if not answer:
                 continue
 
-            print(f"JARVIS > {answer}\n", flush=True)
+            print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {answer}\n", flush=True)
             if should_speak:
                 speak(answer, user_prompt=prompt)
 
         except KeyboardInterrupt:
             shutdown()
-            print("\nJARVIS OFFLINE")
+            print(f"\n{_c(_J, 'JARVIS OFFLINE')}")
             break
         except EOFError:
             shutdown()
-            print("\nJARVIS OFFLINE")
+            print(f"\n{_c(_J, 'JARVIS OFFLINE')}")
             break
         except Exception as exc:
             _active_task_future = None
-            print(f"\n[FATAL ERROR] {exc}\n")
+            print(f"\n{_tag('FATAL ERROR', _ERR)} {exc}\n")
 
 if __name__ == "__main__":
     main()
