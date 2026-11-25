@@ -170,6 +170,7 @@ class OvernightResearch:
         self._cancel = {}
         self._threads = {}
         self._last_terminal_update = {}
+        self.on_complete = None
         self.timezone_name, self.timezone = _resolve_timezone()
         self._state = self._load()
         recover = []
@@ -313,7 +314,7 @@ class OvernightResearch:
             hours = max(0.0, (delivery_deadline - now) / 3600.0)
             if hours <= 0:
                 return "[ERROR] The requested delivery time is not in the future."
-            analysis_budget = min(7200.0, max(900.0, hours * 3600.0 * 0.25))
+            analysis_budget = min(7200.0, max(300.0, hours * 3600.0 * 0.25))
             collection_deadline = max(now, delivery_deadline - analysis_budget)
         else:
             collection_deadline = now + hours * 3600.0
@@ -355,11 +356,11 @@ class OvernightResearch:
             deadline_text = datetime.fromtimestamp(delivery_deadline, self.timezone).strftime("%Y-%m-%d %I:%M %p %Z")
             return (f"[RESEARCH] Overnight mission started: {mission_id}. "
                     f"Collection is planned to stop before the analysis window for {deadline_text}; "
-                    "OmniRoute will then synthesize the saved evidence. "
+                    "Groq will synthesize the locally collected evidence. "
                     f"The report is targeted for {deadline_text}; progress is checkpointed in {directory}.")
         return (f"[RESEARCH] Overnight mission started: {mission_id}. "
                 f"Model-free collection will run for up to {hours:g} hours, "
-                "then OmniRoute will analyze the saved evidence. "
+                "then Groq will analyze the locally collected evidence. "
                 f"Progress is persisted in {directory}.")
 
     def cancel(self, mission_id):
@@ -792,21 +793,29 @@ class OvernightResearch:
         if current_batch:
             yield current_batch
 
-    def _omni(self, messages, system, max_tokens=1400, timeout=90):
-        if not callable(getattr(self.fast_agent, "_omniroute_request", None)):
-            raise RuntimeError("FastAgent OmniRoute transport is unavailable.")
-        last = None
-        for attempt in range(3):
-            try:
-                return self.fast_agent._omniroute_request(
-                    messages, system_prompt=system, max_tokens=max_tokens,
-                    temperature=0.1, timeout=timeout,
-                )
-            except Exception as exc:
-                last = exc
-                if attempt < 2:
-                    time.sleep(2 ** attempt * 5)
-        raise RuntimeError(f"OmniRoute analysis failed after 3 attempts: {type(last).__name__}: {last}")
+    def _groq(self, messages, system_prompt=None, max_tokens=1400, timeout=90, mission=None):
+        """Send research synthesis directly to Groq; evidence collection remains local."""
+        if self.fast_agent is None or not callable(getattr(self.fast_agent, "_groq_post", None)):
+            raise RuntimeError("FastAgent Groq transport is unavailable.")
+        if mission and mission.get("delivery_deadline"):
+            remaining = float(mission["delivery_deadline"]) - time.time()
+            if remaining <= 4:
+                raise TimeoutError("Research delivery deadline reached.")
+            timeout = max(5, min(float(timeout), remaining - 2))
+        payload_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else [])
+        payload_messages.extend(messages)
+        response = self.fast_agent._groq_post({
+            "model": getattr(self.fast_agent, "model", "openai/gpt-oss-120b"),
+            "messages": payload_messages, "temperature": 0.1,
+            "max_tokens": int(max_tokens), "stream": False,
+        }, timeout=timeout)
+        if response.status_code != 200:
+            raise RuntimeError(self.fast_agent._groq_limit_message(response))
+        data = response.json()
+        content = str(data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+        if not content:
+            raise RuntimeError("Groq returned an empty research synthesis.")
+        return content
 
     def _analyze(self, mission, cancel):
         analysis_dir = Path(mission["directory"]) / "analysis"
@@ -839,7 +848,7 @@ class OvernightResearch:
                         f"URL/PATH: {item.get('url') or item.get('path') or '(not recorded)'}\n"
                         f"CONTENT:\n{item['content'][:6000]}\n"
                     )
-                summary = self._omni(
+                summary = self._groq(
                     [{"role": "user", "content": (
                         f"Research question: {mission['query']}\n"
                         f"Evidence batch {batch_no}/{total_batches}:\n\n"
@@ -852,7 +861,7 @@ class OvernightResearch:
                 self._write_atomic(output, summary)
             summaries.append(summary)
             self._update(mission["id"], phase="analysis",
-                         progress=f"OmniRoute analyzed batch {batch_no}/{total_batches}.")
+                         progress=f"Groq analyzed batch {batch_no}/{total_batches}.")
 
         # Hierarchical reduction prevents a single enormous prompt.
         level = summaries
@@ -952,7 +961,7 @@ class OvernightResearch:
                              progress="Collection stopped; evidence preserved.")
                 return
             self._update(mission_id, status="ANALYZING", phase="analysis",
-                         progress="Collection window complete. Starting OmniRoute analysis.")
+                         progress="Collection window complete. Starting Groq analysis.")
             count = self._analyze(mission, cancel)
             self._update(mission_id, status="COMPLETED", phase="complete",
                          completed_at=time.time(), source_count=count,
