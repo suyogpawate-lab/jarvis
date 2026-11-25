@@ -50,12 +50,19 @@ def test_kitten_keeps_replies_up_to_fifty_words_in_one_synthesis():
     assert kitten_chunk_text(text) == [text]
 
 
-def test_kitten_uses_longer_chunks_and_merges_tiny_final_remainder():
+def test_kitten_keeps_mid_size_replies_in_one_synthesis_for_prosody():
     from voice.text_chunking import kitten_chunk_text
 
     text = " ".join(f"word{i}" for i in range(81)) + "."
+    assert kitten_chunk_text(text) == [text]
+
+
+def test_kitten_splits_only_very_long_replies_and_keeps_all_words():
+    from voice.text_chunking import kitten_chunk_text
+
+    text = " ".join(f"word{i}" for i in range(321)) + "."
     chunks = kitten_chunk_text(text)
-    assert [len(chunk.split()) for chunk in chunks] == [40, 41]
+    assert [len(chunk.split()) for chunk in chunks] == [220, 101]
     assert " ".join(chunks) == text
 
 

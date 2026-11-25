@@ -1,10 +1,10 @@
 """Persistent KittenTTS Pico bridge for JARVIS.
 
-KittenML owns the text frontend: its English G2P uses a Misaki lexicon with
-a lightweight eSpeak NG fallback when optional ML frontend dependencies are
-unavailable. JARVIS calls the bundled worker over localhost and copies each
-generated WAV into a unique cache file before the worker's prior output is
-reclaimed.
+The bundled ONNX worker configures Misaki's English lexicon with NLTK POS
+tagging and an eSpeak NG fallback. It deliberately avoids spaCy, PyTorch,
+Transformers, and Kitten's optional BART G2P assets. JARVIS calls the worker
+over localhost and copies each generated WAV into a unique cache file before
+the worker's prior output is reclaimed.
 """
 from __future__ import annotations
 

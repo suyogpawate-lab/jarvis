@@ -47,11 +47,17 @@ def test_chat_sessions_resume_and_clear_only_transcripts(tmp_path):
 def test_legacy_conversation_history_is_migrated(tmp_path):
     db_path = str(tmp_path / "legacy.db")
     storage = MemoryStorage(db_path=db_path)
-    storage.remember_message("user", "Earlier robotics discussion")
-    storage.remember_message("assistant", "We discussed the motor controller.")
+    storage.add_conversation("user", "Earlier robotics discussion")
+    storage.add_conversation("assistant", "We discussed the motor controller.")
 
     history = ChatHistory(db_path=db_path)
     sessions = history.list_sessions()
     assert len(sessions) == 1
     assert "Earlier robotics discussion" in sessions[0]["description"]
     assert len(history.messages(sessions[0]["code"])) == 2
+
+def test_chat_history_initializes_without_memory_storage(tmp_path):
+    history = ChatHistory(db_path=str(tmp_path / "standalone.db"))
+    code = history.ensure_active()
+    assert code.startswith("JH-")
+    assert history.list_sessions()[0]["code"] == code

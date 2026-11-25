@@ -1,5 +1,7 @@
 # Lightweight KittenTTS Pico ONNX runtime for Termux.
 # Install kittenml with --no-deps to avoid its heavyweight PyTorch stack.
+# Misaki is used only for its English lexicon/rules; JARVIS supplies NLTK POS
+# tagging and an eSpeak fallback, so do NOT install misaki[en] (spaCy/torch).
 numpy
 soundfile
 huggingface_hub
@@ -7,3 +9,6 @@ espeakng_loader
 phonemizer>=3.4
 num2words
 nltk
+misaki==0.9.4
+addict
+regex

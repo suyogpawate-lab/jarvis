@@ -21,12 +21,49 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install core dependencies
         run: python -m pip install -r requirements.txt
-      - name: Install test-only numerical dependency
-        run: python -m pip install numpy
+      - name: Install test dependencies
+        run: python -m pip install numpy pytest
       - name: Run syntax and regression tests
         run: |
+          bash -n scripts/install_kitten_tts.sh
           python scripts/smoke_test.py
-          python -m unittest discover -s tests -p 'test_*.py'
+          python -m pytest -q tests
+
+  kitten-lightweight-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install eSpeak and lightweight Kitten frontend dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng
+          python -m pip install numpy soundfile huggingface_hub espeakng_loader phonemizer num2words nltk misaki==0.9.4 addict regex
+          python -m pip install --no-deps git+https://github.com/KittenML/KittenTTS.git@5802f6b956844919ecf210f4e55f4750a6ad7c6f
+      - name: Verify Misaki lexicon with NLTK and eSpeak fallback
+        run: |
+          python - <<'PY'
+          import nltk
+          import sys
+          nltk.download("averaged_perceptron_tagger_eng", quiet=True)
+          from voice.kitten_misaki import MisakiNltkEnglishG2P, nltk_misaki_class
+          g2p = nltk_misaki_class()()
+          phonemes, tokens = g2p("Hello from JARVIS.", preprocess=False)
+          assert phonemes.strip(), "Misaki + NLTK returned no phonemes"
+          assert tokens, "NLTK returned no tokens"
+          vocab = {symbol: index for index, symbol in enumerate(
+              " AIOWYbdfhijklmnpstuvwzæðŋɑɔəɛɜɡɪɹɾʃʊʌʒʤʧˈˌθᵊᵻ,.?!"
+          )}
+          adapter = MisakiNltkEnglishG2P(vocab, "")
+          result = adapter("Hello from JARVIS.")
+          assert result.phonemes.strip(), "Kitten frontend adapter returned no phonemes"
+          assert not result.dropped, f"unexpected OOV symbols: {result.dropped}"
+          assert not ({"spacy", "torch", "transformers"} & set(sys.modules)), "heavy G2P stack was imported"
+          print("Kitten Misaki + NLTK adapter OK:", result.phonemes)
+          print("No spaCy/PyTorch/Transformers imports")
+          PY
 
   javascript-syntax:
     runs-on: ubuntu-latest
