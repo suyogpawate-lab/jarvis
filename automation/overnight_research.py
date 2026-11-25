@@ -817,6 +817,45 @@ class OvernightResearch:
             raise RuntimeError("Groq returned an empty research synthesis.")
         return content
 
+    def _write_deadline_report(self, mission):
+        """Write a local evidence report if AI synthesis reaches the hard deadline."""
+        report = [
+            f"# Overnight Research: {mission['query']}\n\n",
+            f"> Mission: {mission['id']} | Evidence records: {sum(1 for _ in self._iter_evidence(mission))}\n",
+            "> Delivery deadline reached before full AI synthesis completed. This is an evidence ledger, not a synthesized conclusion.\n\n",
+            "## Research question\n\n", mission["query"], "\n\n",
+            "## Collected evidence excerpts\n\n",
+        ]
+        for index, item in enumerate(self._iter_evidence(mission)):
+            if index >= 30:
+                break
+            excerpt = " ".join(str(item.get("content") or "").split())[:700]
+            if excerpt:
+                report.append(f"### [{item.get('id', 'source')}] {item.get('title') or 'Untitled'}\n\n{excerpt}\n\n")
+        report.extend([
+            "## Limitations\n\n",
+            "The requested deadline took priority over further synthesis. The complete evidence ledger remains saved for later analysis.\n\n",
+            "## Source register\n\n",
+        ])
+        for item in self._iter_evidence(mission):
+            report.append(
+                f"- [{item.get('id', 'source')}] {item.get('title') or 'Untitled'} — "
+                f"{item.get('url') or item.get('path') or item.get('provider')}\n"
+            )
+        self._write_atomic(mission["report_file"], "".join(report))
+        return sum(1 for _ in self._iter_evidence(mission))
+
+    def _notify_complete(self, mission, deadline_met):
+        if not callable(self.on_complete):
+            return
+        deadline = mission.get("delivery_deadline")
+        when = datetime.fromtimestamp(float(deadline), self.timezone).strftime("%I:%M %p %Z") if deadline else "now"
+        qualifier = "by the requested deadline" if deadline_met else "after the requested deadline"
+        try:
+            self.on_complete(f"Overnight research report ready {qualifier} ({when}): {mission['report_file']}")
+        except Exception as exc:
+            self._log_recovery_failure(mission["id"], exc)
+
     def _analyze(self, mission, cancel):
         analysis_dir = Path(mission["directory"]) / "analysis"
         analysis_dir.mkdir(parents=True, exist_ok=True)
@@ -836,6 +875,9 @@ class OvernightResearch:
         for batch_no, batch in enumerate(self._iter_batches(mission), 1):
             if cancel.is_set():
                 raise InterruptedError("Research cancelled during analysis.")
+            deadline = mission.get("delivery_deadline")
+            if deadline and time.time() >= float(deadline) - 4:
+                return self._write_deadline_report(mission)
             output = analysis_dir / f"batch-{batch_no:04d}.md"
             if output.exists() and output.stat().st_size > 0:
                 summary = output.read_text(encoding="utf-8", errors="replace")
@@ -856,7 +898,7 @@ class OvernightResearch:
                         + "\n\nProduce a structured evidence analysis with source-ID citations. "
                           "Record findings, supporting evidence, contradictions, uncertainty, and unanswered questions."
                     )}],
-                    system, max_tokens=1500, timeout=120,
+                    system, max_tokens=1500, timeout=120, mission=mission,
                 )
                 self._write_atomic(output, summary)
             summaries.append(summary)
@@ -871,7 +913,7 @@ class OvernightResearch:
                 if cancel.is_set():
                     raise InterruptedError("Research cancelled during final synthesis.")
                 text = "\n\n".join(level[start:start + 8])
-                next_level.append(self._omni(
+                next_level.append(self._groq(
                     [{"role": "user", "content": (
                         f"Consolidate these evidence analyses for: {mission['query']}\n"
                         + text[:MAX_EVIDENCE_CHARS]
@@ -890,7 +932,7 @@ class OvernightResearch:
                   "Limitations and Unknowns; Conclusions; Practical Recommendations. "
                   "Cite claims using exact source IDs. Do not claim exhaustive internet coverage."
             )}],
-            system, max_tokens=5000, timeout=180,
+            system, max_tokens=5000, timeout=180, mission=mission,
         )
         report_path = Path(mission["report_file"])
         report_lines = [
