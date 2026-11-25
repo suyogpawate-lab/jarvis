@@ -315,15 +315,8 @@ class WhatsAppContextReliabilityTests(unittest.TestCase):
             }],
         )
 
-        self.assertEqual(len(worker.whatsapp.sent), 1)
-        self.assertEqual(
-            worker.whatsapp.sent[0],
-            (
-                "contact@s.whatsapp.net",
-                "I can’t confirm or send that automatically.",
-            ),
-        )
-        self.assertTrue(
+        self.assertEqual(worker.whatsapp.sent, [])
+        self.assertFalse(
             worker.pending_reply_reviews["review-message-1"]["acknowledgement_sent"]
         )
         self.assertIn("review-message-1", worker.pending_reply_reviews)
