@@ -1758,6 +1758,11 @@ def main():
                 except Exception as exc:
                     answer, should_speak = f"[ERROR] {type(exc).__name__}: {exc}", False
 
+                # Voice-originated requests are a spoken dialogue: every
+                # non-empty assistant response must be sent to the TTS pipeline.
+                if prompt_source == "voice" and answer:
+                    should_speak = True
+
                 if not answer:
                     continue
 
