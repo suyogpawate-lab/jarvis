@@ -84,7 +84,13 @@ print(
 print(f"[Kitten] Loading {MODEL_ID} with ONNX backend...", flush=True)
 from kittenml import KittenTTS
 from kittenml.kittentts2_tiny import frontend as kitten_frontend
-from voice.kitten_audio import KITTEN_MAX_PHONEMES, configure_frontend, synthesize_with_pauses
+from voice.kitten_audio import (
+    KITTEN_MAX_PHONEMES,
+    KITTEN_SENTENCE_PAUSE_MS,
+    KITTEN_TERMINAL_PAUSE_MS,
+    configure_frontend,
+    synthesize_with_pauses,
+)
 
 # Kitten's default frontend splits at 350 phonemes and generate() inserts
 # 150 ms silence between those pieces. A 500-phoneme cap stays within the
@@ -93,7 +99,8 @@ configure_frontend(kitten_frontend, misaki_nltk=True)
 print(
     f"[Kitten] Frontend chunk cap: {KITTEN_MAX_PHONEMES} phonemes; "
     "Misaki + NLTK POS tagging enabled; spaCy/PyTorch G2P disabled; "
-    "internal-chunk silence disabled; sentence pauses 280 ms (360 ms after ?/!)",
+    f"internal-chunk silence disabled; sentence pauses {KITTEN_SENTENCE_PAUSE_MS} ms; "
+    f"final punctuation pause {KITTEN_TERMINAL_PAUSE_MS} ms",
     flush=True,
 )
 
