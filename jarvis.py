@@ -1581,9 +1581,9 @@ def main():
         # interactive terminal should begin with one clean, persistent banner.
         clear_scrollback()
 
-        print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
+        print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
         print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Online{_R}        {_B}{_BCYAN}┃{_R}")
-        print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
+        print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/memory')}    {_c(_DIM, 'Inspect memory')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/clear')}     {_c(_DIM, 'Clear terminal')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/history')}   {_c(_DIM, 'Chat sessions')}")
