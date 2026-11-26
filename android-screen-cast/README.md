@@ -44,3 +44,52 @@ TOKEN=$(python -c 'import os; from jarvis_env import load_env; load_env(); print
 ```
 
 Coordinates are physical screen pixels. Android can block capture of secure/DRM content, and Accessibility actions cannot operate every protected screen. Enable Accessibility only if you understand the access it grants.
+
+
+## Local JARVIS owner calls (Android 10+)
+
+The companion can register a self-managed Android Telecom account and accept
+local incoming-call requests from the Termux HTTP bridge. This does not place a
+cellular call, use a SIM, contact a remote caller, or send call data to a provider.
+Telecom tracks the local call lifecycle; because this is a self-managed account,
+JARVIS displays its own full-screen incoming-call activity and ringing notification
+rather than replacing the device's default Phone app.
+
+### Enable once
+
+1. Install/update the companion APK and open it.
+2. Tap **Enable local JARVIS calls**. Keep the companion's persistent
+   "JARVIS calling ready" notification enabled.
+3. Keep the Termux HTTP bridge running for immediate event-triggered calls.
+   Scheduled wake-up alarms are stored by Android and do not require Termux
+   to remain running after scheduling.
+
+### Local HTTP API
+
+All requests are loopback-only and are accepted by the existing HTTP bridge on
+port 21339:
+
+- `GET /owner/status`
+- `POST /owner/call` with `{"reason":"overnight_research_complete","message":"Your report is ready.","priority":"normal","source":"overnight_research","event_id":"research-123"}`
+- `POST /owner/wakeup` with `{"at_epoch":1795800000,"message":"JARVIS wake-up call","event_id":"wake-1"}`
+- `POST /owner/wakeup/cancel` with `{"event_id":"wake-1"}`
+
+Python subsystems can use `jarvis.call_owner(reason, message, priority="normal",
+source="jarvis", event_id=None)`. Event IDs are deduplicated locally. The
+overnight-research completion callback now uses this API while preserving the
+existing notification path.
+
+### Current implementation boundary
+
+This first integration provides the Android Telecom call registration, ringing
+notification/full-screen activity, answer/reject lifecycle, local TCP bridge on
+127.0.0.1:21342, and device-side exact wake-up alarms. **Two-way speech is not
+wired yet**: answering currently marks the Telecom call active and displays a
+clear status message; it does not yet connect the microphone to JARVIS STT or
+JARVIS TTS to the call audio route. Do not treat it as a completed voice-call
+conversation until that audio path is implemented and tested on the device.
+
+Alarm delivery depends on Android's alarm service and device power state. A
+powered-off device cannot ring; OEM battery-management behaviour can also affect
+delivery. The app must be opened once after installation so its call bridge can
+be enabled. Android 10 device testing is required before relying on this feature.
