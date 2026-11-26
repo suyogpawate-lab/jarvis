@@ -7,7 +7,6 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.telecom.DisconnectCause
 
 class IncomingCallActivity : Activity() {
     private lateinit var detail: TextView
@@ -43,20 +42,15 @@ class IncomingCallActivity : Activity() {
         layout.addView(Button(this).apply {
             text = "Answer"
             setOnClickListener {
-                JarvisConnectionService.activeConnection?.let { connection ->
-                    if (connection.state == android.telecom.Connection.STATE_RINGING) connection.onAnswer()
-                }
-                detail.text = "Call connected. Voice conversation transport is not configured yet."
+                JarvisConnectionService.activeConnection?.answerFromUi()
+                detail.text = "Call accepted. Voice conversation transport is not connected yet."
                 it.isEnabled = false
             }
         })
         layout.addView(Button(this).apply {
             text = "Dismiss"
             setOnClickListener {
-                JarvisConnectionService.activeConnection?.let { connection ->
-                    connection.setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
-                    connection.destroy()
-                }
+                JarvisConnectionService.activeConnection?.rejectFromUi()
                 JarvisConnectionService.activeConnection = null
                 JarvisConnectionService.clearIncomingUi(this@IncomingCallActivity)
                 finish()
