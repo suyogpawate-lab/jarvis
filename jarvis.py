@@ -1208,9 +1208,25 @@ def handle_prompt(prompt, source="external"):
 # Notification summaries are queued by the background watcher.
 notification_queue = queue.Queue()
 notification_watcher = None
-# Overnight reports are delivered through the existing notification path.
+# Overnight reports use both the existing notification path and the
+# universal local owner-call interface. The call is best-effort: if the
+# Android companion is unavailable, the report notification is still queued.
+def _overnight_report_ready(message):
+    summary = str(message)
+    notification_queue.put(summary)
+    try:
+        dispatcher.jarvis.call_owner(
+            reason="overnight_research_complete",
+            message="Your overnight research report is ready. " + summary,
+            priority="normal",
+            source="overnight_research",
+            event_id="overnight-research:" + summary,
+        )
+    except Exception as exc:
+        print(f"[JARVIS OWNER CALL] Overnight report call unavailable ({type(exc).__name__}).", flush=True)
+
 try:
-    dispatcher.research.overnight.on_complete = lambda message: notification_queue.put(str(message))
+    dispatcher.research.overnight.on_complete = _overnight_report_ready
 except Exception:
     pass
 
