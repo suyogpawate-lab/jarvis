@@ -8,6 +8,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Bundle
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
@@ -62,7 +64,16 @@ class JarvisConnectionService : ConnectionService() {
             if (android.os.Build.VERSION.SDK_INT >= 26) {
                 manager.createNotificationChannel(NotificationChannel(
                     CHANNEL_ID, "JARVIS owner calls", NotificationManager.IMPORTANCE_HIGH
-                ).apply { description = "Local calls from JARVIS" })
+                ).apply {
+                    description = "Local calls from JARVIS"
+                    setSound(
+                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                })
             }
             val open = Intent(context, IncomingCallActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -82,7 +93,7 @@ class JarvisConnectionService : ConnectionService() {
                 .setFullScreenIntent(pending, true)
                 .setContentIntent(pending)
                 .setOngoing(true)
-                .build()
+                .build().apply { flags = flags or Notification.FLAG_INSISTENT }
             manager.notify(NOTIFICATION_ID, notification)
         }
 
@@ -112,8 +123,8 @@ class JarvisConnectionService : ConnectionService() {
 
     class OwnerConnection(private val appContext: Context, val message: String) : Connection() {
         init {
-            setCallerDisplayName("J.A.R.V.I.S.", PRESENTATION_ALLOWED)
-            setAddress(Uri.EMPTY, PRESENTATION_ALLOWED)
+            setCallerDisplayName("J.A.R.V.I.S.", TelecomManager.PRESENTATION_ALLOWED)
+            setAddress(Uri.EMPTY, TelecomManager.PRESENTATION_ALLOWED)
             setAudioModeIsVoip(true)
             setConnectionProperties(PROPERTY_SELF_MANAGED)
             setRinging()
@@ -125,7 +136,7 @@ class JarvisConnectionService : ConnectionService() {
 
         override fun onAnswer() {
             setActive()
-            showIncomingUi(appContext, message)
+            clearIncomingUi(appContext)
             val intent = Intent(appContext, IncomingCallActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
