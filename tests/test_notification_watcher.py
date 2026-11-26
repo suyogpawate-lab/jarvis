@@ -45,8 +45,8 @@ class NotificationWatcherCooldownTests(unittest.TestCase):
         watcher.notifications.list = lambda: [{
             "key": "private-notification-key",
             "package": "com.example.chat",
-            "title": "Private title",
-            "content": "Private message body",
+            "title": "Security alert",
+            "content": "Urgent security alert: private message body",
             "when": "123",
         }]
         watcher._collect_new()
@@ -54,6 +54,33 @@ class NotificationWatcherCooldownTests(unittest.TestCase):
         self.assertEqual(events[0][0], "notification")
         self.assertNotIn("Private", events[0][1])
         self.assertNotIn("private-notification-key", events[0][1])
+
+    def test_routine_notification_is_ignored(self):
+        watcher = NotificationWatcher(output_queue=queue.Queue())
+        watcher.notifications.list = lambda: [{
+            "key": "routine-key",
+            "package": "com.example.social",
+            "title": "New activity",
+            "content": "Someone liked a post",
+            "when": "123",
+        }]
+        watcher._collect_new()
+        self.assertEqual(watcher.pending, [])
+
+    def test_same_notification_is_not_requeued_when_timestamp_changes(self):
+        watcher = NotificationWatcher(output_queue=queue.Queue())
+        current = [{
+            "key": "stable-key",
+            "package": "com.example.chat",
+            "title": "Security alert",
+            "content": "Urgent security alert: sign-in attempt",
+            "when": "123",
+        }]
+        watcher.notifications.list = lambda: current
+        watcher._collect_new()
+        current[0] = {**current[0], "when": "456"}
+        watcher._collect_new()
+        self.assertEqual(len(watcher.pending), 1)
 
     def test_cooldown_can_be_disabled(self):
         watcher = self.make_watcher(cooldown=0)
