@@ -22,12 +22,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
-PORT = 18765
+PORT = 18766
 
 _server_lock = threading.Lock()
 _request_lock = threading.Lock()
 _worker_proc = None
-EXPECTED_WORKER_BUILD = "kitten-sentence-pauses-v2"
+EXPECTED_WORKER_BUILD = "kitten-sentence-pauses-v3"
 
 
 class StaleKittenWorkerError(RuntimeError):
@@ -74,65 +74,6 @@ def _ping() -> dict:
     return result
 
 
-def _worker_pids(worker: Path) -> list[int]:
-    """Find only processes whose argv contains this exact worker script."""
-    target = str(worker.resolve())
-    matches: list[int] = []
-    proc_root = Path("/proc")
-    for entry in proc_root.iterdir():
-        if not entry.name.isdigit():
-            continue
-        pid = int(entry.name)
-        if pid == os.getpid():
-            continue
-        try:
-            argv = (entry / "cmdline").read_bytes().split(b"\\0")
-            args = [item.decode("utf-8", "replace") for item in argv if item]
-        except (OSError, PermissionError, ProcessLookupError):
-            continue
-        if any(arg == target for arg in args):
-            matches.append(pid)
-    return matches
-
-
-def _port_is_open() -> bool:
-    try:
-        with socket.create_connection((HOST, PORT), timeout=0.25):
-            return True
-    except OSError:
-        return False
-
-
-def _stop_stale_worker(worker: Path) -> None:
-    """Stop the stale bundled worker and wait until its socket is released."""
-    pids = _worker_pids(worker)
-    for pid in pids:
-        try:
-            os.kill(pid, 15)
-        except ProcessLookupError:
-            pass
-        except PermissionError as exc:
-            raise RuntimeError(
-                f"Cannot stop stale KittenTTS worker PID {pid}; refusing to "
-                "launch a second worker on the same port."
-            ) from exc
-
-    deadline = time.monotonic() + 10.0
-    while time.monotonic() < deadline:
-        if not _port_is_open():
-            return
-        time.sleep(0.2)
-
-    # A listener remains. Never start another model process or kill an
-    # unidentified process: report the owner so startup can fail safely.
-    remaining = _worker_pids(worker)
-    owner = ", ".join(map(str, remaining)) if remaining else "unknown"
-    raise RuntimeError(
-        f"Stale KittenTTS worker still owns {HOST}:{PORT} after shutdown "
-        f"(worker PID(s): {owner}). Refusing duplicate startup."
-    )
-
-
 def ensure_server(timeout: float = 180.0) -> dict:
     """Reuse an existing worker or launch one detached from JARVIS."""
     global _worker_proc
@@ -153,8 +94,6 @@ def ensure_server(timeout: float = 180.0) -> dict:
         worker = ROOT / "voice" / "kitten_worker.py"
         if not worker.is_file():
             raise FileNotFoundError(f"Bundled KittenTTS worker is missing: {worker}")
-
-        _stop_stale_worker(worker)
 
         log_dir = ROOT / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
