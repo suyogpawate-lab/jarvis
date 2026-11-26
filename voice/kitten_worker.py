@@ -84,7 +84,7 @@ print(
 print(f"[Kitten] Loading {MODEL_ID} with ONNX backend...", flush=True)
 from kittenml import KittenTTS
 from kittenml.kittentts2_tiny import frontend as kitten_frontend
-from voice.kitten_audio import KITTEN_MAX_PHONEMES, configure_frontend, synthesize_gapless
+from voice.kitten_audio import KITTEN_MAX_PHONEMES, configure_frontend, synthesize_with_pauses
 
 # Kitten's default frontend splits at 350 phonemes and generate() inserts
 # 150 ms silence between those pieces. A 500-phoneme cap stays within the
@@ -108,7 +108,7 @@ print(f"[Kitten] Model loaded in {load_seconds:.3f}s", flush=True)
 print("[Kitten] Warming up ONNX inference...", flush=True)
 warmup_path = OUTPUT / f".warmup-{uuid.uuid4().hex}.wav"
 warmup_started = time.perf_counter()
-warmup_audio, _ = synthesize_gapless(
+warmup_audio, _ = synthesize_with_pauses(
     model, "Ready.", voice="otis", language="en", speed=0.88
 )
 sf.write(str(warmup_path), warmup_audio, model.sample_rate)
@@ -160,7 +160,7 @@ class Handler(socketserver.StreamRequestHandler):
 
             output = OUTPUT / f"speech-{uuid.uuid4().hex}.wav"
             started = time.perf_counter()
-            audio, internal_chunks = synthesize_gapless(
+            audio, internal_chunks = synthesize_with_pauses(
                 model, text, voice=voice, language=language, speed=speed
             )
             if audio.size == 0:
