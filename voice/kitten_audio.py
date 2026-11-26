@@ -38,7 +38,6 @@ def synthesize_with_pauses(model, text: str, voice: str, language: str, speed: f
     sample_rate = int(getattr(model, "sample_rate", 24000))
     pieces: list[np.ndarray] = []
     chunk_count = 0
-    last_synthesized_sentence = -1
 
     for index, sentence in enumerate(sentences):
         sentence_chunks = [
@@ -53,7 +52,6 @@ def synthesize_with_pauses(model, text: str, voice: str, language: str, speed: f
 
         pieces.append(np.concatenate(sentence_chunks))
         chunk_count += len(sentence_chunks)
-        last_synthesized_sentence = index
 
         if index < len(sentences) - 1:
             pause_ms = KITTEN_SENTENCE_PAUSE_MS
