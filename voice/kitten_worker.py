@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("JARVIS_KITTEN_PORT", "18765"))
+WORKER_BUILD = "kitten-sentence-pauses-v2"
 MODEL_ID = os.environ.get("JARVIS_KITTEN_MODEL", "KittenML/kitten-tts-2-pico")
 OUTPUT = Path(__file__).resolve().parents[1] / "cache" / "kitten_tts" / "worker"
 OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -139,6 +140,7 @@ class Handler(socketserver.StreamRequestHandler):
                 self.reply({
                     "ok": True,
                     "status": "ready",
+                    "worker_build": WORKER_BUILD,
                     "model": MODEL_ID,
                     "kittenml_version": kitten_version,
                     "load_seconds": load_seconds,
