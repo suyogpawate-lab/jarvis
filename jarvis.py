@@ -1705,13 +1705,13 @@ def main():
                     if not incoming:
                         continue
                     if incoming.strip().lower().startswith("/btw"):
-                        side_question = re.sub(r"^/btw\\s*", "", incoming.strip(), flags=re.IGNORECASE)
+                        side_question = re.sub(r"^/btw\s*", "", incoming.strip(), flags=re.IGNORECASE)
                         if not side_question:
                             print(f"{_tag('JARVIS BTW', _ACCENT)} Usage: /btw your side question", flush=True)
                             continue
                         print(f"{_c(_U, 'YOU')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_question}", flush=True)
                         side_answer = _answer_btw(side_question)
-                        print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\\n", flush=True)
+                        print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\n", flush=True)
                     else:
                         _deferred_prompts.append((incoming, incoming_source))
                         print(f"{_tag('JARVIS', _ACCENT)} Current task is still running. Message queued.", flush=True)
