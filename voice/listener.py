@@ -48,6 +48,7 @@ class WhistleWakeListener:
         self._wake_model = None
         self._conversation_keepalive_until = 0.0
         self._conversation_keepalive_lock = threading.Lock()
+        self._voice_turn_processing = False
         self.log_path = self.runtime / "listener.log"
         self._wake_response_player = None
         try:
@@ -96,9 +97,15 @@ class WhistleWakeListener:
         except OSError:
             pass
 
-    def keep_conversation_alive(self):
-        """Start a fresh, fixed 20-second follow-up window after a voice reply."""
+    def begin_voice_turn(self):
+        """Prevent the idle timer expiring while JARVIS is processing a voice turn."""
         with self._conversation_keepalive_lock:
+            self._voice_turn_processing = True
+
+    def keep_conversation_alive(self):
+        """End processing and start a fresh, fixed 20-second follow-up window."""
+        with self._conversation_keepalive_lock:
+            self._voice_turn_processing = False
             self._conversation_keepalive_until = time.time() + 20.0
 
     def start(self):
@@ -346,7 +353,11 @@ class WhistleWakeListener:
                     # Restart the follow-up window after the CLI finishes each
                     # voice response. Long model latency must not consume the window.
                     with self._conversation_keepalive_lock:
-                        if self._conversation_keepalive_until > conversation_until:
+                        if self._voice_turn_processing:
+                            # Do not announce an idle timeout while the model is
+                            # still answering the user's most recent voice input.
+                            conversation_until = time.time() + conversation_timeout
+                        elif self._conversation_keepalive_until > conversation_until:
                             conversation_until = self._conversation_keepalive_until
                             self._conversation_keepalive_until = 0.0
 
