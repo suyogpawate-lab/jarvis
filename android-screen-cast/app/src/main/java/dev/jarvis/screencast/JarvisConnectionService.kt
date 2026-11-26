@@ -42,6 +42,23 @@ class JarvisConnectionService : ConnectionService() {
             telecom.registerPhoneAccount(account)
         }
 
+        fun startOutgoingCall(context: Context): Boolean {
+            return try {
+                registerAccount(context)
+                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                val extras = Bundle().apply {
+                    putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accountHandle(context))
+                    putString(EXTRA_MESSAGE, "Connected to J.A.R.V.I.S. Voice transport is not connected yet.")
+                    putString(EXTRA_REASON, "owner_initiated")
+                }
+                telecom.placeCall(Uri.fromParts("jarvis", "local", null), extras)
+                true
+            } catch (error: Exception) {
+                android.util.Log.e("JARVIS-CALL", "Could not start outgoing local call", error)
+                false
+            }
+        }
+
         fun incomingCall(context: Context, message: String, reason: String): Boolean {
             return try {
                 registerAccount(context)
@@ -110,7 +127,32 @@ class JarvisConnectionService : ConnectionService() {
         val extras = request.extras
         val message = extras?.getString(EXTRA_MESSAGE).orEmpty().ifBlank { "JARVIS has an update." }
         activeMessage = message
-        return OwnerConnection(this, message).also { activeConnection = it }
+        return OwnerConnection(this, message, incoming = true).also { activeConnection = it }
+    }
+
+    override fun onCreateOutgoingConnection(
+        connectionManagerPhoneAccount: PhoneAccountHandle?,
+        request: ConnectionRequest
+    ): Connection {
+        val message = request.extras?.getString(EXTRA_MESSAGE)
+            ?: "Connected to J.A.R.V.I.S. Voice transport is not connected yet."
+        activeMessage = message
+        return OwnerConnection(this, message, incoming = false).also { connection ->
+            activeConnection = connection
+            android.os.Handler(mainLooper).postDelayed({
+                if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
+                    connection.setActive()
+                }
+            }, 350L)
+        }
+    }
+
+    override fun onCreateOutgoingConnectionFailed(
+        connectionManagerPhoneAccount: PhoneAccountHandle?,
+        request: ConnectionRequest
+    ) {
+        super.onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount, request)
+        android.util.Log.w("JARVIS-CALL", "Telecom rejected the outgoing local call")
     }
 
     override fun onCreateIncomingConnectionFailed(
@@ -121,13 +163,18 @@ class JarvisConnectionService : ConnectionService() {
         android.util.Log.w("JARVIS-CALL", "Telecom rejected an incoming local call")
     }
 
-    class OwnerConnection(private val appContext: Context, val message: String) : Connection() {
+    class OwnerConnection(
+        private val appContext: Context,
+        val message: String,
+        val incoming: Boolean
+    ) : Connection() {
         init {
-            setCallerDisplayName("J.A.R.V.I.S.", TelecomManager.PRESENTATION_ALLOWED)
-            setAddress(Uri.EMPTY, TelecomManager.PRESENTATION_ALLOWED)
+            setCallerDisplayName(if (incoming) "J.A.R.V.I.S." else "You → J.A.R.V.I.S.",
+                TelecomManager.PRESENTATION_ALLOWED)
+            setAddress(Uri.fromParts("jarvis", "local", null), TelecomManager.PRESENTATION_ALLOWED)
             setAudioModeIsVoip(true)
             setConnectionProperties(PROPERTY_SELF_MANAGED)
-            setRinging()
+            if (incoming) setRinging() else setDialing()
         }
 
         override fun onShowIncomingCallUi() {
