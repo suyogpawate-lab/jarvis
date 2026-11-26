@@ -11,8 +11,8 @@ KITTEN_MAX_PHONEMES = 500
 
 # Silence is added at sentence boundaries, not between Kitten's internal
 # phoneme chunks. A final punctuation pause is included in the WAV itself.
-KITTEN_SENTENCE_PAUSE_MS = 300
-KITTEN_TERMINAL_PAUSE_MS = 300
+KITTEN_SENTENCE_PAUSE_MS = 200
+KITTEN_TERMINAL_PAUSE_MS = 200
 
 
 def configure_frontend(frontend_module, *, misaki_nltk: bool = False) -> None:
