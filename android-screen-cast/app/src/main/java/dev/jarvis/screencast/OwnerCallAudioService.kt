@@ -35,8 +35,11 @@ class OwnerCallAudioService : Service() {
         private const val RATE = 16000
         private const val FRAME_BYTES = 640
 
-        fun start(context: Context) {
-            val intent = Intent(context, OwnerCallAudioService::class.java).apply { action = ACTION_START }
+        fun start(context: Context, initialMessage: String) {
+            val intent = Intent(context, OwnerCallAudioService::class.java).apply {
+                action = ACTION_START
+                putExtra("initial_message", initialMessage.take(1200))
+            }
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
         }
 
@@ -47,6 +50,7 @@ class OwnerCallAudioService : Service() {
 
     private val running = AtomicBoolean(false)
     @Volatile private var socket: Socket? = null
+    @Volatile private var initialMessage: String = ""
     @Volatile private var recorder: AudioRecord? = null
     @Volatile private var player: AudioTrack? = null
     @Volatile private var echoCanceler: AcousticEchoCanceler? = null
@@ -73,8 +77,10 @@ class OwnerCallAudioService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        initialMessage = intent?.getStringExtra("initial_message").orEmpty()
         if (running.compareAndSet(false, true)) {
-            thread(name = "JarvisCallAudio", isDaemon = true) { runAudioSession() }
+            val greeting = initialMessage
+            thread(name = "JarvisCallAudio", isDaemon = true) { runAudioSession(greeting) }
         }
         return START_NOT_STICKY
     }
@@ -99,7 +105,7 @@ class OwnerCallAudioService : Service() {
         return offset == buffer.size
     }
 
-    private fun runAudioSession() {
+    private fun runAudioSession(greeting: String) {
         try {
             val token = JarvisConnectionService.audioToken(this)
             val connection = Socket()
@@ -108,7 +114,7 @@ class OwnerCallAudioService : Service() {
             connection.connect(InetSocketAddress("127.0.0.1", 21344), 7000)
             val socketInput = BufferedInputStream(connection.getInputStream())
             val socketOutput = connection.getOutputStream()
-            val hello = JSONObject().put("token", token).put("protocol", 1).toString() + "\n"
+            val hello = JSONObject().put("token", token).put("protocol", 1).put("initial_message", greeting).toString() + "\n"
             socketOutput.write(hello.toByteArray(Charsets.UTF_8))
             socketOutput.flush()
             val response = JSONObject(readLine(socketInput))
