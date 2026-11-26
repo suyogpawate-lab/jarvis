@@ -181,6 +181,9 @@ class OwnerAudioBridge:
 
             threading.Thread(target=read_audio, daemon=True, name="JarvisCallMic").start()
             print("[JARVIS CALL AUDIO] Two-way audio session connected.", flush=True)
+            initial_message = str(hello.get("initial_message") or "").strip()
+            if initial_message:
+                self._send_reply(client, send_lock, initial_message)
             while session_running.is_set() or not utterances.empty():
                 try:
                     utterance = utterances.get(timeout=0.25)
