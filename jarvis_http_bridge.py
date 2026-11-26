@@ -13,6 +13,7 @@ from core.discussion import DiscussionCoordinator
 from memory import MemoryManager
 from screen_cast.receiver import get_receiver
 from screen_cast.perception import analyze_latest_screen, handle_screen_request, get_screen_snapshot, is_screen_context_request
+from automation.owner_contact import OwnerContactManager
 
 
 import os
@@ -40,6 +41,7 @@ dispatcher = CommandDispatcher(
 
 # Continuous JPEG stream receiver. Frames stay in RAM; Android's companion
 # app owns MediaProjection consent and sends a framed TCP stream to port 21340.
+owner_contact = OwnerContactManager()
 screen_receiver = get_receiver()
 try:
     screen_receiver.start()
@@ -140,6 +142,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send_json(401, {"ok": False, "error": "unauthorized"})
             return
+        if self.path == "/owner/status":
+            self._send_json(200, owner_contact.status())
+            return
         if self.path == "/screen/stream/status":
             self._send_json(200, screen_receiver.status())
             return
@@ -175,7 +180,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"ok": False, "error": "unauthorized"})
             return
 
-        if self.path not in ("/chat", "/screen", "/control", "/screen/analyze"):
+        if self.path not in ("/chat", "/screen", "/control", "/screen/analyze", "/owner/call", "/owner/wakeup", "/owner/wakeup/cancel"):
             self._send_json(404, {
                 "ok": False,
                 "error": "not found"
@@ -192,6 +197,35 @@ class JarvisHandler(BaseHTTPRequestHandler):
             body = json.loads(
                 raw.decode("utf-8")
             )
+
+            # ======================================================
+            # LOCAL OWNER CALLING (no SIM or remote telephony provider)
+            # ======================================================
+            if self.path == "/owner/call":
+                result = owner_contact.request_call(
+                    reason=body.get("reason", "assistant_update"),
+                    message=body.get("message", ""),
+                    priority=body.get("priority", "normal"),
+                    source=body.get("source", "jarvis"),
+                    event_id=body.get("event_id"),
+                    dedupe_seconds=body.get("dedupe_seconds", 600),
+                )
+                self._send_json(200, result)
+                return
+
+            if self.path == "/owner/wakeup":
+                result = owner_contact.schedule_wakeup(
+                    body.get("at_epoch"),
+                    message=body.get("message", "JARVIS wake-up call"),
+                    event_id=body.get("event_id"),
+                )
+                self._send_json(200, result)
+                return
+
+            if self.path == "/owner/wakeup/cancel":
+                result = owner_contact.cancel_wakeup(body.get("event_id", ""))
+                self._send_json(200, result)
+                return
 
             # ======================================================
             # LIVE STREAM PERCEPTION AND ANDROID CONTROL
