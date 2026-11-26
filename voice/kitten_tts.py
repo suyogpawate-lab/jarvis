@@ -27,6 +27,11 @@ PORT = 18765
 _server_lock = threading.Lock()
 _request_lock = threading.Lock()
 _worker_proc = None
+EXPECTED_WORKER_BUILD = "kitten-sentence-pauses-v2"
+
+
+class StaleKittenWorkerError(RuntimeError):
+    """Raised when the persistent socket belongs to an older worker build."""
 
 
 def _kitten_cache() -> Path:
@@ -60,7 +65,45 @@ def _request(payload: dict, timeout: float = 180.0) -> dict:
 
 
 def _ping() -> dict:
-    return _request({"action": "ping"}, timeout=3.0)
+    result = _request({"action": "ping"}, timeout=3.0)
+    build = result.get("worker_build")
+    if build != EXPECTED_WORKER_BUILD:
+        raise StaleKittenWorkerError(
+            f"KittenTTS worker build is {build!r}; expected {EXPECTED_WORKER_BUILD!r}."
+        )
+    return result
+
+
+def _stop_stale_worker(worker: Path) -> None:
+    """Stop only an older worker launched from this exact interpreter and file."""
+    expected_command = f"{sys.executable} {worker}"
+    try:
+        result = subprocess.run(
+            ["ps", "-A", "-o", "PID=,ARGS="],
+            check=False, capture_output=True, text=True, timeout=3.0,
+        )
+        for line in result.stdout.splitlines():
+            fields = line.strip().split(None, 1)
+            if len(fields) != 2 or fields[1].strip() != expected_command:
+                continue
+            try:
+                pid = int(fields[0])
+                if pid != os.getpid():
+                    os.kill(pid, 15)
+            except (ValueError, ProcessLookupError, PermissionError):
+                pass
+    except (OSError, subprocess.SubprocessError):
+        # If process inspection is unavailable, leave the existing process alone
+        # rather than risk terminating an unrelated Termux process.
+        return
+
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        try:
+            _request({"action": "ping"}, timeout=0.5)
+        except Exception:
+            return
+        time.sleep(0.1)
 
 
 def ensure_server(timeout: float = 180.0) -> dict:
@@ -83,6 +126,8 @@ def ensure_server(timeout: float = 180.0) -> dict:
         worker = ROOT / "voice" / "kitten_worker.py"
         if not worker.is_file():
             raise FileNotFoundError(f"Bundled KittenTTS worker is missing: {worker}")
+
+        _stop_stale_worker(worker)
 
         log_dir = ROOT / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
