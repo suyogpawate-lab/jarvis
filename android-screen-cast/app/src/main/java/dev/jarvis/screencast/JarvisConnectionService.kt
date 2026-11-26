@@ -70,8 +70,8 @@ class JarvisConnectionService : ConnectionService() {
             return created
         }
 
-        fun startAudio(context: Context) {
-            OwnerCallAudioService.start(context)
+        fun startAudio(context: Context, initialMessage: String) {
+            OwnerCallAudioService.start(context, initialMessage)
         }
 
         fun stopAudio(context: Context) {
@@ -113,7 +113,7 @@ class JarvisConnectionService : ConnectionService() {
     ): Connection {
         val address = request.address
         val dialString = address?.schemeSpecificPart.orEmpty()
-        val connection = OwnerConnection(this, "Connecting to J.A.R.V.I.S.", incoming = false)
+        val connection = OwnerConnection(this, "Hello, sir. J.A.R.V.I.S. is ready. How can I help?", incoming = false)
         activeConnection = connection
         if (address?.scheme != PhoneAccount.SCHEME_TEL || dialString != "0") {
             connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR))
@@ -125,7 +125,7 @@ class JarvisConnectionService : ConnectionService() {
             TelecomManager.PRESENTATION_ALLOWED)
         Handler(Looper.getMainLooper()).postDelayed({
             if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
-                startAudio(this)
+                startAudio(this, connection.message)
             }
         }, 300L)
         return connection
@@ -163,7 +163,7 @@ class JarvisConnectionService : ConnectionService() {
         }
 
         override fun onAnswer() {
-            startAudio(appContext)
+            startAudio(appContext, message)
         }
 
         override fun onAnswer(videoState: Int) {
