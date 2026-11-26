@@ -9,8 +9,8 @@ from voice.text_chunking import sentence_list
 # start/end markers, leaving room for up to 507 phoneme symbols. Keep margin.
 KITTEN_MAX_PHONEMES = 500
 
-# Silence is added between complete sentences, not between Kitten's internal
-# phoneme chunks. This restores natural phrasing without slowing inference.
+# Silence is added at sentence boundaries, not between Kitten's internal
+# phoneme chunks. A final punctuation pause is included in the WAV itself.
 KITTEN_SENTENCE_PAUSE_MS = 550
 KITTEN_TERMINAL_PAUSE_MS = 650
 
@@ -24,12 +24,12 @@ def configure_frontend(frontend_module, *, misaki_nltk: bool = False) -> None:
 
 
 def synthesize_with_pauses(model, text: str, voice: str, language: str, speed: float):
-    """Synthesize sentence-by-sentence and insert natural terminal silence.
+    """Synthesize sentence-by-sentence and preserve audible punctuation pauses.
 
     Kitten's generate_stream() yields internal phoneme chunks. Those chunks
-    remain contiguous for prosody and speed; only actual sentence boundaries
-    receive silence. Abbreviations and decimal points are handled by the
-    shared sentence_list parser.
+    remain contiguous for prosody and speed. Silence is inserted between
+    sentences, and after a final sentence-ending punctuation mark so the
+    playback endpoint does not swallow the full stop's natural pause.
     """
     sentences = sentence_list(text)
     if not sentences:
@@ -38,6 +38,7 @@ def synthesize_with_pauses(model, text: str, voice: str, language: str, speed: f
     sample_rate = int(getattr(model, "sample_rate", 24000))
     pieces: list[np.ndarray] = []
     chunk_count = 0
+    last_synthesized_sentence = -1
 
     for index, sentence in enumerate(sentences):
         sentence_chunks = [
@@ -52,16 +53,18 @@ def synthesize_with_pauses(model, text: str, voice: str, language: str, speed: f
 
         pieces.append(np.concatenate(sentence_chunks))
         chunk_count += len(sentence_chunks)
+        last_synthesized_sentence = index
 
         if index < len(sentences) - 1:
-            terminal_pause = (
-                KITTEN_TERMINAL_PAUSE_MS
-                if sentence.rstrip().endswith(("?", "!"))
-                else KITTEN_SENTENCE_PAUSE_MS
-            )
-            silence_samples = round(sample_rate * terminal_pause / 1000.0)
-            if silence_samples > 0:
-                pieces.append(np.zeros(silence_samples, dtype=np.float32))
+            pause_ms = KITTEN_SENTENCE_PAUSE_MS
+        elif sentence.rstrip().endswith((".", "?", "!")):
+            pause_ms = KITTEN_TERMINAL_PAUSE_MS
+        else:
+            pause_ms = 0
+
+        silence_samples = round(sample_rate * pause_ms / 1000.0)
+        if silence_samples:
+            pieces.append(np.zeros(silence_samples, dtype=np.float32))
 
     if not pieces:
         return np.zeros(0, dtype=np.float32), 0
