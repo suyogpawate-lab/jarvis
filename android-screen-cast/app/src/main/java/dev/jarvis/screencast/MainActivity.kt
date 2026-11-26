@@ -41,9 +41,6 @@ class MainActivity : Activity() {
         }
         layout.addView(status)
         layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
-        layout.addView(button("Open Android default-app settings") {
-            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
-        })
         layout.addView(button("Enable screen control") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
