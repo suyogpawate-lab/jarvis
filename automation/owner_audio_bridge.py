@@ -194,8 +194,8 @@ class OwnerAudioBridge:
                         continue
                     print(f"[JARVIS CALL STT] {transcript}", flush=True)
                     with self._command_lock:
-                        answer, should_speak = self.command_handler(transcript, source="voice_call")
-                    if not answer or not should_speak:
+                        answer, _should_speak = self.command_handler(transcript, source="voice_call")
+                    if not answer:
                         continue
                     self._send_reply(client, send_lock, str(answer))
                 except Exception as exc:
