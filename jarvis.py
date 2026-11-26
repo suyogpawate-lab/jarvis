@@ -1761,6 +1761,14 @@ def main():
                 if not answer:
                     continue
 
+                # Start a new 20-second follow-up window after every completed
+                # voice response, not while the model is still generating it.
+                if prompt_source == "voice" and voice_listener is not None:
+                    try:
+                        voice_listener.keep_conversation_alive()
+                    except Exception as exc:
+                        print(f"{_tag('VOICE WARN', _WARN)} Could not refresh conversation timeout: {exc}", flush=True)
+
                 print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {answer}\n", flush=True)
                 if should_speak:
                     speak(answer, user_prompt=prompt)
