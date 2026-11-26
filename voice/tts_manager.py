@@ -73,6 +73,7 @@ class TTSManager:
         self.last_pipeline_metrics = {}
         self._active_lock = threading.Lock()
         self._active_playback = False
+        self._call_synth_lock = threading.Lock()
         self._thread = threading.Thread(target=self._queue_worker, daemon=True, name="JarvisTTS")
         self._thread.start()
         # Piper's model is warmed asynchronously at startup, not on the first
@@ -250,6 +251,29 @@ class TTSManager:
         os.close(fd)
         sf.write(name, audio.samples, audio.sample_rate)
         return Path(name)
+
+    def synthesize_for_call(self, text, speed=1.0):
+        """Create a WAV for Telecom downlink without playing it on the device speaker.
+
+        The normal TTS queue plays through mpv, which bypasses the phone-call
+        downlink. Calls therefore use the configured local WAV synthesizer.
+        Edge/say configurations use the installed Sherpa model as the WAV
+        synthesis backend; no second playback process is started.
+        """
+        spoken = to_speakable(text)
+        if not spoken:
+            raise ValueError("Call speech text is empty.")
+        provider = _provider()
+        if provider in ("edge", "say"):
+            provider = "sherpa"
+        if provider not in ("piper", "phonon", "sherpa", "kokoro", "kitten"):
+            provider = "sherpa"
+        with self._call_synth_lock:
+            path = self._synth(provider, spoken, speed)
+        path = Path(path)
+        if not path.is_file():
+            raise RuntimeError(f"{provider} call synthesizer did not create a WAV file.")
+        return path
 
     def _put(self, q, item, gen):
         while self._gen == gen:
