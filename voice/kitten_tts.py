@@ -74,36 +74,63 @@ def _ping() -> dict:
     return result
 
 
-def _stop_stale_worker(worker: Path) -> None:
-    """Stop only an older worker launched from this exact interpreter and file."""
-    expected_command = f"{sys.executable} {worker}"
-    try:
-        result = subprocess.run(
-            ["ps", "-A", "-o", "PID=,ARGS="],
-            check=False, capture_output=True, text=True, timeout=3.0,
-        )
-        for line in result.stdout.splitlines():
-            fields = line.strip().split(None, 1)
-            if len(fields) != 2 or fields[1].strip() != expected_command:
-                continue
-            try:
-                pid = int(fields[0])
-                if pid != os.getpid():
-                    os.kill(pid, 15)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
-    except (OSError, subprocess.SubprocessError):
-        # If process inspection is unavailable, leave the existing process alone
-        # rather than risk terminating an unrelated Termux process.
-        return
-
-    deadline = time.monotonic() + 3.0
-    while time.monotonic() < deadline:
+def _worker_pids(worker: Path) -> list[int]:
+    """Find only processes whose argv contains this exact worker script."""
+    target = str(worker.resolve())
+    matches: list[int] = []
+    proc_root = Path("/proc")
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid == os.getpid():
+            continue
         try:
-            _request({"action": "ping"}, timeout=0.5)
-        except Exception:
+            argv = (entry / "cmdline").read_bytes().split(b"\\0")
+            args = [item.decode("utf-8", "replace") for item in argv if item]
+        except (OSError, PermissionError, ProcessLookupError):
+            continue
+        if any(arg == target for arg in args):
+            matches.append(pid)
+    return matches
+
+
+def _port_is_open() -> bool:
+    try:
+        with socket.create_connection((HOST, PORT), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
+def _stop_stale_worker(worker: Path) -> None:
+    """Stop the stale bundled worker and wait until its socket is released."""
+    pids = _worker_pids(worker)
+    for pid in pids:
+        try:
+            os.kill(pid, 15)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            raise RuntimeError(
+                f"Cannot stop stale KittenTTS worker PID {pid}; refusing to "
+                "launch a second worker on the same port."
+            ) from exc
+
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if not _port_is_open():
             return
-        time.sleep(0.1)
+        time.sleep(0.2)
+
+    # A listener remains. Never start another model process or kill an
+    # unidentified process: report the owner so startup can fail safely.
+    remaining = _worker_pids(worker)
+    owner = ", ".join(map(str, remaining)) if remaining else "unknown"
+    raise RuntimeError(
+        f"Stale KittenTTS worker still owns {HOST}:{PORT} after shutdown "
+        f"(worker PID(s): {owner}). Refusing duplicate startup."
+    )
 
 
 def ensure_server(timeout: float = 180.0) -> dict:
