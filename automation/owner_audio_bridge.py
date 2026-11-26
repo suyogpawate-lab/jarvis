@@ -132,9 +132,9 @@ class OwnerAudioBridge:
             expected = str(self.token_provider() or "")
             supplied = str(hello.get("token") or "")
             if not expected or not supplied or not __import__("hmac").compare_digest(expected, supplied):
-                client.sendall(b'{"ok":false,"error":"unauthorized"}\\n')
+                client.sendall(b'{"ok":false,"error":"unauthorized"}\n')
                 return
-            client.sendall(b'{"ok":true,"sample_rate":16000,"frame_bytes":640}\\n')
+            client.sendall(b'{"ok":true,"sample_rate":16000,"frame_bytes":640}\n')
             client.settimeout(None)
 
             def read_audio():
@@ -292,7 +292,7 @@ class OwnerAudioBridge:
                 for offset in range(0, len(pcm), FRAME_BYTES):
                     frame = pcm[offset:offset + FRAME_BYTES]
                     if len(frame) < FRAME_BYTES:
-                        frame += b"\\x00" * (FRAME_BYTES - len(frame))
+                        frame += b"\x00" * (FRAME_BYTES - len(frame))
                     client.sendall(frame)
         finally:
             path.unlink(missing_ok=True)
