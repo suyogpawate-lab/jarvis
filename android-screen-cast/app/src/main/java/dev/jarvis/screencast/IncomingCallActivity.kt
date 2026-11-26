@@ -39,14 +39,15 @@ class IncomingCallActivity : Activity() {
             setPadding(0, 28, 0, 36)
         }
         layout.addView(detail)
-        layout.addView(Button(this).apply {
+        val answerButton = Button(this).apply {
             text = "Answer"
             setOnClickListener {
                 JarvisConnectionService.activeConnection?.answerFromUi()
                 detail.text = "Call accepted. Voice conversation transport is not connected yet."
-                it.isEnabled = false
+                isEnabled = false
             }
-        })
+        }
+        layout.addView(answerButton)
         layout.addView(Button(this).apply {
             text = "Dismiss"
             setOnClickListener {
