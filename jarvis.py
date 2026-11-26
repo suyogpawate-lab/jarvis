@@ -1584,7 +1584,7 @@ def main():
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/resume')}    {_c(_DIM, 'Resume a chat  (+ CODE)')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/newchat')}   {_c(_DIM, 'Start fresh session')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/btw')}       {_c(_DIM, 'Side question while working')}")
-        print(f"  {_c(_DIM, '/update')}    {_c(_DIM, 'Check for updates')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/update')}    {_c(_DIM, 'Check for updates')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'Jarvis Web')} {_c(_DIM, web_url)}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'exit')}       {_c(_DIM, 'Shut down')}")
     print()
