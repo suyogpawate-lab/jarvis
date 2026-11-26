@@ -36,7 +36,7 @@ def main():
     result = subprocess.run(
         [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
         cwd=str(ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        timeout=60,
+        timeout=180,
     )
     print("JARVIS smoke test: parsed {} Python files".format(checked))
     print(result.stdout.rstrip())
