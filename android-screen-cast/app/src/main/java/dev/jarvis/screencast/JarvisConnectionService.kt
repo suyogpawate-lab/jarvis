@@ -134,23 +134,28 @@ class JarvisConnectionService : ConnectionService() {
             showIncomingUi(appContext, message)
         }
 
-        override fun onAnswer() {
-            setActive()
+        fun answerFromUi() {
+            if (state == STATE_RINGING) setActive()
             clearIncomingUi(appContext)
-            val intent = Intent(appContext, IncomingCallActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            appContext.startActivity(intent)
         }
 
-        override fun onAnswer(videoState: Int) = onAnswer()
-
-        override fun onReject() {
-            setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
-            destroy()
+        fun rejectFromUi() {
+            if (state == STATE_RINGING) {
+                setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
+                destroy()
+            } else if (state == STATE_ACTIVE) {
+                setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
+                destroy()
+            }
             clearIncomingUi(appContext)
             activeConnection = null
         }
+
+        override fun onAnswer() = answerFromUi()
+
+        override fun onAnswer(videoState: Int) = answerFromUi()
+
+        override fun onReject() = rejectFromUi()
 
         override fun onDisconnect() {
             setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
