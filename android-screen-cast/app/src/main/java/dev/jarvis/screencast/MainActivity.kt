@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -20,10 +21,17 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(32, 32, 32, 32) }
         status = TextView(this).apply {
-            text = "JARVIS live screen cast\n\nStream: 127.0.0.1:21340\nControl: 127.0.0.1:21341\n\nCasting requires Android system consent. Control requires enabling the accessibility service."
+            text = "JARVIS live screen cast\n\nStream: 127.0.0.1:21340\nControl: 127.0.0.1:21341\nOwner calls: 127.0.0.1:21342\n\nCalling requires enabling this local service once. Calls are generated on this device; no SIM or remote caller is used."
             textSize = 16f; setPadding(0, 0, 0, 24)
         }
         layout.addView(status)
+        layout.addView(button("Enable local JARVIS calls") {
+            val service = Intent(this, OwnerCallBridgeService::class.java).apply {
+                action = OwnerCallBridgeService.ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
+            Toast.makeText(this, "Local JARVIS calling service started.", Toast.LENGTH_SHORT).show()
+        })
         layout.addView(button("Enable screen control") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
         layout.addView(button("Start live cast") {
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
