@@ -84,7 +84,9 @@ class OwnerCallBridgeService : Service() {
                 }
                 "schedule_wakeup" -> scheduleWakeup(request)
                 "cancel_wakeup" -> cancelWakeup(request.optString("event_id"))
+                "audio_token" -> JSONObject().put("ok", true).put("audio_token", JarvisConnectionService.audioToken(this))
                 "status" -> JSONObject().put("ok", true).put("available", true)
+                    .put("audio_token", JarvisConnectionService.audioToken(this))
                 else -> JSONObject().put("ok", false).put("error", "unknown_action")
             }
             client.getOutputStream().bufferedWriter(Charsets.UTF_8).use {
