@@ -106,6 +106,14 @@ class OwnerContactManager:
     def cancel_wakeup(self, event_id):
         return self._send({"action": "cancel_wakeup", "event_id": str(event_id)[:100]})
 
+    def audio_token(self):
+        """Fetch the companion's per-install audio token over its loopback control socket."""
+        result = self._send({"action": "audio_token"})
+        token = str(result.get("audio_token") or "")
+        if len(token) < 24:
+            raise RuntimeError("Android companion did not provide a valid call-audio token.")
+        return token
+
     def status(self):
         try:
             result = self._send({"action": "status"})
