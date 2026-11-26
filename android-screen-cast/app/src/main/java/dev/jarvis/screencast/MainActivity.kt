@@ -32,6 +32,14 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
             Toast.makeText(this, "Local JARVIS calling service started.", Toast.LENGTH_SHORT).show()
         })
+        layout.addView(button("Call JARVIS") {
+            val started = JarvisConnectionService.startOutgoingCall(this)
+            if (started) {
+                startActivity(Intent(this, OutgoingCallActivity::class.java))
+            } else {
+                Toast.makeText(this, "Could not start the local JARVIS call. Check that local calling is enabled.", Toast.LENGTH_LONG).show()
+            }
+        })
         layout.addView(button("Enable screen control") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
         layout.addView(button("Start live cast") {
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
