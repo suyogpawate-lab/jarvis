@@ -1,46 +1,84 @@
-# JARVIS Screen Cast companion (Android 10+)
+# JARVIS Android companion
 
-This companion is a separate Android app because Android grants live-display capture and Accessibility capabilities to installed apps, not to an ordinary Termux Python process.
+This Android 10+ companion provides live screen casting/control and a local
+Telecom calling provider. **Calls use the device's existing Phone app UI**;
+the companion app is only for one-time setup and background services.
 
-## Architecture
+## Local JARVIS calling
 
-- Android MediaProjection captures the display only after the system consent dialog.
-- The companion streams JPEG video frames continuously over local TCP to Termux at 127.0.0.1:21340. Each frame has a 4-byte big-endian length prefix. Frames are held in RAM; no recording file is written.
-- An Android Accessibility Service provides taps, swipes, focused-field text entry, Back, Home, Recents, and Notifications over local TCP port 21341.
-- A foreground notification and Android screen-sharing indicator remain visible during capture.
+The calling path is entirely on this Android device. It does not use a SIM,
+carrier number, public VoIP service, or remote call provider.
 
-## Setup
+### One-time setup
 
-1. Build this Gradle project using Android Studio, Android SDK 35, and JDK 17.
-2. Install the debug APK on the same Android device as JARVIS.
-3. Open the companion and enable its JARVIS Screen Control Accessibility Service in Android settings.
-4. Select Start live cast and accept the Android screen-capture prompt.
-5. Update JARVIS in Termux and restart the HTTP bridge.
+1. Install and open this companion app.
+2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
+3. Open the device's Phone app settings, find **Calling accounts**, and enable
+   **J.A.R.V.I.S.**. The exact menu wording varies by dialer/OEM.
+4. Keep the JARVIS Termux process running. The companion's foreground bridge
+   service must remain enabled for incoming call alerts.
 
-This repository's CI checks Python syntax and regression tests, not Android compilation. Build and device-test the companion before relying on it.
+The companion registers a system-managed PhoneAccount with
+CAPABILITY_CALL_PROVIDER and the tel URI scheme. The system Phone app
+supplies the incoming and in-call interface.
 
-## Termux configuration
+### Calling JARVIS from the Phone app
 
-Optional environment overrides:
-- JARVIS_SCREEN_STREAM_PORT=21340
-- JARVIS_SCREEN_CONTROL_PORT=21341
+1. Open the Phone app.
+2. Dial **0**.
+3. Choose **J.A.R.V.I.S.** as the calling account if the dialer asks.
+4. The Phone app opens the JARVIS call. No Call JARVIS button in this
+   companion app is used.
 
-Configure OmniRoute in Termux and select a vision-capable model in OmniRoute for visual interpretation. Do not embed API keys in Android source.
+The 0 dial string is a local route selector only; it is not sent to a
+carrier and is not a public telephone number.
 
-## HTTP bridge API (authentication required except /health)
+### JARVIS calling you
 
-- GET /screen/stream/status — stream freshness, frame count, bytes received, RAM-only status.
-- GET /screen/stream/frame — latest JPEG frame.
-- POST /screen/analyze with {"prompt":"What is visible?"} — analyze the latest frame using the configured OmniRoute vision-capable model.
-- POST /control with {"action":"tap","x":400,"y":500}.
-- POST /control with {"action":"swipe","x1":400,"y1":800,"x2":400,"y2":300,"duration_ms":350}.
-- POST /control with {"action":"type","text":"example text"}.
-- POST /control with {"action":"back"}, home, recents, or notifications.
-- POST /chat supports "what's on my screen", "screen back", "screen tap 400 500", "screen swipe 400 800 400 300", and "screen type hello".
+Any JARVIS subsystem can request an incoming call through the shared
+jarvis.call_owner(...) API. Incoming calls are delivered to Telecom with
+TelecomManager.addNewIncomingCall, so the existing Phone app handles ringing,
+answer/reject, and the in-call screen. Scheduled wake-up calls use Android
+AlarmManager.
 
-Example:
-```sh
-TOKEN=$(python -c 'import os; from jarvis_env import load_env; load_env(); print(os.environ["JARVIS_HTTP_TOKEN"])'); curl -H "X-Token: $TOKEN" http://127.0.0.1:21339/screen/stream/status
-```
+### Two-way audio pipeline
 
-Coordinates are physical screen pixels. Android can block capture of secure/DRM content, and Accessibility actions cannot operate every protected screen. Enable Accessibility only if you understand the access it grants.
+- Android captures mono 16 kHz PCM16 from AudioRecord using
+  VOICE_COMMUNICATION and enables acoustic echo cancellation when available.
+- The Android audio service connects to Termux over loopback TCP port 21344.
+- The Termux bridge segments speech, transcribes it using the same Needle
+  binary/model used by voice.listener, and passes recognized text to
+  jarvis.handle_prompt(..., source="voice_call").
+- JARVIS synthesizes the response to WAV using its configured local voice
+  backend and streams PCM16 back to Android AudioTrack.
+- Telecom owns call state and audio routing; the companion does not replace
+  the default Phone app.
+
+The control bridge remains on 127.0.0.1:21342; the audio stream is on
+127.0.0.1:21344. The audio handshake uses a per-install token stored in
+Android private preferences and retrieved over the loopback control bridge.
+
+### Termux API
+
+The existing local HTTP bridge exposes:
+
+- GET /owner/status
+- POST /owner/call with reason, message, priority, source, event_id
+- POST /owner/wakeup with at_epoch, message, event_id
+- POST /owner/wakeup/cancel with event_id
+
+Python callers can use jarvis.call_owner(...) from any subsystem. The
+overnight research completion callback is already connected as an example.
+
+### Operational limits
+
+- The Termux JARVIS process must be running to transcribe speech and generate
+  spoken replies. If it is stopped, the Phone app may still show the call
+  account, but no assistant audio endpoint is available.
+- The Android companion must have microphone permission and its calling bridge
+  foreground service must be running.
+- Android may clear scheduled alarms on reboot; wake-up alarms must be
+  re-scheduled after reboot.
+- OEM battery management can stop background services; exempt the companion
+  and Termux from battery optimization if the device interrupts them.
+- This is a local device call provider, not a cellular phone number.

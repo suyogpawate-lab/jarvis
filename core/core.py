@@ -4,6 +4,7 @@ import re
 import requests
 
 from monitoring import alerts
+from automation.owner_contact import OwnerContactManager
 
 
 class Jarvis:
@@ -25,6 +26,21 @@ class Jarvis:
                 "This model ID is disabled. Configure a non-Gemini, non-Claude "
                 "OmniRoute model in OMNIROUTE_COMPLEX_MODEL."
             )
+
+        # Shared owner-contact API for any JARVIS subsystem or background worker.
+        self.owner_contact = OwnerContactManager()
+
+    def call_owner(self, reason, message, priority="normal", source="jarvis",
+                   event_id=None, dedupe_seconds=600):
+        """Request a local Android Telecom call to the device owner."""
+        return self.owner_contact.request_call(
+            reason=reason,
+            message=message,
+            priority=priority,
+            source=source,
+            event_id=event_id,
+            dedupe_seconds=dedupe_seconds,
+        )
 
 
     def ask(self, prompt):

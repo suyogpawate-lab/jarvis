@@ -2,6 +2,7 @@
 """Run fast, local-only JARVIS Phase 1 checks without provider/API calls."""
 from __future__ import annotations
 
+import argparse
 import ast
 import pathlib
 import subprocess
@@ -21,6 +22,14 @@ def iter_python_files():
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--syntax-only",
+        action="store_true",
+        help="scan Python syntax without running unittest discovery (for CI before pytest)",
+    )
+    args = parser.parse_args()
+
     errors = []
     checked = 0
     for path in iter_python_files():
@@ -33,10 +42,19 @@ def main():
     if checked == 0:
         errors.append("syntax scan found no Python files; refusing a false pass")
 
+    if args.syntax_only:
+        if errors:
+            print("FAIL")
+            for error in errors:
+                print(" - " + error)
+            return 1
+        print("PASS: syntax scan parsed {} Python files.".format(checked))
+        return 0
+
     result = subprocess.run(
         [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
         cwd=str(ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        timeout=60,
+        timeout=180,
     )
     print("JARVIS smoke test: parsed {} Python files".format(checked))
     print(result.stdout.rstrip())

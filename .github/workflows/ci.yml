@@ -26,7 +26,7 @@ jobs:
       - name: Run syntax and regression tests
         run: |
           bash -n scripts/install_kitten_tts.sh
-          python scripts/smoke_test.py
+          python scripts/smoke_test.py --syntax-only
           python -m pytest -q tests
 
   kitten-lightweight-frontend:

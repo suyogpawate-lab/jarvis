@@ -76,7 +76,9 @@ class Phase1IntegrationTests(unittest.TestCase):
         voice_test = (root / "scripts" / "test_voice.py").read_text(encoding="utf-8")
         self.assertIn('JARVIS_WAKE_THRESHOLD", "0.40"', listener)
         self.assertIn('JARVIS_WAKE_THRESHOLD", "0.40"', voice_test)
-        self.assertIn('JARVIS_CONVERSATION_TIMEOUT", "20"', listener)
+        self.assertIn("conversation_timeout = 20.0", listener)
+        self.assertIn("def keep_conversation_alive(self):", listener)
+        self.assertIn('bye(?:[\\s,]+jarvis)?', listener)
 
     def test_env_example_does_not_seed_fake_credentials(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]

@@ -46,6 +46,9 @@ class WhistleWakeListener:
         self.model_path = self.project_root / "whistle.cact"
         self.needle = self.project_root / "android-arm64" / "needle"
         self._wake_model = None
+        self._conversation_keepalive_until = 0.0
+        self._conversation_keepalive_lock = threading.Lock()
+        self._voice_turn_processing = False
         self.log_path = self.runtime / "listener.log"
         self._wake_response_player = None
         try:
@@ -93,6 +96,17 @@ class WhistleWakeListener:
                 log.write(f"[{timestamp}] {message}{end}")
         except OSError:
             pass
+
+    def begin_voice_turn(self):
+        """Prevent the idle timer expiring while JARVIS is processing a voice turn."""
+        with self._conversation_keepalive_lock:
+            self._voice_turn_processing = True
+
+    def keep_conversation_alive(self):
+        """End processing and start a fresh, fixed 20-second follow-up window."""
+        with self._conversation_keepalive_lock:
+            self._voice_turn_processing = False
+            self._conversation_keepalive_until = time.time() + 20.0
 
     def start(self):
         for path in (self.model_path, self.needle):
@@ -301,16 +315,14 @@ class WhistleWakeListener:
         max_consecutive_speech_frames = 0
         mute_until = 0.0          # ignore the mic while JARVIS talks (+ a short tail)
         pending_wake = False      # keep the wake session armed through its own greeting
-        conversation_timeout = max(
-            5.0, float(os.getenv("JARVIS_CONVERSATION_TIMEOUT", "20"))
-        )
+        conversation_timeout = 20.0
         conversation_until = 0.0
         max_frames = int(self.MAX_COMMAND_SECONDS * self.RATE / self.FRAME)
         silence_limit = int(self.SILENCE_SECONDS * self.RATE / self.FRAME)
         # End the voice conversation locally; never forward farewell/stop phrases to the LLM.
         exit_phrase = re.compile(
             r"^(?:"
-            r"goodbye(?:\s+jarvis)?|good\s+bye(?:\s+jarvis)?|bye(?:\s+jarvis)?|"
+            r"goodbye(?:[\s,]+jarvis)?|good\s+bye(?:[\s,]+jarvis)?|bye(?:[\s,]+jarvis)?|"
             r"see\s+you(?:\s+later)?(?:\s+jarvis)?|talk\s+(?:to\s+you\s+)?later|"
             r"that(?:'s|\s+is)\s+all(?:\s+for\s+now)?|"
             r"i(?:'m|\s+am)\s+(?:done|finished)|we(?:'re|\s+are)\s+done|"
@@ -337,6 +349,17 @@ class WhistleWakeListener:
                     audio = np.asarray(block, dtype=np.int16).reshape(-1).copy()
                     if audio.size != self.FRAME:
                         continue
+
+                    # Restart the follow-up window after the CLI finishes each
+                    # voice response. Long model latency must not consume the window.
+                    with self._conversation_keepalive_lock:
+                        if self._voice_turn_processing:
+                            # Do not announce an idle timeout while the model is
+                            # still answering the user's most recent voice input.
+                            conversation_until = time.time() + conversation_timeout
+                        elif self._conversation_keepalive_until > conversation_until:
+                            conversation_until = self._conversation_keepalive_until
+                            self._conversation_keepalive_until = 0.0
 
                     # Never transcribe JARVIS's own voice. If playback starts during
                     # capture, discard that partial recording and wait until playback
@@ -543,7 +566,9 @@ class WhistleWakeListener:
                         if text:
                             if exit_phrase.fullmatch(text.strip()):
                                 conversation_until = 0.0
-                                self._log("[VOICE] Conversation ended; say Hey Jarvis to wake me again.", flush=True)
+                                with self._conversation_keepalive_lock:
+                                    self._conversation_keepalive_until = 0.0
+                                self._log("[VOICE] Bye Jarvis detected; conversation closed. Say Hey Jarvis to wake me again.", flush=True)
                             else:
                                 # Keep listening for follow-ups without another wake phrase.
                                 conversation_until = time.time() + conversation_timeout

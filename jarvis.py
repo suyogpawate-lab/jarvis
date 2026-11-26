@@ -1208,9 +1208,26 @@ def handle_prompt(prompt, source="external"):
 # Notification summaries are queued by the background watcher.
 notification_queue = queue.Queue()
 notification_watcher = None
-# Overnight reports are delivered through the existing notification path.
+owner_audio_bridge = None
+# Overnight reports use both the existing notification path and the
+# universal local owner-call interface. The call is best-effort: if the
+# Android companion is unavailable, the report notification is still queued.
+def _overnight_report_ready(message):
+    summary = str(message)
+    notification_queue.put(summary)
+    try:
+        dispatcher.jarvis.call_owner(
+            reason="overnight_research_complete",
+            message="Your overnight research report is ready. " + summary,
+            priority="normal",
+            source="overnight_research",
+            event_id="overnight-research:" + summary,
+        )
+    except Exception as exc:
+        print(f"[JARVIS OWNER CALL] Overnight report call unavailable ({type(exc).__name__}).", flush=True)
+
 try:
-    dispatcher.research.overnight.on_complete = lambda message: notification_queue.put(str(message))
+    dispatcher.research.overnight.on_complete = _overnight_report_ready
 except Exception:
     pass
 
@@ -1276,7 +1293,7 @@ def start_whatsapp_autoreply():
 
 
 def init_services():
-    global notification_watcher, voice_listener
+    global notification_watcher, voice_listener, owner_audio_bridge
 
     # Start the local HTTP bridge before other services so screen-control endpoints
     # are ready as JARVIS comes online.
@@ -1299,8 +1316,27 @@ def init_services():
     except Exception as exc:
         print(f"{_tag('VOICE DISABLED', _WARN)} {exc}", flush=True)
 
+    # Calls use the same JARVIS dispatcher and Needle model as normal voice input.
+    # The Android Phone app owns call UI/audio devices; this server bridges PCM.
+    try:
+        from automation.owner_audio_bridge import OwnerAudioBridge
+        from automation.owner_contact import OwnerContactManager
+        owner_audio_bridge = OwnerAudioBridge(
+            command_handler=handle_prompt,
+            token_provider=OwnerContactManager().audio_token,
+        ).start()
+        print(f"{_tag('CALL AUDIO', _OK)} Local two-way audio bridge ready on 127.0.0.1:21344.", flush=True)
+    except Exception as exc:
+        print(f"{_tag('CALL AUDIO DISABLED', _WARN)} {type(exc).__name__}: {exc}", flush=True)
+
 
 def shutdown():
+    try:
+        if owner_audio_bridge is not None:
+            owner_audio_bridge.stop()
+    except Exception as exc:
+        print(f"{_tag('SHUTDOWN WARN', _WARN)} Owner call audio: {exc}", flush=True)
+
     try:
         active_dispatcher = globals().get("dispatcher")
         if active_dispatcher is not None:
@@ -1693,6 +1729,11 @@ def main():
                 if prompt_source == "voice":
                     print(f"{_c(_U, 'YOU')} {_c(_BGOLD, '(VOICE)')} {_c(_DIM, '❯')} {prompt}", flush=True)
                 dispatcher.fast_agent._last_used_tools = []
+                if prompt_source == "voice" and voice_listener is not None:
+                    try:
+                        voice_listener.begin_voice_turn()
+                    except Exception as exc:
+                        print(f"{_tag('VOICE WARN', _WARN)} Could not mark voice turn as processing: {exc}", flush=True)
                 future = task_pool.submit(handle_prompt, prompt, prompt_source)
                 _active_task_future = future
 
@@ -1721,6 +1762,19 @@ def main():
                     answer, should_speak = future.result()
                 except Exception as exc:
                     answer, should_speak = f"[ERROR] {type(exc).__name__}: {exc}", False
+
+                # Voice-originated requests are a spoken dialogue: every
+                # non-empty assistant response must be sent to the TTS pipeline.
+                if prompt_source == "voice" and answer:
+                    should_speak = True
+
+                # End processing and start a fresh 20-second follow-up window
+                # after every completed voice input, even if it produced no text.
+                if prompt_source == "voice" and voice_listener is not None:
+                    try:
+                        voice_listener.keep_conversation_alive()
+                    except Exception as exc:
+                        print(f"{_tag('VOICE WARN', _WARN)} Could not refresh conversation timeout: {exc}", flush=True)
 
                 if not answer:
                     continue
