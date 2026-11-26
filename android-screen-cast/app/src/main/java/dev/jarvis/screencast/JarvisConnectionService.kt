@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
 import android.telecom.ConnectionService
@@ -105,7 +107,11 @@ class JarvisConnectionService : ConnectionService() {
         }
         connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "0", null),
             TelecomManager.PRESENTATION_ALLOWED)
-        startAudio(this)
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
+                startAudio(this)
+            }
+        }, 300L)
         return connection
     }
 
