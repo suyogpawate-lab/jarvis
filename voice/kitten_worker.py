@@ -93,7 +93,7 @@ configure_frontend(kitten_frontend, misaki_nltk=True)
 print(
     f"[Kitten] Frontend chunk cap: {KITTEN_MAX_PHONEMES} phonemes; "
     "Misaki + NLTK POS tagging enabled; spaCy/PyTorch G2P disabled; "
-    "inter-chunk silence disabled",
+    "internal-chunk silence disabled; sentence pauses 280 ms (360 ms after ?/!)",
     flush=True,
 )
 
