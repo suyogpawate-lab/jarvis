@@ -1562,13 +1562,18 @@ def main():
         print(f"{_J}JARVIS FLOAT ONLINE{_R}")
         print(f"{_DIM}Commands: /memory | /clear | exit{_R}")
     else:
+        web_url = "http://127.0.0.1:8765"
         try:
             import jarvis_ui, jarvis_web
             url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
             if url:
-                print(f"{_tag('WEB UI', _OK)} {url}")
+                web_url = url
         except Exception as exc:
             print(f"{_tag('WEB UI DISABLED', _WARN)} {exc}")
+
+        # Startup diagnostics are useful while services initialize, but the
+        # interactive terminal should begin with one clean, persistent banner.
+        clear_scrollback()
 
         print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
         print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Online{_R}        {_B}{_BCYAN}┃{_R}")
@@ -1579,7 +1584,8 @@ def main():
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/resume')}    {_c(_DIM, 'Resume a chat  (+ CODE)')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/newchat')}   {_c(_DIM, 'Start fresh session')}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/btw')}       {_c(_DIM, 'Side question while working')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/update')}    {_c(_DIM, 'Check for updates')}")
+        print(f"  {_c(_DIM, '/update')}    {_c(_DIM, 'Check for updates')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'Jarvis Web')} {_c(_DIM, web_url)}")
         print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'exit')}       {_c(_DIM, 'Shut down')}")
     print()
 
@@ -1684,25 +1690,18 @@ def main():
                 future = task_pool.submit(handle_prompt, prompt, prompt_source)
                 _active_task_future = future
 
-                # While the task runs, keep the input prompt alive. /btw is answered
-                # by a separate text-only Groq agent; ordinary messages are queued.
-                while True:
-                    incoming, incoming_source = read_prompt()
-                    if incoming_source == "task_done":
-                        break
-                    if not incoming:
-                        continue
-                    if incoming.strip().lower().startswith("/btw"):
-                        side_question = re.sub(r"^/btw\s*", "", incoming.strip(), flags=re.IGNORECASE)
-                        if not side_question:
-                            print(f"{_tag('JARVIS BTW', _ACCENT)} Usage: /btw your side question", flush=True)
-                            continue
-                        print(f"{_c(_U, 'YOU')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_question}", flush=True)
-                        side_answer = _answer_btw(side_question)
-                        print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\n", flush=True)
-                    else:
-                        _deferred_prompts.append((incoming, incoming_source))
-                        print(f"{_tag('JARVIS', _ACCENT)} Current task is still running. Message queued; use {_c(_BCYAN, '/btw')} for a side question.", flush=True)
+                # Do not open a second editable YOU prompt while this request is
+                # running. Service notifications continue to render, and wake-word
+                # commands are retained for processing after the current response.
+                while not future.done():
+                    _service_cli_background_events()
+                    try:
+                        incoming_voice = voice_command_queue.get_nowait()
+                    except queue.Empty:
+                        incoming_voice = None
+                    if incoming_voice and incoming_voice.strip():
+                        _deferred_prompts.append((incoming_voice.strip(), "voice"))
+                    time.sleep(0.08)
 
                 _active_task_future = None
                 try:
