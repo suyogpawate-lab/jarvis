@@ -167,12 +167,16 @@ class OwnerCallAudioService : Service() {
                 while (running.get()) {
                     val count = try { record.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING) }
                     catch (_: Exception) { -1 }
-                    if (count <= 0) break
+                    if (count <= 0) {
+                        if (running.get()) JarvisConnectionService.onAudioFailed()
+                        break
+                    }
                     if (count < frame.size) java.util.Arrays.fill(frame, count, frame.size, 0.toByte())
                     try {
                         socketOutput.write(frame)
                         socketOutput.flush()
                     } catch (_: Exception) {
+                        if (running.get()) JarvisConnectionService.onAudioFailed()
                         break
                     }
                 }
@@ -189,6 +193,7 @@ class OwnerCallAudioService : Service() {
                     offset += written
                 }
             }
+            if (running.get()) JarvisConnectionService.onAudioFailed()
             running.set(false)
             try { microphoneThread.join(500) } catch (_: InterruptedException) {}
         } catch (error: Exception) {
