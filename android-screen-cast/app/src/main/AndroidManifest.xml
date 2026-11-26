@@ -23,6 +23,11 @@
             android:launchMode="singleTop"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+        <activity
+            android:name=".OutgoingCallActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop" />
         <service
             android:name=".ScreenCastService"
             android:exported="false"
