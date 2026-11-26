@@ -1409,12 +1409,18 @@ def _service_cli_background_events():
         _web_notify(summary)
 
 
-async def _read_prompt_async():
+async def _read_prompt_async(working=False):
     global _cli_pending_text, _auto_update_notified
     pending_idle_since = None
+    prompt_label = (
+        HTML('<style fg="#2fe39a"><b>J❯</b></style> ')
+        if is_float_mode()
+        else HTML('') if working
+        else HTML('<style fg="#5af78e"><b>YOU</b></style>  <style fg="#606060">❯</style> ')
+    )
     prompt_task = asyncio.create_task(
         _cli_prompt_session.prompt_async(
-            HTML('<style fg="#2fe39a"><b>J❯</b></style> ') if is_float_mode() else HTML('<style fg="#5af78e"><b>YOU</b></style>  <style fg="#606060">❯</style> '),
+            prompt_label,
             default=_cli_pending_text,
             bottom_toolbar=_cli_bottom_toolbar,
         )
@@ -1525,14 +1531,14 @@ def _cli_bottom_toolbar():
     return HTML('<style bg="#0a1a2a" fg="#3fd8ff"><b> ⟐ JARVIS READY </b></style>')
 
 
-def read_prompt():
-    """Editable terminal prompt that remains responsive to voice and notifications.
+def read_prompt(working=False):
+    """Editable prompt responsive to voice and notifications.
 
-    prompt_toolkit supplies readline-style arrow-key editing while its async
-    prompt allows JARVIS to consume voice commands before the user presses Enter.
+    During an active task the prompt label is hidden, avoiding a second YOU
+    prompt while retaining /btw and queued text input.
     """
     while True:
-        prompt, source = asyncio.run(_read_prompt_async())
+        prompt, source = asyncio.run(_read_prompt_async(working=working))
         if source in {"update_restart", "task_done"}: return prompt, source
         if prompt: return prompt, source
 
@@ -1690,18 +1696,25 @@ def main():
                 future = task_pool.submit(handle_prompt, prompt, prompt_source)
                 _active_task_future = future
 
-                # Do not open a second editable YOU prompt while this request is
-                # running. Service notifications continue to render, and wake-word
-                # commands are retained for processing after the current response.
-                while not future.done():
-                    _service_cli_background_events()
-                    try:
-                        incoming_voice = voice_command_queue.get_nowait()
-                    except queue.Empty:
-                        incoming_voice = None
-                    if incoming_voice and incoming_voice.strip():
-                        _deferred_prompts.append((incoming_voice.strip(), "voice"))
-                    time.sleep(0.08)
+                # Keep the responsive input channel for /btw and queued messages,
+                # but hide its YOU label while the current request is processing.
+                while True:
+                    incoming, incoming_source = read_prompt(working=True)
+                    if incoming_source == "task_done":
+                        break
+                    if not incoming:
+                        continue
+                    if incoming.strip().lower().startswith("/btw"):
+                        side_question = re.sub(r"^/btw\\s*", "", incoming.strip(), flags=re.IGNORECASE)
+                        if not side_question:
+                            print(f"{_tag('JARVIS BTW', _ACCENT)} Usage: /btw your side question", flush=True)
+                            continue
+                        print(f"{_c(_U, 'YOU')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_question}", flush=True)
+                        side_answer = _answer_btw(side_question)
+                        print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\\n", flush=True)
+                    else:
+                        _deferred_prompts.append((incoming, incoming_source))
+                        print(f"{_tag('JARVIS', _ACCENT)} Current task is still running. Message queued.", flush=True)
 
                 _active_task_future = None
                 try:
