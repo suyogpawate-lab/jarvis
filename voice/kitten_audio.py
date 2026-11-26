@@ -11,8 +11,8 @@ KITTEN_MAX_PHONEMES = 500
 
 # Silence is added between complete sentences, not between Kitten's internal
 # phoneme chunks. This restores natural phrasing without slowing inference.
-KITTEN_SENTENCE_PAUSE_MS = 280
-KITTEN_TERMINAL_PAUSE_MS = 360
+KITTEN_SENTENCE_PAUSE_MS = 550
+KITTEN_TERMINAL_PAUSE_MS = 650
 
 
 def configure_frontend(frontend_module, *, misaki_nltk: bool = False) -> None:
