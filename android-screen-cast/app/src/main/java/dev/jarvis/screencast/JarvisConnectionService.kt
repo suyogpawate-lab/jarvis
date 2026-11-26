@@ -1,15 +1,9 @@
 package dev.jarvis.screencast
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.os.Bundle
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
@@ -18,105 +12,69 @@ import android.telecom.DisconnectCause
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
+import java.util.UUID
 
+/**
+ * System-managed JARVIS VoIP provider.
+ *
+ * The user's existing Phone app supplies all incoming and in-call UI. To call
+ * JARVIS from that dialer, select the J.A.R.V.I.S. calling account and dial 0.
+ */
 class JarvisConnectionService : ConnectionService() {
     companion object {
         const val EXTRA_MESSAGE = "dev.jarvis.screencast.owner.MESSAGE"
         const val EXTRA_REASON = "dev.jarvis.screencast.owner.REASON"
         private const val ACCOUNT_ID = "jarvis-local-owner"
-        private const val CHANNEL_ID = "jarvis_owner_calls"
-        private const val NOTIFICATION_ID = 21342
+        private const val PREFS = "jarvis_owner_calls"
+        private const val TOKEN_KEY = "audio_token"
+
         @Volatile var activeConnection: OwnerConnection? = null
-        @Volatile var activeMessage: String = "JARVIS has an update."
 
         fun accountHandle(context: Context): PhoneAccountHandle =
             PhoneAccountHandle(ComponentName(context, JarvisConnectionService::class.java), ACCOUNT_ID)
 
         fun registerAccount(context: Context) {
             val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-            val handle = accountHandle(context)
-            val account = PhoneAccount.builder(handle, "J.A.R.V.I.S. Local")
-                .setCapabilities(PhoneAccount.CAPABILITY_SELF_MANAGED)
-                .setShortDescription("Local JARVIS assistant calls")
+            val account = PhoneAccount.builder(accountHandle(context), "J.A.R.V.I.S.")
+                .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
+                .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
+                .setShortDescription("Local JARVIS voice assistant")
                 .build()
             telecom.registerPhoneAccount(account)
         }
 
-        fun startOutgoingCall(context: Context): Boolean {
-            return try {
-                registerAccount(context)
-                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                val extras = Bundle().apply {
-                    putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accountHandle(context))
-                    putString(EXTRA_MESSAGE, "Connected to J.A.R.V.I.S. Voice transport is not connected yet.")
-                    putString(EXTRA_REASON, "owner_initiated")
+        fun audioToken(context: Context): String {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val existing = prefs.getString(TOKEN_KEY, null)
+            if (!existing.isNullOrBlank()) return existing
+            val created = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "")
+            prefs.edit().putString(TOKEN_KEY, created).apply()
+            return created
+        }
+
+        fun startAudio(context: Context) {
+            OwnerCallAudioService.start(context)
+        }
+
+        fun stopAudio(context: Context) {
+            OwnerCallAudioService.stop(context)
+        }
+
+        fun onAudioReady() {
+            activeConnection?.let { connection ->
+                if (connection.state == Connection.STATE_DIALING ||
+                    connection.state == Connection.STATE_RINGING) {
+                    connection.setActive()
                 }
-                telecom.placeCall(Uri.fromParts("jarvis", "local", null), extras)
-                true
-            } catch (error: Exception) {
-                android.util.Log.e("JARVIS-CALL", "Could not start outgoing local call", error)
-                false
             }
         }
 
-        fun incomingCall(context: Context, message: String, reason: String): Boolean {
-            return try {
-                registerAccount(context)
-                val extras = Bundle().apply {
-                    putString(EXTRA_MESSAGE, message.take(1200))
-                    putString(EXTRA_REASON, reason.take(100))
-                }
-                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                telecom.addNewIncomingCall(accountHandle(context), extras)
-                true
-            } catch (error: Exception) {
-                android.util.Log.e("JARVIS-CALL", "Could not register local incoming call", error)
-                false
+        fun onAudioFailed() {
+            activeConnection?.let { connection ->
+                connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR))
+                connection.destroy()
+                activeConnection = null
             }
-        }
-
-        fun showIncomingUi(context: Context, message: String) {
-            activeMessage = message.ifBlank { "JARVIS has an update." }
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                manager.createNotificationChannel(NotificationChannel(
-                    CHANNEL_ID, "JARVIS owner calls", NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Local calls from JARVIS"
-                    setSound(
-                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
-                })
-            }
-            val open = Intent(context, IncomingCallActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pending = PendingIntent.getActivity(
-                context, 21342, open,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val builder = if (android.os.Build.VERSION.SDK_INT >= 26)
-                Notification.Builder(context, CHANNEL_ID) else Notification.Builder(context)
-            val notification = builder
-                .setSmallIcon(android.R.drawable.sym_call_incoming)
-                .setContentTitle("J.A.R.V.I.S.")
-                .setContentText(activeMessage.take(120))
-                .setCategory(Notification.CATEGORY_CALL)
-                .setPriority(Notification.PRIORITY_MAX)
-                .setFullScreenIntent(pending, true)
-                .setContentIntent(pending)
-                .setOngoing(true)
-                .build().apply { flags = flags or Notification.FLAG_INSISTENT }
-            manager.notify(NOTIFICATION_ID, notification)
-        }
-
-        fun clearIncomingUi(context: Context) {
-            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .cancel(NOTIFICATION_ID)
         }
     }
 
@@ -124,27 +82,31 @@ class JarvisConnectionService : ConnectionService() {
         connectionManagerPhoneAccount: PhoneAccountHandle?,
         request: ConnectionRequest
     ): Connection {
-        val extras = request.extras
-        val message = extras?.getString(EXTRA_MESSAGE).orEmpty().ifBlank { "JARVIS has an update." }
-        activeMessage = message
-        return OwnerConnection(this, message, incoming = true).also { activeConnection = it }
+        val message = request.extras?.getString(EXTRA_MESSAGE)
+            .orEmpty().ifBlank { "JARVIS has an update." }
+        return OwnerConnection(this, message, incoming = true).also {
+            activeConnection = it
+        }
     }
 
     override fun onCreateOutgoingConnection(
         connectionManagerPhoneAccount: PhoneAccountHandle?,
         request: ConnectionRequest
     ): Connection {
-        val message = request.extras?.getString(EXTRA_MESSAGE)
-            ?: "Connected to J.A.R.V.I.S. Voice transport is not connected yet."
-        activeMessage = message
-        return OwnerConnection(this, message, incoming = false).also { connection ->
-            activeConnection = connection
-            android.os.Handler(mainLooper).postDelayed({
-                if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
-                    connection.setActive()
-                }
-            }, 350L)
+        val address = request.address
+        val dialString = address?.schemeSpecificPart.orEmpty()
+        val connection = OwnerConnection(this, "Connecting to J.A.R.V.I.S.", incoming = false)
+        activeConnection = connection
+        if (address?.scheme != PhoneAccount.SCHEME_TEL || dialString != "0") {
+            connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR))
+            connection.destroy()
+            activeConnection = null
+            return connection
         }
+        connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "0", null),
+            TelecomManager.PRESENTATION_ALLOWED)
+        startAudio(this)
+        return connection
     }
 
     override fun onCreateOutgoingConnectionFailed(
@@ -152,7 +114,7 @@ class JarvisConnectionService : ConnectionService() {
         request: ConnectionRequest
     ) {
         super.onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount, request)
-        android.util.Log.w("JARVIS-CALL", "Telecom rejected the outgoing local call")
+        android.util.Log.w("JARVIS-CALL", "The Phone app could not create a JARVIS call.")
     }
 
     override fun onCreateIncomingConnectionFailed(
@@ -160,7 +122,7 @@ class JarvisConnectionService : ConnectionService() {
         request: ConnectionRequest
     ) {
         super.onCreateIncomingConnectionFailed(connectionManagerPhoneAccount, request)
-        android.util.Log.w("JARVIS-CALL", "Telecom rejected an incoming local call")
+        android.util.Log.w("JARVIS-CALL", "Telecom could not deliver the incoming JARVIS call.")
     }
 
     class OwnerConnection(
@@ -169,46 +131,42 @@ class JarvisConnectionService : ConnectionService() {
         val incoming: Boolean
     ) : Connection() {
         init {
-            setCallerDisplayName(if (incoming) "J.A.R.V.I.S." else "You → J.A.R.V.I.S.",
+            setCallerDisplayName("J.A.R.V.I.S.", TelecomManager.PRESENTATION_ALLOWED)
+            setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "0", null),
                 TelecomManager.PRESENTATION_ALLOWED)
-            setAddress(Uri.fromParts("jarvis", "local", null), TelecomManager.PRESENTATION_ALLOWED)
             setAudioModeIsVoip(true)
-            setConnectionProperties(PROPERTY_SELF_MANAGED)
+            // This is a system-managed provider. Do not mark it SELF_MANAGED.
+            setConnectionProperties(0)
             if (incoming) setRinging() else setDialing()
         }
 
-        override fun onShowIncomingCallUi() {
-            showIncomingUi(appContext, message)
+        override fun onAnswer() {
+            startAudio(appContext)
         }
 
-        fun answerFromUi() {
-            if (state == STATE_RINGING) setActive()
-            clearIncomingUi(appContext)
+        override fun onAnswer(videoState: Int) {
+            startAudio(appContext)
         }
 
-        fun rejectFromUi() {
-            if (state == STATE_RINGING) {
-                setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
-                destroy()
-            } else if (state == STATE_ACTIVE) {
-                setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
-                destroy()
-            }
-            clearIncomingUi(appContext)
-            activeConnection = null
+        override fun onReject() {
+            finish(DisconnectCause.REJECTED)
         }
-
-        override fun onAnswer() = answerFromUi()
-
-        override fun onAnswer(videoState: Int) = answerFromUi()
-
-        override fun onReject() = rejectFromUi()
 
         override fun onDisconnect() {
-            setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
-            destroy()
-            clearIncomingUi(appContext)
-            activeConnection = null
+            finish(DisconnectCause.LOCAL)
+        }
+
+        override fun onAbort() {
+            finish(DisconnectCause.CANCELED)
+        }
+
+        private fun finish(code: Int) {
+            stopAudio(appContext)
+            if (state != STATE_DISCONNECTED) {
+                setDisconnected(DisconnectCause(code))
+                destroy()
+            }
+            if (activeConnection === this) activeConnection = null
         }
     }
 }
