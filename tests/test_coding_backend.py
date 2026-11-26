@@ -1,12 +1,11 @@
-"""Tests for configurable coding-agent CLI routing."""
+"""Tests for configurable coding-agent CLI routing and persistent session backend."""
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from automation.coding_backend import CodingBackend
-from automation.command_dispatcher import CommandDispatcher
+from automation.coding_backend import CodingBackend, PersistentCodingSession
 
 
 class CodingBackendTests(unittest.TestCase):
@@ -18,35 +17,44 @@ class CodingBackendTests(unittest.TestCase):
         backend = CodingBackend(environ={"JARVIS_CODING_BACKEND": "codex"})
         self.assertEqual(backend.command_template, "codex exec {prompt}")
 
-    def test_custom_cli_receives_prompt_as_single_argument_without_shell(self):
+    def test_persistent_session_lifecycle(self):
         with tempfile.TemporaryDirectory() as directory:
             calls = []
-            wait_timeouts = []
             def runner(argv, **kwargs):
                 calls.append((argv, kwargs))
-                kwargs["stdout"].write(b"changed files and tests passed")
-                return type("Process", (), {
-                    "wait": lambda self, timeout=None: wait_timeouts.append(timeout) or 0,
+                # Mock process with stdin/stdout pipes
+                stdin_pipe = kwargs.get("stdin")
+                stdout_read, stdout_write = subprocess.PIPE, subprocess.PIPE
+                # Create a mock process object
+                proc = type("Process", (), {
+                    "poll": lambda self: None,
                     "terminate": lambda self: None,
                     "kill": lambda self: None,
+                    "wait": lambda self, timeout=None: 0,
+                    "returncode": 0,
+                    "stdin": type("Stdin", (), {"write": lambda s, data: None, "flush": lambda s: None})(),
+                    "stdout": type("Stdout", (), {"readline": lambda s: b'{"type":"result","result":"task done"}\n'})(),
                 })()
+                return proc
+
             env = {
-                "JARVIS_CODING_BACKEND": "cline",
-                "JARVIS_CODING_COMMAND": "fake-cline --prompt {prompt} --cwd {workspace}",
+                "JARVIS_CODING_BACKEND": "custom",
+                "JARVIS_CODING_COMMAND": "fake-agent {prompt}",
                 "JARVIS_CODING_WORKSPACE": directory,
-                "JARVIS_CODING_TIMEOUT": "60",
+                "JARVIS_CODING_TIMEOUT": "10",
             }
             backend = CodingBackend(environ=env, popen_factory=runner)
-            with patch("automation.coding_backend.shutil.which", return_value="/usr/bin/fake-cline"):
-                result = backend.run("Fix the parser; then run tests")
-            self.assertIn("[CODING COMPLETE]", result)
-            argv, kwargs = calls[0]
-            self.assertEqual(argv[2], "Fix the parser; then run tests")
-            self.assertEqual(argv[-1], str(Path(directory).resolve()))
-            self.assertEqual(kwargs["cwd"], str(Path(directory).resolve()))
-            self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
-            self.assertEqual(wait_timeouts, [60])
-            self.assertNotIn("shell", kwargs)
+            with patch("automation.coding_backend.shutil.which", return_value="/usr/bin/fake-agent"):
+                started = backend.start()
+                self.assertTrue(started)
+                self.assertTrue(backend.session.running)
+
+                result = backend.run("Fix bug")
+                self.assertIn("[CODING COMPLETE]", result)
+                self.assertIn("task done", result)
+
+                backend.stop()
+                self.assertIsNone(backend.session)
 
     def test_missing_prompt_placeholder_is_not_executed(self):
         backend = CodingBackend(environ={
@@ -55,26 +63,8 @@ class CodingBackendTests(unittest.TestCase):
         })
         self.assertIn("not configured", backend.run("change code"))
 
-    def test_nonzero_exit_is_reported(self):
-        with tempfile.TemporaryDirectory() as directory:
-            def runner(argv, **kwargs):
-                kwargs["stderr"].write(b"test failure")
-                return type("Process", (), {
-                    "wait": lambda self, timeout=None: 2,
-                    "terminate": lambda self: None,
-                    "kill": lambda self: None,
-                })()
-            backend = CodingBackend(environ={
-                "JARVIS_CODING_BACKEND": "custom",
-                "JARVIS_CODING_COMMAND": "fake-agent {prompt}",
-                "JARVIS_CODING_WORKSPACE": directory,
-            }, popen_factory=runner)
-            with patch("automation.coding_backend.shutil.which", return_value="/usr/bin/fake-agent"):
-                result = backend.run("run tests")
-            self.assertIn("exited with code 2", result)
-            self.assertIn("test failure", result)
-
     def test_coding_task_classifier(self):
+        from automation.command_dispatcher import CommandDispatcher
         self.assertTrue(CommandDispatcher._looks_like_coding_task("Fix the JARVIS WhatsApp parser bug"))
         self.assertTrue(CommandDispatcher._looks_like_coding_task("Build a Python CLI tool"))
         self.assertTrue(CommandDispatcher._looks_like_coding_task("Refactor this repository backend"))

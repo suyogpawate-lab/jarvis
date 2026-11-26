@@ -79,6 +79,10 @@ class CommandDispatcher:
         self.search_hub = build_default_search_hub()
         self.fast_agent = FastAgent(search_hub=self.search_hub)
         self.coding_backend = CodingBackend()
+        try:
+            self.coding_backend.start()
+        except Exception:
+            pass
         self.deep_search = DeepSearch(self.search_hub, self.fast_agent)
         self.fast_agent.deep_search = self.deep_search
 
@@ -310,6 +314,12 @@ class CommandDispatcher:
 
     def stop_background_services(self) -> None:
         """Stop dispatcher-owned monitors without touching user data."""
+        try:
+            if hasattr(self, "coding_backend") and self.coding_backend:
+                self.coding_backend.stop()
+        except Exception as exc:
+            print(f"[SHUTDOWN WARN] coding_backend: {exc}", flush=True)
+
         for name, service in (
             ("overnight_planner", getattr(self, "overnight_planner", None)),
             ("autonomy", getattr(self, "autonomy", None)),

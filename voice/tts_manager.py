@@ -212,9 +212,8 @@ class TTSManager:
                     self.last_started = time.monotonic()
                     if self._gen == gen:
                         if not self._speak_with_fallbacks(text, speed, gen, voice=voice):
-                            # The public speak() API only queues work; report worker
-                            # failures so a silent TTS outage is diagnosable in Termux.
-                            print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
+                            if "status -15" not in str(self.last_error) and self._gen == gen:
+                                print(f"[TTS ERROR] {self.last_error or 'Speech playback failed.'}", flush=True)
                 finally:
                     self.queue.task_done()
         finally:

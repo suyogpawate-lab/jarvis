@@ -11,6 +11,9 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
+import json
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,12 +28,149 @@ PRESETS = {
 }
 
 
+class PersistentCodingSession:
+    """Manages a long-lived persistent coding CLI process using stream-json protocol."""
+
+    def __init__(self, argv, workspace, timeout, popen_factory=None):
+        self.argv = argv
+        self.workspace = workspace
+        self.timeout = timeout
+        self.popen_factory = subprocess.Popen if popen_factory is None else popen_factory
+        self.process = None
+        self.lock = threading.Lock()
+        self.reader_thread = None
+        self.running = False
+        self.current_output = []
+        self.task_event = threading.Event()
+        self.stdout_file = None
+        self.stderr_file = None
+
+    def start(self):
+        with self.lock:
+            if self.running and self.process and self.process.poll() is None:
+                return True
+            try:
+                # Use stream-json mode for persistent interactive protocol
+                base_argv = [arg for arg in self.argv if arg not in {"-p", "--print"}]
+                # Ensure stream-json format flags are present if claude
+                if "claude" in base_argv[0] or base_argv[0].endswith("node"):
+                    if "--output-format" not in base_argv:
+                        base_argv.extend(["--output-format", "stream-json", "--input-format", "stream-json"])
+
+                self.stdout_file = tempfile.TemporaryFile()
+                self.stderr_file = tempfile.TemporaryFile()
+
+                self.process = self.popen_factory(
+                    base_argv,
+                    cwd=str(self.workspace),
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=self.stderr_file,
+                )
+                self.running = True
+                self.reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+                self.reader_thread.start()
+                return True
+            except Exception as exc:
+                self.running = False
+                return False
+
+    def _reader_loop(self):
+        buffer = []
+        while self.running and self.process and self.process.poll() is None:
+            try:
+                line = self.process.stdout.readline()
+                if not line:
+                    break
+                text_line = line.decode("utf-8", errors="replace").strip()
+                if not text_line:
+                    continue
+                try:
+                    data = json.loads(text_line)
+                    msg_type = data.get("type")
+                    if msg_type == "assistant":
+                        msg = data.get("message", {})
+                        for content_block in msg.get("content", []):
+                            if content_block.get("type") == "text":
+                                self.current_output.append(content_block.get("text", ""))
+                    elif msg_type == "result":
+                        res = data.get("result", "")
+                        if res:
+                            self.current_output.append(str(res))
+                        self.task_event.set()
+                    elif "text" in data:
+                        self.current_output.append(str(data["text"]))
+                except json.JSONDecodeError:
+                    self.current_output.append(text_line)
+            except Exception:
+                break
+        self.running = False
+        self.task_event.set()
+
+    def send(self, prompt):
+        with self.lock:
+            if not self.start():
+                return None
+            self.current_output = []
+            self.task_event.clear()
+
+            payload = json.dumps({"type": "user_message", "content": prompt}) + "\n"
+            try:
+                self.process.stdin.write(payload.encode("utf-8"))
+                self.process.stdin.flush()
+            except Exception:
+                self.running = False
+                return None
+
+        # Wait for task completion or timeout
+        signaled = self.task_event.wait(timeout=self.timeout)
+        output = "\n".join(self.current_output).strip()
+
+        if not signaled:
+            self.stop()
+            return f"[ERROR] Coding agent timed out after {self.timeout} seconds.\n{output}"
+
+        if not output and self.process and self.process.poll() is not None:
+            code = self.process.returncode
+            if code != 0:
+                return f"[CODING FAILED] Persistent session exited with code {code}."
+
+        return output or "The coding agent returned no text output."
+
+    def stop(self):
+        with self.lock:
+            self.running = False
+            self.task_event.set()
+            if self.process:
+                try:
+                    self.process.terminate()
+                    self.process.wait(timeout=2)
+                except Exception:
+                    try:
+                        self.process.kill()
+                    except Exception:
+                        pass
+                self.process = None
+            if self.stdout_file:
+                try:
+                    self.stdout_file.close()
+                except Exception:
+                    pass
+            if self.stderr_file:
+                try:
+                    self.stderr_file.close()
+                except Exception:
+                    pass
+
+
 class CodingBackend:
     """Run Claude Code, Codex, Cline, or any user-configured coding CLI."""
 
     def __init__(self, environ=None, popen_factory=None):
         self.environ = os.environ if environ is None else environ
-        self.popen_factory = subprocess.Popen if popen_factory is None else popen_factory
+        self.popen_factory = popen_factory
+        self.session = None
+        self._session_lock = threading.Lock()
 
     @staticmethod
     def _read_tail(stream):
@@ -78,7 +218,39 @@ class CodingBackend:
             "executable": executable or None,
             "available": bool(resolved),
             "timeout": self.timeout,
+            "persistent_running": bool(self.session and self.session.running),
         }
+
+    def start(self):
+        """Start the persistent background coding session."""
+        status = self.status()
+        if not status["configured"] or not status["available"]:
+            return False
+        workspace = self.workspace
+        if not workspace.is_dir():
+            return False
+        try:
+            parts = shlex.split(self.command_template)
+            # Remove prompt placeholder for persistent initialization argv
+            argv = [p for p in parts if p != "{prompt}"]
+        except Exception:
+            return False
+
+        with self._session_lock:
+            if self.session and self.session.running:
+                return True
+            self.session = PersistentCodingSession(
+                argv, workspace, self.timeout, popen_factory=self.popen_factory
+            )
+            print(f"[CODING] Starting persistent {self.provider} session in {workspace}", flush=True)
+            return self.session.start()
+
+    def stop(self):
+        """Stop the persistent background coding session."""
+        with self._session_lock:
+            if self.session:
+                self.session.stop()
+                self.session = None
 
     def run(self, prompt):
         prompt = str(prompt or "").strip()
@@ -97,50 +269,23 @@ class CodingBackend:
         workspace = self.workspace
         if not workspace.is_dir():
             return f"[ERROR] Coding workspace does not exist: {workspace}"
-        try:
-            parts = shlex.split(self.command_template)
-            argv = [
-                part.replace("{prompt}", prompt).replace("{workspace}", str(workspace))
-                for part in parts
-            ]
-        except ValueError as exc:
-            return f"[ERROR] Invalid coding command template: {exc}"
-        if not any("{prompt}" in part for part in parts):
-            return "[ERROR] JARVIS_CODING_COMMAND must contain the {prompt} placeholder."
-        print(f"[CODING] {self.provider} working in {workspace}", flush=True)
-        # Keep verbose CLI output on disk, not in unbounded RAM buffers.
-        try:
-            with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-                process = self.popen_factory(
-                    argv,
-                    cwd=str(workspace),
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                )
-                try:
-                    return_code = process.wait(timeout=self.timeout)
-                except subprocess.TimeoutExpired:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-                    output = "\n".join(
-                        part for part in (self._read_tail(stdout_file), self._read_tail(stderr_file)) if part
-                    )
-                    return (
-                        f"[ERROR] Coding agent timed out after {self.timeout} seconds. "
-                        "Check the workspace for partial changes.\n" + output
-                    )
-                output = "\n".join(
-                    part for part in (self._read_tail(stdout_file), self._read_tail(stderr_file)) if part
-                )
-        except FileNotFoundError:
-            return f"[ERROR] Coding CLI not found: {argv[0]}"
-        except OSError as exc:
-            return f"[ERROR] Could not launch coding agent: {type(exc).__name__}: {exc}"
-        if return_code:
-            return f"[CODING FAILED] {self.provider} exited with code {return_code}.\n{output}"
-        return f"[CODING COMPLETE] Backend: {self.provider}\nWorkspace: {workspace}\n{output or 'The coding agent returned no text output.'}"
+
+        # Ensure persistent session is running
+        if not self.start():
+            return f"[ERROR] Could not start persistent coding session for {self.provider}."
+
+        print(f"[CODING] Sending task to persistent {self.provider} session", flush=True)
+        result = self.session.send(prompt)
+        if result is not None:
+            return f"[CODING COMPLETE] Backend: {self.provider}\nWorkspace: {workspace}\n{result}"
+
+        # Fallback to one-shot if persistent send failed
+        self.stop()
+        if not self.start():
+            return f"[ERROR] Persistent coding session failed and restart failed."
+
+        result = self.session.send(prompt)
+        if result is not None:
+            return f"[CODING COMPLETE] Backend: {self.provider}\nWorkspace: {workspace}\n{result}"
+
+        return f"[CODING FAILED] Persistent coding session did not return output."

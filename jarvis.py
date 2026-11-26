@@ -5,8 +5,7 @@ import select
 import sys
 from pathlib import Path
 
-import readline
-from prompt_toolkit import PromptSession
+from prompt_toolkit import PromptSession, print_formatted_text
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML, ANSI
 """
@@ -27,7 +26,6 @@ import os
 import subprocess
 import shutil
 import time
-from pathlib import Path
 
 import requests
 
@@ -83,6 +81,21 @@ def _c(style, text):
 def _tag(label, style=None):
     s = style or _TAG
     return f"{s}[{label}]{_R}"
+
+
+def _print(*args, **kwargs):
+    """Print using prompt_toolkit's print_formatted_text so stdout is correctly patched."""
+    sep = kwargs.get("sep", " ")
+    end = kwargs.get("end", "\n")
+    text = sep.join(str(a) for a in args)
+    if end == "\n":
+        print_formatted_text(ANSI(text))
+    else:
+        print_formatted_text(ANSI(text), end=end)
+
+
+builtin_print = print
+print = _print
 
 
 # ==============================================================
@@ -958,12 +971,16 @@ OPERATIONAL_RE = re.compile(
 def format_memory():
     """print_memory() output as a string."""
     import io
-    import contextlib
 
     buf = io.StringIO()
-
-    with contextlib.redirect_stdout(buf):
+    _saved_print = globals()["print"]
+    globals()["print"] = lambda *args, **kwargs: buf.write(
+        kwargs.get("sep", " ").join(str(a) for a in args) + kwargs.get("end", "\n")
+    )
+    try:
         print_memory()
+    finally:
+        globals()["print"] = _saved_print
 
     return buf.getvalue().strip()
 
@@ -975,8 +992,13 @@ def speak(text, quiet=False, user_prompt=""):
         tts.speak(text, user_prompt=user_prompt)
         return True
     except Exception as exc:
-        if not quiet:
-            print(f"{_tag('TTS ERROR', _ERR)} {exc}", flush=True)
+        if not quiet and "status -15" not in str(exc):
+            try:
+                log_file = Path(__file__).resolve().parent / "data" / "ui.log"
+                with log_file.open("a", encoding="utf-8") as lf:
+                    lf.write(f"[TTS ERROR] {exc}\n")
+            except Exception:
+                pass
         return False
 
 
@@ -1364,6 +1386,7 @@ def _show_whatsapp_review_events():
         for index, draft in enumerate(drafts[:2], 1):
             print(f"  {_c(_BCYAN, f'Draft {index}:')} {draft}")
         print(f"  {_c(_DIM, 'Decide:')} {_c(_BGREEN, f'wa-reply {review_id} 1')} {_c(_DIM, '|')} {_c(_BGOLD, f'wa-reply {review_id} 2')}")
+    return True
 
 def is_float_mode():
     """True when launched through the compact Termux:Float entry point."""
@@ -1389,87 +1412,80 @@ def _service_cli_background_events():
 async def _read_prompt_async():
     global _cli_pending_text, _auto_update_notified
     pending_idle_since = None
-    with patch_stdout():
-        prompt_task = asyncio.create_task(
-            _cli_prompt_session.prompt_async(
-                HTML('<style fg="#2fe39a"><b>J❯</b></style> ') if is_float_mode() else HTML('<style fg="#5af78e"><b>YOU</b></style>  <style fg="#606060">❯</style> '),
-                default=_cli_pending_text,
-                bottom_toolbar=_cli_bottom_toolbar,
-            )
+    prompt_task = asyncio.create_task(
+        _cli_prompt_session.prompt_async(
+            HTML('<style fg="#2fe39a"><b>J❯</b></style> ') if is_float_mode() else HTML('<style fg="#5af78e"><b>YOU</b></style>  <style fg="#606060">❯</style> '),
+            default=_cli_pending_text,
+            bottom_toolbar=_cli_bottom_toolbar,
         )
-        _cli_pending_text = ""
+    )
+    _cli_pending_text = ""
 
-        try:
-            while not prompt_task.done():
-                _service_cli_background_events()
+    try:
+        while not prompt_task.done():
+            _service_cli_background_events()
+            try:
+                command = voice_command_queue.get_nowait()
+            except queue.Empty:
+                command = None
+
+            if command and command.strip():
                 try:
-                    command = voice_command_queue.get_nowait()
-                except queue.Empty:
-                    command = None
+                    _cli_pending_text = _cli_prompt_session.default_buffer.text
+                except Exception:
+                    _cli_pending_text = ""
+                prompt_task.cancel()
+                try:
+                    await prompt_task
+                except asyncio.CancelledError:
+                    pass
+                return command.strip(), "voice"
 
-                if command and command.strip():
-                    # Preserve anything the user was midway through typing. The
-                    # voice command is handled now; their draft returns next prompt.
-                    try:
-                        _cli_pending_text = _cli_prompt_session.default_buffer.text
-                    except Exception:
-                        _cli_pending_text = ""
-                    prompt_task.cancel()
-                    try:
-                        await prompt_task
-                    except asyncio.CancelledError:
-                        pass
-                    return command.strip(), "voice"
+            active_future = globals().get("_active_task_future")
+            if active_future is not None and active_future.done():
+                try:
+                    _cli_pending_text = _cli_prompt_session.default_buffer.text
+                except Exception:
+                    _cli_pending_text = ""
+                prompt_task.cancel()
+                try: await prompt_task
+                except asyncio.CancelledError: pass
+                return "", "task_done"
 
-                active_future = globals().get("_active_task_future")
-                if active_future is not None and active_future.done():
-                    try:
-                        _cli_pending_text = _cli_prompt_session.default_buffer.text
-                    except Exception:
-                        _cli_pending_text = ""
-                    prompt_task.cancel()
-                    try: await prompt_task
-                    except asyncio.CancelledError: pass
-                    return "", "task_done"
-                # Apply updates silently only after a sustained idle window.
-                # Never restart while a task is running or while the user has a draft.
-                if _auto_updater.pending:
-                    try:
-                        has_draft = bool(_cli_prompt_session.default_buffer.text.strip())
-                    except Exception:
-                        has_draft = False
-                    active = globals().get("_active_task_future")
-                    if not has_draft and (active is None or active.done()):
-                        if pending_idle_since is None:
-                            pending_idle_since = time.monotonic()
-                        idle_seconds = max(30.0, float(os.getenv("JARVIS_UPDATE_IDLE_SECONDS", "90")))
-                        if time.monotonic() - pending_idle_since >= idle_seconds:
-                            if apply_auto_update_if_ready(approved=True):
-                                prompt_task.cancel()
-                                try:
-                                    await prompt_task
-                                except asyncio.CancelledError:
-                                    pass
-                                return "", "update_restart"
-                            pending_idle_since = None
-                    else:
+            if _auto_updater.pending:
+                try:
+                    has_draft = bool(_cli_prompt_session.default_buffer.text.strip())
+                except Exception:
+                    has_draft = False
+                active = globals().get("_active_task_future")
+                if not has_draft and (active is None or active.done()):
+                    if pending_idle_since is None:
+                        pending_idle_since = time.monotonic()
+                    idle_seconds = max(30.0, float(os.getenv("JARVIS_UPDATE_IDLE_SECONDS", "90")))
+                    if time.monotonic() - pending_idle_since >= idle_seconds:
+                        if apply_auto_update_if_ready(approved=True):
+                            prompt_task.cancel()
+                            try:
+                                await prompt_task
+                            except asyncio.CancelledError:
+                                pass
+                            return "", "update_restart"
                         pending_idle_since = None
                 else:
                     pending_idle_since = None
-                await asyncio.sleep(0.08)
+            else:
+                pending_idle_since = None
+            await asyncio.sleep(0.08)
 
-            _service_cli_background_events()
-            return (await prompt_task).strip(), "text"
-        finally:
-            # Ctrl+C cancels asyncio.run's main task. Always cancel and retrieve
-            # the child prompt task so prompt_toolkit cannot leak an unhandled
-            # KeyboardInterrupt/CancelledError during shutdown.
-            if not prompt_task.done():
-                prompt_task.cancel()
-            try:
-                await prompt_task
-            except BaseException:
-                pass
+        _service_cli_background_events()
+        return (await prompt_task).strip(), "text"
+    finally:
+        if not prompt_task.done():
+            prompt_task.cancel()
+        try:
+            await prompt_task
+        except BaseException:
+            pass
 
 
 def _answer_btw(question):
@@ -1540,6 +1556,7 @@ def main():
 
     init_services()
     start_auto_updater()
+    time.sleep(1.2)
 
     if is_float_mode():
         print(f"{_J}JARVIS FLOAT ONLINE{_R}")
@@ -1570,146 +1587,147 @@ def main():
     global _active_task_future, _auto_update_notified
     task_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jarvis-chat")
 
-    while True:
-        try:
-            while True:
-                summary = pop_notification()
-                if summary is None:
-                    break
-                print(f"\n{_c(_J, 'JARVIS')} {_tag('NOTIFICATIONS', _BMAG)} {_c(_WHITE, summary)}\n", flush=True)
-                _web_notify(summary)
-
-            if _deferred_prompts:
-                prompt, prompt_source = _deferred_prompts.pop(0)
-            else:
-                prompt, prompt_source = read_prompt()
-
-            if prompt_source == "update_restart":
-                print(f"\n{_tag('JARVIS UPDATE', _OK)} Update installed. Restarting into the new version...", flush=True)
-                shutdown()
-                restart_after_update()
-            if prompt_source == "task_done" or not prompt:
-                continue
-
-            update_command = re.fullmatch(r"/update(?:\s+(approve|later))?", prompt.strip(), re.IGNORECASE)
-            if update_command:
-                action = (update_command.group(1) or "").lower()
-                if not _auto_updater.pending:
-                    print(f"{_tag('JARVIS UPDATE', _ACCENT)} No update is pending.\n", flush=True)
-                elif action == "approve":
-                    if apply_auto_update_if_ready(approved=True):
-                        print(f"{_tag('JARVIS UPDATE', _OK)} Approved and installed. Restarting...", flush=True)
-                        shutdown()
-                        restart_after_update()
-                    else:
-                        print(f"{_tag('JARVIS UPDATE', _ERR)} Update could not be installed; see data/auto_update.log.\n", flush=True)
-                elif action == "later":
-                    _auto_update_notified = True
-                    print(f"{_tag('JARVIS UPDATE', _ACCENT)} Still queued; it will install automatically after a safe idle window.\n", flush=True)
-                else:
-                    print(_auto_updater.pending_summary() + "\n", flush=True)
-                continue
-
-            if prompt.lower() in {"exit", "quit"}:
-                shutdown()
-                print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
-                print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Offline{_R}       {_B}{_BCYAN}┃{_R}")
-                print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
-                break
-
-            # /clear is a terminal-display command, not a chat/database command.
-            if prompt.strip().lower() == "/clear":
-                if not clear_scrollback():
-                    print(f"{_tag('CLEAR', _WARN)} This terminal does not support scrollback clearing.", flush=True)
-                continue
-
-            if (
-                whatsapp_autoreply is not None
-                and whatsapp_autoreply.pending_group_replies
-                and prompt.strip().lower() in {"yes", "y", "confirm"}
-            ):
-                print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
-                continue
-            if (
-                whatsapp_autoreply is not None
-                and whatsapp_autoreply.pending_group_replies
-                and prompt.strip().lower() in {"no", "n", "cancel"}
-            ):
-                print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
-                continue
-
-            review_match = re.fullmatch(
-                r"wa-reply\s+(\S+)\s+(1|2|skip|none|no|0)",
-                prompt.strip(),
-                re.IGNORECASE,
-            )
-            if review_match:
-                if whatsapp_autoreply is None:
-                    print(f"{_tag('WHATSAPP', _WARN)} Auto-reply worker is not running.")
-                else:
-                    try:
-                        result = whatsapp_autoreply.resolve_reply_review(
-                            review_match.group(1), review_match.group(2)
-                        )
-                        print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {result}\n")
-                    except Exception as exc:
-                        print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {_c(_ERR, 'Could not process reply decision:')} {exc}\n")
-                continue
-
-            if prompt.lower() in MEMORY_VIEW_COMMANDS:
-                print_memory()
-                continue
-
-            if prompt_source == "voice":
-                print(f"{_c(_U, 'YOU')} {_c(_BGOLD, '(VOICE)')} {_c(_DIM, '❯')} {prompt}", flush=True)
-            dispatcher.fast_agent._last_used_tools = []
-            future = task_pool.submit(handle_prompt, prompt, prompt_source)
-            _active_task_future = future
-
-            # While the task runs, keep the input prompt alive. /btw is answered
-            # by a separate text-only Groq agent; ordinary messages are queued.
-            while True:
-                incoming, incoming_source = read_prompt()
-                if incoming_source == "task_done":
-                    break
-                if not incoming:
-                    continue
-                if incoming.strip().lower().startswith("/btw"):
-                    side_question = re.sub(r"^/btw\s*", "", incoming.strip(), flags=re.IGNORECASE)
-                    if not side_question:
-                        print(f"{_tag('JARVIS BTW', _ACCENT)} Usage: /btw your side question", flush=True)
-                        continue
-                    print(f"{_c(_U, 'YOU')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_question}", flush=True)
-                    side_answer = _answer_btw(side_question)
-                    print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\n", flush=True)
-                else:
-                    _deferred_prompts.append((incoming, incoming_source))
-                    print(f"{_tag('JARVIS', _ACCENT)} Current task is still running. Message queued; use {_c(_BCYAN, '/btw')} for a side question.", flush=True)
-
-            _active_task_future = None
+    with patch_stdout():
+        while True:
             try:
-                answer, should_speak = future.result()
+                while True:
+                    summary = pop_notification()
+                    if summary is None:
+                        break
+                    print(f"\n{_c(_J, 'JARVIS')} {_tag('NOTIFICATIONS', _BMAG)} {_c(_WHITE, summary)}\n", flush=True)
+                    _web_notify(summary)
+
+                if _deferred_prompts:
+                    prompt, prompt_source = _deferred_prompts.pop(0)
+                else:
+                    prompt, prompt_source = read_prompt()
+
+                if prompt_source == "update_restart":
+                    print(f"\n{_tag('JARVIS UPDATE', _OK)} Update installed. Restarting into the new version...", flush=True)
+                    shutdown()
+                    restart_after_update()
+                if prompt_source == "task_done" or not prompt:
+                    continue
+
+                update_command = re.fullmatch(r"/update(?:\s+(approve|later))?", prompt.strip(), re.IGNORECASE)
+                if update_command:
+                    action = (update_command.group(1) or "").lower()
+                    if not _auto_updater.pending:
+                        print(f"{_tag('JARVIS UPDATE', _ACCENT)} No update is pending.\n", flush=True)
+                    elif action == "approve":
+                        if apply_auto_update_if_ready(approved=True):
+                            print(f"{_tag('JARVIS UPDATE', _OK)} Approved and installed. Restarting...", flush=True)
+                            shutdown()
+                            restart_after_update()
+                        else:
+                            print(f"{_tag('JARVIS UPDATE', _ERR)} Update could not be installed; see data/auto_update.log.\n", flush=True)
+                    elif action == "later":
+                        _auto_update_notified = True
+                        print(f"{_tag('JARVIS UPDATE', _ACCENT)} Still queued; it will install automatically after a safe idle window.\n", flush=True)
+                    else:
+                        print(_auto_updater.pending_summary() + "\n", flush=True)
+                    continue
+
+                if prompt.lower() in {"exit", "quit"}:
+                    shutdown()
+                    print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
+                    print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Offline{_R}       {_B}{_BCYAN}┃{_R}")
+                    print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
+                    break
+
+                # /clear is a terminal-display command, not a chat/database command.
+                if prompt.strip().lower() == "/clear":
+                    if not clear_scrollback():
+                        print(f"{_tag('CLEAR', _WARN)} This terminal does not support scrollback clearing.", flush=True)
+                    continue
+
+                if (
+                    whatsapp_autoreply is not None
+                    and whatsapp_autoreply.pending_group_replies
+                    and prompt.strip().lower() in {"yes", "y", "confirm"}
+                ):
+                    print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {whatsapp_autoreply.confirm_latest_group_reply(True)}\n")
+                    continue
+                if (
+                    whatsapp_autoreply is not None
+                    and whatsapp_autoreply.pending_group_replies
+                    and prompt.strip().lower() in {"no", "n", "cancel"}
+                ):
+                    print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {whatsapp_autoreply.confirm_latest_group_reply(False)}\n")
+                    continue
+
+                review_match = re.fullmatch(
+                    r"wa-reply\s+(\S+)\s+(1|2|skip|none|no|0)",
+                    prompt.strip(),
+                    re.IGNORECASE,
+                )
+                if review_match:
+                    if whatsapp_autoreply is None:
+                        print(f"{_tag('WHATSAPP', _WARN)} Auto-reply worker is not running.")
+                    else:
+                        try:
+                            result = whatsapp_autoreply.resolve_reply_review(
+                                review_match.group(1), review_match.group(2)
+                            )
+                            print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {result}\n")
+                        except Exception as exc:
+                            print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {_c(_ERR, 'Could not process reply decision:')} {exc}\n")
+                    continue
+
+                if prompt.lower() in MEMORY_VIEW_COMMANDS:
+                    print_memory()
+                    continue
+
+                if prompt_source == "voice":
+                    print(f"{_c(_U, 'YOU')} {_c(_BGOLD, '(VOICE)')} {_c(_DIM, '❯')} {prompt}", flush=True)
+                dispatcher.fast_agent._last_used_tools = []
+                future = task_pool.submit(handle_prompt, prompt, prompt_source)
+                _active_task_future = future
+
+                # While the task runs, keep the input prompt alive. /btw is answered
+                # by a separate text-only Groq agent; ordinary messages are queued.
+                while True:
+                    incoming, incoming_source = read_prompt()
+                    if incoming_source == "task_done":
+                        break
+                    if not incoming:
+                        continue
+                    if incoming.strip().lower().startswith("/btw"):
+                        side_question = re.sub(r"^/btw\s*", "", incoming.strip(), flags=re.IGNORECASE)
+                        if not side_question:
+                            print(f"{_tag('JARVIS BTW', _ACCENT)} Usage: /btw your side question", flush=True)
+                            continue
+                        print(f"{_c(_U, 'YOU')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_question}", flush=True)
+                        side_answer = _answer_btw(side_question)
+                        print(f"{_c(_J, 'JARVIS')} {_c(_BBLUE, '(BTW)')} {_c(_DIM, '❯')} {side_answer}\n", flush=True)
+                    else:
+                        _deferred_prompts.append((incoming, incoming_source))
+                        print(f"{_tag('JARVIS', _ACCENT)} Current task is still running. Message queued; use {_c(_BCYAN, '/btw')} for a side question.", flush=True)
+
+                _active_task_future = None
+                try:
+                    answer, should_speak = future.result()
+                except Exception as exc:
+                    answer, should_speak = f"[ERROR] {type(exc).__name__}: {exc}", False
+
+                if not answer:
+                    continue
+
+                print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {answer}\n", flush=True)
+                if should_speak:
+                    speak(answer, user_prompt=prompt)
+
+            except KeyboardInterrupt:
+                shutdown()
+                print(f"\n{_c(_J, 'JARVIS OFFLINE')}")
+                break
+            except EOFError:
+                shutdown()
+                print(f"\n{_c(_J, 'JARVIS OFFLINE')}")
+                break
             except Exception as exc:
-                answer, should_speak = f"[ERROR] {type(exc).__name__}: {exc}", False
-
-            if not answer:
-                continue
-
-            print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {answer}\n", flush=True)
-            if should_speak:
-                speak(answer, user_prompt=prompt)
-
-        except KeyboardInterrupt:
-            shutdown()
-            print(f"\n{_c(_J, 'JARVIS OFFLINE')}")
-            break
-        except EOFError:
-            shutdown()
-            print(f"\n{_c(_J, 'JARVIS OFFLINE')}")
-            break
-        except Exception as exc:
-            _active_task_future = None
-            print(f"\n{_tag('FATAL ERROR', _ERR)} {exc}\n")
+                _active_task_future = None
+                print(f"\n{_tag('FATAL ERROR', _ERR)} {exc}\n")
 
 if __name__ == "__main__":
     main()
