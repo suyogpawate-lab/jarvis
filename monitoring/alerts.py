@@ -122,6 +122,9 @@ def is_risky_command(cmd):
 _URGENT_NOTIF = re.compile(
     r"\b(?:incoming call|missed call|calling you|urgent|emergency|asap|"
     r"security alert|suspicious|unauthorized|unauthorised|fraud|"
+    r"one[- ]time password|\\botp\\b|verification code|login attempt|"
+    r"account (?:locked|compromised)|password reset|bank (?:debit|credit)|"
+    r"(?:debit|credit) card (?:transaction|charge)|payment (?:failed|declined|received)|"
     r"battery (?:low|critical)|overheat\w*)\b",
     re.IGNORECASE,
 )
