@@ -61,8 +61,9 @@ rather than replacing the device's default Phone app.
 2. Tap **Enable local JARVIS calls**. Keep the companion's persistent
    "JARVIS calling ready" notification enabled.
 3. Keep the Termux HTTP bridge running for immediate event-triggered calls.
-   Scheduled wake-up alarms are stored by Android and do not require Termux
-   to remain running after scheduling.
+   Scheduled wake-up alarms are held by Android's AlarmManager and do not require
+   Termux to remain running after scheduling. Android clears alarms on reboot,
+   so this first version requires wake-ups to be scheduled again after a reboot.
 
 ### Local HTTP API
 
