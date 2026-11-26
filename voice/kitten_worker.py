@@ -26,8 +26,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("JARVIS_KITTEN_PORT", "18765"))
-WORKER_BUILD = "kitten-sentence-pauses-v2"
+PORT = 18766
+WORKER_BUILD = "kitten-sentence-pauses-v3"
 MODEL_ID = os.environ.get("JARVIS_KITTEN_MODEL", "KittenML/kitten-tts-2-pico")
 OUTPUT = Path(__file__).resolve().parents[1] / "cache" / "kitten_tts" / "worker"
 OUTPUT.mkdir(parents=True, exist_ok=True)
