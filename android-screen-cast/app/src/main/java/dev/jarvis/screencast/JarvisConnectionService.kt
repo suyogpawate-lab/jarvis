@@ -167,7 +167,7 @@ class JarvisConnectionService : ConnectionService() {
         }
 
         override fun onAnswer(videoState: Int) {
-            startAudio(appContext)
+            startAudio(appContext, message)
         }
 
         override fun onReject() {
