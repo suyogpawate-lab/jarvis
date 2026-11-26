@@ -1729,6 +1729,11 @@ def main():
                 if prompt_source == "voice":
                     print(f"{_c(_U, 'YOU')} {_c(_BGOLD, '(VOICE)')} {_c(_DIM, '❯')} {prompt}", flush=True)
                 dispatcher.fast_agent._last_used_tools = []
+                if prompt_source == "voice" and voice_listener is not None:
+                    try:
+                        voice_listener.begin_voice_turn()
+                    except Exception as exc:
+                        print(f"{_tag('VOICE WARN', _WARN)} Could not mark voice turn as processing: {exc}", flush=True)
                 future = task_pool.submit(handle_prompt, prompt, prompt_source)
                 _active_task_future = future
 
@@ -1763,16 +1768,16 @@ def main():
                 if prompt_source == "voice" and answer:
                     should_speak = True
 
-                if not answer:
-                    continue
-
-                # Start a new 20-second follow-up window after every completed
-                # voice response, not while the model is still generating it.
+                # End processing and start a fresh 20-second follow-up window
+                # after every completed voice input, even if it produced no text.
                 if prompt_source == "voice" and voice_listener is not None:
                     try:
                         voice_listener.keep_conversation_alive()
                     except Exception as exc:
                         print(f"{_tag('VOICE WARN', _WARN)} Could not refresh conversation timeout: {exc}", flush=True)
+
+                if not answer:
+                    continue
 
                 print(f"{_c(_J, 'JARVIS')} {_c(_DIM, '❯')} {answer}\n", flush=True)
                 if should_speak:
