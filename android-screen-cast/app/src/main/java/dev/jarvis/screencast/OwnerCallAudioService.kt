@@ -100,20 +100,18 @@ class OwnerCallAudioService : Service() {
     }
 
     private fun runAudioSession() {
-        var input: BufferedInputStream? = null
-        var output: java.io.OutputStream? = null
         try {
             val token = JarvisConnectionService.audioToken(this)
             val connection = Socket()
             socket = connection
             connection.tcpNoDelay = true
             connection.connect(InetSocketAddress("127.0.0.1", 21344), 7000)
-            input = BufferedInputStream(connection.getInputStream())
-            output = connection.getOutputStream()
+            val socketInput = BufferedInputStream(connection.getInputStream())
+            val socketOutput = connection.getOutputStream()
             val hello = JSONObject().put("token", token).put("protocol", 1).toString() + "\n"
-            output.write(hello.toByteArray(Charsets.UTF_8))
-            output.flush()
-            val response = JSONObject(readLine(input))
+            socketOutput.write(hello.toByteArray(Charsets.UTF_8))
+            socketOutput.flush()
+            val response = JSONObject(readLine(socketInput))
             if (!response.optBoolean("ok")) throw IllegalStateException(response.optString("error", "call bridge rejected connection"))
 
             val minIn = AudioRecord.getMinBufferSize(
@@ -166,8 +164,8 @@ class OwnerCallAudioService : Service() {
                     if (count <= 0) break
                     if (count < frame.size) java.util.Arrays.fill(frame, count, frame.size, 0.toByte())
                     try {
-                        output.write(frame)
-                        output.flush()
+                        socketOutput.write(frame)
+                        socketOutput.flush()
                     } catch (_: Exception) {
                         break
                     }
@@ -177,7 +175,7 @@ class OwnerCallAudioService : Service() {
             }
 
             val downlink = ByteArray(FRAME_BYTES)
-            while (running.get() && readExactly(input, downlink)) {
+            while (running.get() && readExactly(socketInput, downlink)) {
                 var offset = 0
                 while (offset < downlink.size && running.get()) {
                     val written = track.write(downlink, offset, downlink.size - offset, AudioTrack.WRITE_BLOCKING)
