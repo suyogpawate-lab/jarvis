@@ -218,6 +218,6 @@ class Server(socketserver.TCPServer):
     allow_reuse_address = True
 
 
-print(f"[Kitten] READY at {HOST}:{PORT}", flush=True)
 with Server((HOST, PORT), Handler) as server:
+    print(f"[Kitten] READY at {HOST}:{PORT}", flush=True)
     server.serve_forever()
