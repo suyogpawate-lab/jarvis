@@ -3,6 +3,7 @@ package dev.jarvis.screencast
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
@@ -15,43 +16,87 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
     private val projectionRequest = 7021
+    private val callPermissionRequest = 7022
     private lateinit var status: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(32, 32, 32, 32) }
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(32, 32, 32, 32)
+        }
         status = TextView(this).apply {
-            text = "JARVIS live screen cast\n\nStream: 127.0.0.1:21340\nControl: 127.0.0.1:21341\nOwner calls: 127.0.0.1:21342\n\nCalling requires enabling this local service once. Calls are generated on this device; no SIM or remote caller is used."
-            textSize = 16f; setPadding(0, 0, 0, 24)
+            text = "JARVIS Android companion\n\n" +
+                "Calls are handled by your existing Phone app.\n\n" +
+                "One-time setup:\n" +
+                "1. Tap Enable JARVIS Phone calls below.\n" +
+                "2. Allow microphone access.\n" +
+                "3. In Phone app settings, enable the J.A.R.V.I.S. calling account.\n\n" +
+                "To call JARVIS: open Phone, select the J.A.R.V.I.S. account, and dial 0.\n" +
+                "Incoming JARVIS calls will appear in the Phone app.\n\n" +
+                "Local audio bridge: 127.0.0.1:21344"
+            textSize = 16f
+            setPadding(0, 0, 0, 24)
         }
         layout.addView(status)
-        layout.addView(button("Enable local JARVIS calls") {
-            val service = Intent(this, OwnerCallBridgeService::class.java).apply {
-                action = OwnerCallBridgeService.ACTION_START
-            }
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
-            Toast.makeText(this, "Local JARVIS calling service started.", Toast.LENGTH_SHORT).show()
+        layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
+        layout.addView(button("Open Android default-app settings") {
+            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
         })
-        layout.addView(button("Call JARVIS") {
-            val started = JarvisConnectionService.startOutgoingCall(this)
-            if (started) {
-                startActivity(Intent(this, OutgoingCallActivity::class.java))
-            } else {
-                Toast.makeText(this, "Could not start the local JARVIS call. Check that local calling is enabled.", Toast.LENGTH_LONG).show()
-            }
+        layout.addView(button("Enable screen control") {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
-        layout.addView(button("Enable screen control") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
         layout.addView(button("Start live cast") {
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             startActivityForResult(manager.createScreenCaptureIntent(), projectionRequest)
         })
         layout.addView(button("Stop live cast") {
-            stopService(Intent(this, ScreenCastService::class.java)); status.text = "Screen cast stopped."
+            stopService(Intent(this, ScreenCastService::class.java))
+            status.text = "Screen cast stopped."
         })
         setContentView(layout)
+        JarvisConnectionService.registerAccount(this)
     }
 
-    private fun button(label: String, action: () -> Unit): Button = Button(this).apply { text = label; setOnClickListener { action() } }
+    private fun enableCalling() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), callPermissionRequest)
+            return
+        }
+        startCallingService()
+    }
+
+    private fun startCallingService() {
+        JarvisConnectionService.registerAccount(this)
+        val service = Intent(this, OwnerCallBridgeService::class.java).apply {
+            action = OwnerCallBridgeService.ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
+        Toast.makeText(
+            this,
+            "JARVIS calling service enabled. Now enable J.A.R.V.I.S. in Phone app calling-account settings.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == callPermissionRequest) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCallingService()
+            } else {
+                Toast.makeText(this, "Microphone permission is required for two-way calls.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun button(label: String, action: () -> Unit): Button =
+        Button(this).apply { text = label; setOnClickListener { action() } }
 
     @Deprecated("Activity result API retained for Android 10 compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
