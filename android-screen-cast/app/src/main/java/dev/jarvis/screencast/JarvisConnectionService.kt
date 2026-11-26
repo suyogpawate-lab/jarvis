@@ -45,6 +45,22 @@ class JarvisConnectionService : ConnectionService() {
             telecom.registerPhoneAccount(account)
         }
 
+        fun incomingCall(context: Context, message: String, reason: String): Boolean {
+            return try {
+                registerAccount(context)
+                val extras = Bundle().apply {
+                    putString(EXTRA_MESSAGE, message.take(1200))
+                    putString(EXTRA_REASON, reason.take(100))
+                }
+                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                telecom.addNewIncomingCall(accountHandle(context), extras)
+                true
+            } catch (error: Exception) {
+                android.util.Log.e("JARVIS-CALL", "Could not report incoming call to Telecom", error)
+                false
+            }
+        }
+
         fun audioToken(context: Context): String {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val existing = prefs.getString(TOKEN_KEY, null)
