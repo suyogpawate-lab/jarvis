@@ -14,7 +14,7 @@ class AIProviderTests(unittest.TestCase):
         )
         packed = compact_local_context(prompt)
         self.assertIn("User prefers concise answers", packed)
-        self.assertIn("USER: second", packed)
+        self.assertIn("USER: third", packed)
         self.assertIn("What did I ask you to remember?", packed)
         self.assertNotIn("USER: first", packed)
 
@@ -24,6 +24,10 @@ class AIProviderTests(unittest.TestCase):
 
     def test_unknown_provider_defaults_to_groq(self):
         self.assertEqual(AIProviderRouter({"JARVIS_AI_PROVIDER": "unknown"}).active_provider(), "groq")
+
+    def test_local_model_default_matches_bundled_ollama_alias(self):
+        config = AIProviderRouter({"JARVIS_AI_PROVIDER": "local"}).config("local")
+        self.assertEqual(config["model"], "jarvis-lfm")
 
     def test_local_tool_calling_is_off_by_default(self):
         self.assertFalse(AIProviderRouter({"JARVIS_AI_PROVIDER": "local"}).supports_tools())
