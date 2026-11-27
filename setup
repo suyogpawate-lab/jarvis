@@ -407,7 +407,7 @@ def step_ai(env):
     else:
         prefix = "JARVIS_LOCAL_AI" if selected == "local" else "JARVIS_CUSTOM_AI"
         default_url = "http://127.0.0.1:11434/v1" if selected == "local" else "https://api.example.com/v1"
-        default_model = "lfm2.5-350m" if selected == "local" else ""
+        default_model = "jarvis-lfm" if selected == "local" else ""
         base_url = ask("OpenAI-compatible base URL (must end in /v1)",
                        default=env.get(prefix + "_BASE_URL", default_url), allow_empty=False).rstrip("/")
         if not re.match(r"^https?://[^ ]+$", base_url):
@@ -416,7 +416,7 @@ def step_ai(env):
         model = ask("Model ID", default=env.get(prefix + "_MODEL", default_model), allow_empty=False)
         api_default = env.get(prefix + "_API_KEY", "ollama" if selected == "local" else "")
         api_key = ask("API key (hidden; Enter keeps current)", default=api_default,
-                      secret=True, allow_empty=(selected == "local"))
+                      secret=True, allow_empty=True)
         if selected == "local" and not api_key:
             api_key = "ollama"
         env.set(prefix + "_BASE_URL", base_url)
