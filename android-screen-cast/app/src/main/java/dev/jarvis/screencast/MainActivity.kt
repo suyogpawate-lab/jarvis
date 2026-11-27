@@ -32,8 +32,9 @@ class MainActivity : Activity() {
                 "One-time setup:\n" +
                 "1. Tap Enable JARVIS Phone calls below.\n" +
                 "2. Allow microphone access.\n" +
-                "3. In Phone app settings, enable the J.A.R.V.I.S. calling account.\n\n" +
-                "To call JARVIS: open Phone, select the J.A.R.V.I.S. account, and dial 0.\n" +
+                "3. Tap Open calling-account settings below. Set calls to Ask every time.\n\n" +
+                "To call JARVIS: open Phone, dial 0, tap Call, then choose J.A.R.V.I.S. in the account chooser.\n" +
+                "Do not choose the SIM for 0; the SIM dialer treats it as an MMI code.\n" +
                 "Incoming JARVIS calls will appear in the Phone app.\n\n" +
                 "Local audio bridge: 127.0.0.1:21344"
             textSize = 16f
@@ -41,6 +42,7 @@ class MainActivity : Activity() {
         }
         layout.addView(status)
         layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
+        layout.addView(button("Open calling-account settings") { openCallingAccountSettings() })
         layout.addView(button("Enable screen control") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
@@ -54,6 +56,20 @@ class MainActivity : Activity() {
         })
         setContentView(layout)
         JarvisConnectionService.registerAccount(this)
+    }
+
+    private fun openCallingAccountSettings() {
+        val intent = Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+            Toast.makeText(
+                this,
+                "Open Calling accounts, then set outgoing calls to Ask every time.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun enableCalling() {
@@ -72,7 +88,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
         Toast.makeText(
             this,
-            "JARVIS calling service enabled. Now enable J.A.R.V.I.S. in Phone app calling-account settings.",
+            "JARVIS calling service enabled. Open calling-account settings and choose Ask every time.",
             Toast.LENGTH_LONG
         ).show()
     }
