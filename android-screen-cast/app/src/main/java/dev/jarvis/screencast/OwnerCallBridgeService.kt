@@ -29,7 +29,9 @@ class OwnerCallBridgeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        JarvisConnectionService.registerAccount(this)
+        // PhoneAccount registration is performed and guarded by MainActivity
+        // before this service is started. Do not repeat it here: unsupported
+        // Telecom implementations must not crash the foreground service.
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(NotificationChannel(
