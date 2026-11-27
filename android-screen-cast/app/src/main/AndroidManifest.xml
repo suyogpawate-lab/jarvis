@@ -5,60 +5,26 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
-    <application
-        android:allowBackup="false"
-        android:label="JARVIS Screen Cast"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:usesCleartextTraffic="true">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+    <application android:allowBackup="false" android:label="JARVIS Screen Cast"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="true">
+        <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service
-            android:name=".ScreenCastService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
-        <service
-            android:name=".OwnerCallBridgeService"
-            android:exported="false"
-            android:foregroundServiceType="phoneCall" />
-        <service
-            android:name=".OwnerCallAudioService"
-            android:exported="false" />
-        <service
-            android:name=".JarvisConnectionService"
-            android:exported="true"
+        <service android:name=".ScreenCastService" android:exported="false" android:foregroundServiceType="mediaProjection" />
+        <service android:name=".OwnerCallBridgeService" android:exported="false" android:foregroundServiceType="phoneCall" />
+        <service android:name=".OwnerCallAudioService" android:exported="false" />
+        <service android:name=".JarvisConnectionService" android:exported="true"
             android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
-            <intent-filter>
-                <action android:name="android.telecom.ConnectionService" />
-            </intent-filter>
+            <intent-filter><action android:name="android.telecom.ConnectionService" /></intent-filter>
         </service>
-        <service
-            android:name=".JarvisCallRedirectionService"
-            android:exported="true"
-            android:permission="android.permission.BIND_CALL_REDIRECTION_SERVICE">
-            <intent-filter>
-                <action android:name="android.telecom.CallRedirectionService" />
-            </intent-filter>
-        </service>
-        <receiver
-            android:name=".OwnerCallAlarmReceiver"
-            android:exported="false" />
-        <service
-            android:name=".ControlAccessibilityService"
-            android:label="JARVIS Screen Control"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
+        <receiver android:name=".OwnerCallAlarmReceiver" android:exported="false" />
+        <service android:name=".ControlAccessibilityService" android:label="JARVIS Screen Control"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config" />
         </service>
     </application>
 </manifest>
