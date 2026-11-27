@@ -16,10 +16,13 @@
         </activity>
         <service android:name=".ScreenCastService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <service android:name=".OwnerCallBridgeService" android:exported="false" android:foregroundServiceType="phoneCall" />
-        <!-- Android 10 requires microphone foreground-service classification
-             when this app captures audio after the Phone UI backgrounds it. -->
+        <!-- PHONE_CALL is supported on Android 10 (API 29) and is the
+             correct foreground-service type for this self-managed Telecom
+             call. The MICROPHONE type was added in API 30; declaring it on an
+             Android 10 device can prevent the audio service from starting
+             correctly. MANAGE_OWN_CALLS is declared above. -->
         <service android:name=".OwnerCallAudioService" android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="phoneCall" />
         <service android:name=".JarvisConnectionService" android:exported="true"
             android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
             <intent-filter><action android:name="android.telecom.ConnectionService" /></intent-filter>
