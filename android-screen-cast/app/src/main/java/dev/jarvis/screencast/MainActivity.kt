@@ -8,6 +8,7 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.telecom.TelecomManager
 import android.provider.Settings
 import android.view.Gravity
 import android.widget.Button
@@ -45,7 +46,7 @@ class MainActivity : Activity() {
         layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
         layout.addView(button("Create JARVIS Phone contact") { setupJarvisContact() })
         layout.addView(button("Open calling-account settings") { openCallingAccountSettings() })
-        layout.addView(button("Open Phone app with JARVIS number") { openPhoneDialerForJarvis() })
+        layout.addView(button("Call JARVIS (local Phone UI)") { openPhoneDialerForJarvis() })
         layout.addView(button("Enable screen control") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
@@ -62,12 +63,31 @@ class MainActivity : Activity() {
     }
 
     private fun openPhoneDialerForJarvis() {
-        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", "+12025550147", null))
+        // Do not use ACTION_DIAL here: it opens a generic dialer and can send
+        // this virtual identifier through the user's carrier SIM. Explicitly
+        // place the call through JARVIS's registered local PhoneAccount.
+        if (checkSelfPermission(android.Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.CALL_PHONE, android.Manifest.permission.RECORD_AUDIO),
+                callPermissionRequest
+            )
+            return
+        }
         try {
-            startActivity(dialIntent)
+            JarvisConnectionService.registerAccount(this)
+            val telecom = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+            val extras = Bundle().apply {
+                putParcelable(
+                    TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE,
+                    JarvisConnectionService.accountHandle(this@MainActivity)
+                )
+            }
+            telecom.placeCall(Uri.fromParts("tel", "+12025550147", null), extras)
+            status.text = "Starting a local JARVIS call through the JARVIS Phone account. The carrier SIM is not used."
         } catch (error: Exception) {
-            Toast.makeText(this, "No Phone app is available to open the JARVIS number.", Toast.LENGTH_LONG).show()
-            android.util.Log.e("JARVIS-CALL", "Could not open the Phone app", error)
+            status.text = "Could not start the local JARVIS call. No carrier fallback was attempted."
+            Toast.makeText(this, "Local JARVIS call could not start: " + error.javaClass.simpleName, Toast.LENGTH_LONG).show()
+            android.util.Log.e("JARVIS-CALL", "Explicit local Telecom call failed", error)
         }
     }
 
@@ -86,8 +106,12 @@ class MainActivity : Activity() {
     }
 
     private fun enableCalling() {
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), callPermissionRequest)
+        val missing = arrayOf(
+            android.Manifest.permission.RECORD_AUDIO,
+            android.Manifest.permission.CALL_PHONE
+        ).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) {
+            requestPermissions(missing.toTypedArray(), callPermissionRequest)
             return
         }
         startCallingService()
@@ -165,10 +189,12 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             callPermissionRequest -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                val audioGranted = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                val callGranted = checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+                if (audioGranted && callGranted) {
                     startCallingService()
                 } else {
-                    Toast.makeText(this, "Microphone permission is required for two-way calls.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Microphone and phone-call permissions are required for local JARVIS calls.", Toast.LENGTH_LONG).show()
                 }
             }
             contactsPermissionRequest -> {

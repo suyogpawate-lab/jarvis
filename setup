@@ -361,6 +361,118 @@ def step_keys(env):
         ok("Optional keys saved.")
 
 
+# ───────────────────────────── AI provider selection ─────────────────────────────
+
+def test_compatible_ai(base_url, model, api_key):
+    """Return (True|False|None, message) for an OpenAI-compatible endpoint."""
+    payload = json.dumps({
+        "model": model, "messages": [{"role": "user", "content": "Reply with READY only."}],
+        "temperature": 0, "max_tokens": 8, "stream": False,
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json", "User-Agent": "jarvis-setup"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions", data=payload,
+        headers=headers, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            return (response.status == 200, f"HTTP {response.status}")
+    except urllib.error.HTTPError as exc:
+        return (False if exc.code in (401, 403, 404) else None, f"HTTP {exc.code}")
+    except (urllib.error.URLError, OSError) as exc:
+        return None, f"could not reach endpoint ({exc})"
+
+
+def step_ai(env):
+    heading("Main AI provider")
+    current = (env.get("JARVIS_AI_PROVIDER", "groq") or "groq").strip().lower()
+    print("  1) Groq (recommended; full tool calling)")
+    print("  2) Local AI (Ollama / OpenAI-compatible local server)")
+    print("  3) OmniRoute (existing local gateway)")
+    print("  4) Custom OpenAI-compatible AI")
+    choices = {"1": "groq", "2": "local", "3": "omniroute", "4": "custom",
+               "groq": "groq", "local": "local", "omniroute": "omniroute", "custom": "custom"}
+    default = {"groq": "1", "local": "2", "omniroute": "3", "custom": "4"}.get(current, "1")
+    selected = choices.get(ask("Select the primary chat provider", default=default).lower(), current)
+    if selected not in {"groq", "local", "omniroute", "custom"}:
+        selected = "groq"
+
+    if selected == "groq":
+        if not split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY")):
+            warn("No Groq key is configured. Run jarvis-setup keys before using Groq.")
+        env.set("JARVIS_AI_PROVIDER", "groq")
+        env.save()
+        ok("Groq selected as the primary agent.")
+    elif selected == "omniroute":
+        base_url = ask("OmniRoute base URL", default=env.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1"), allow_empty=False).rstrip("/")
+        model = ask("OmniRoute model ID", default=env.get("OMNIROUTE_COMPLEX_MODEL", "auto/best-reasoning"), allow_empty=False)
+        api_key = ask("OmniRoute API key (hidden; Enter keeps current)", default=(env.get("OMNIROUTE_API_KEY", "") or "any-string"), secret=True)
+        good, detail = test_compatible_ai(base_url, model, api_key)
+        if good:
+            ok(f"OmniRoute endpoint responded ({detail}).")
+        elif good is None:
+            warn(f"Could not verify OmniRoute ({detail}). Saving the configuration anyway.")
+        else:
+            warn(f"OmniRoute test failed ({detail}).")
+            if not yes_no("Save this provider anyway?", default=False):
+                return
+        env.set("OMNIROUTE_BASE_URL", base_url)
+        env.set("OMNIROUTE_COMPLEX_MODEL", model)
+        env.set("OMNIROUTE_API_KEY", api_key)
+        env.set("JARVIS_AI_PROVIDER", "omniroute")
+        env.save()
+        ok("OmniRoute selected for primary chat. Tool actions remain routed through Groq.")
+    else:
+        prefix = "JARVIS_LOCAL_AI" if selected == "local" else "JARVIS_CUSTOM_AI"
+        default_url = "http://127.0.0.1:11434/v1" if selected == "local" else "https://api.example.com/v1"
+        default_model = "jarvis-lfm" if selected == "local" else ""
+        base_url = ask("OpenAI-compatible base URL (must end in /v1)",
+                       default=env.get(prefix + "_BASE_URL", default_url), allow_empty=False).rstrip("/")
+        if not re.match(r"^https?://[^ ]+$", base_url):
+            warn("Use a complete http(s) base URL. Provider selection was not changed.")
+            return
+        model = ask("Model ID", default=env.get(prefix + "_MODEL", default_model), allow_empty=False)
+        api_default = env.get(prefix + "_API_KEY", "ollama" if selected == "local" else "")
+        api_key = ask("API key (hidden; Enter keeps current)", default=api_default,
+                      secret=True, allow_empty=True)
+        if selected == "local" and not api_key:
+            api_key = "ollama"
+        env.set(prefix + "_BASE_URL", base_url)
+        env.set(prefix + "_MODEL", model)
+        env.set(prefix + "_API_KEY", api_key)
+        good, detail = test_compatible_ai(base_url, model, api_key)
+        if good:
+            ok(f"{selected.title()} endpoint responded ({detail}).")
+        elif good is None:
+            warn(f"Could not verify the endpoint ({detail}). Saving the configuration anyway.")
+        else:
+            warn(f"Endpoint test failed ({detail}).")
+            if not yes_no("Save this provider anyway?", default=False):
+                return
+        tools_var = prefix + "_TOOL_CALLING"
+        tools_enabled = yes_no(
+            "Enable function/tool calling for this model? Only enable if it returns valid tool calls.",
+            default=env.get(tools_var, "0") == "1",
+        )
+        env.set(tools_var, "1" if tools_enabled else "0")
+        if selected == "local" and model.lower() in {"lfm2.5-350m", "jarvis-lfm"} and tools_enabled:
+            warn("LFM2.5 350M is not a reliable tool orchestrator; chat-only is recommended.")
+        env.set("JARVIS_AI_PROVIDER", selected)
+        env.save()
+        ok(f"{selected.title()} selected as the primary chat provider.")
+
+    fallback_default = (env.get("JARVIS_AI_FALLBACK_PROVIDER", "local") or "local").lower() == "local"
+    use_fallback = yes_no(
+        "Use configured Local AI as a text-only fallback when Groq is unavailable?",
+        default=fallback_default,
+    )
+    env.set("JARVIS_AI_FALLBACK_PROVIDER", "local" if use_fallback else "none")
+    env.save()
+    info("Provider changes apply after restarting JARVIS. Actions are never replayed through fallback.")
+
+
 # ───────────────────────────── Coding agent ─────────────────────────────
 
 def step_coding(env):
@@ -1383,6 +1495,16 @@ def show_status():
 
     groq = split_keys(env.get("GROQ_API_KEYS") or env.get("GROQ_API_KEY"))
     (ok if groq else warn)(f"Groq keys: {len(groq)}")
+    selected_ai = (env.get("JARVIS_AI_PROVIDER", "groq") or "groq").lower()
+    info(f"Primary AI provider: {selected_ai}")
+    if selected_ai == "local":
+        info(f"Local model: {env.get('JARVIS_LOCAL_AI_MODEL', 'jarvis-lfm')} at {env.get('JARVIS_LOCAL_AI_BASE_URL', 'http://127.0.0.1:11434/v1')}")
+        info(f"Local tool calling: {'enabled' if env.get('JARVIS_LOCAL_AI_TOOL_CALLING', '0') == '1' else 'disabled (chat only)'}")
+    elif selected_ai == "omniroute":
+        info(f"OmniRoute model: {env.get('OMNIROUTE_COMPLEX_MODEL', 'auto/best-reasoning')} at {env.get('OMNIROUTE_BASE_URL', 'http://127.0.0.1:20128/v1')}")
+    elif selected_ai == "custom":
+        info(f"Custom model: {env.get('JARVIS_CUSTOM_AI_MODEL', '(not set)')} at {env.get('JARVIS_CUSTOM_AI_BASE_URL', '(not set)')}")
+    info(f"Groq text fallback: {env.get('JARVIS_AI_FALLBACK_PROVIDER', 'local')}")
     for var in ("OMNIROUTE_API_KEY",):
         if env.get(var):
             ok(f"{var}: {mask(env.get(var))}")
@@ -1449,6 +1571,7 @@ def show_status():
 
 STEPS = {
     "keys": step_keys,
+    "ai": step_ai,
     "coding": step_coding,
     "gmail": step_gmail,
     "whatsapp": step_whatsapp,

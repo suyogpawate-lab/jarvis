@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <application android:allowBackup="false" android:label="JARVIS Screen Cast"
@@ -15,7 +16,10 @@
         </activity>
         <service android:name=".ScreenCastService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <service android:name=".OwnerCallBridgeService" android:exported="false" android:foregroundServiceType="phoneCall" />
-        <service android:name=".OwnerCallAudioService" android:exported="false" />
+        <!-- Android 10 requires microphone foreground-service classification
+             when this app captures audio after the Phone UI backgrounds it. -->
+        <service android:name=".OwnerCallAudioService" android:exported="false"
+            android:foregroundServiceType="microphone" />
         <service android:name=".JarvisConnectionService" android:exported="true"
             android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
             <intent-filter><action android:name="android.telecom.ConnectionService" /></intent-filter>
