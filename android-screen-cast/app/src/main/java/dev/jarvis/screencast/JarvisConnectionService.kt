@@ -282,12 +282,6 @@ class JarvisConnectionService : ConnectionService() {
         }
 
         private var callbackRegistered = false
-        private val localListener = object : Connection.Listener() {
-            override fun onDestroyed(connection: Connection) {
-                unregisterRemoteCallback()
-                removeConnectionListener(this)
-            }
-        }
 
         init {
             setAddress(remote.address, remote.addressPresentation)
@@ -303,7 +297,6 @@ class JarvisConnectionService : ConnectionService() {
             remote.extras?.let { setExtras(it) }
             remote.registerCallback(callback)
             callbackRegistered = true
-            addConnectionListener(localListener)
             syncState(remote.state)
         }
 
@@ -343,10 +336,12 @@ class JarvisConnectionService : ConnectionService() {
 
         override fun onReject() {
             remote.reject()
+            finish(DisconnectCause(DisconnectCause.REJECTED))
         }
 
         override fun onDisconnect() {
             remote.disconnect()
+            finish(DisconnectCause(DisconnectCause.LOCAL))
         }
 
         override fun onHold() {
@@ -359,6 +354,7 @@ class JarvisConnectionService : ConnectionService() {
 
         override fun onAbort() {
             remote.abort()
+            finish(DisconnectCause(DisconnectCause.CANCELED))
         }
 
         override fun onPlayDtmfTone(digit: Char) {
