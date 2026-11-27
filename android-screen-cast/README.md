@@ -13,30 +13,30 @@ carrier number, public VoIP service, or remote call provider.
 
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
-3. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
-   a contact named **JARVIS**, with reserved virtual number **+1 202-555-0147** and JARVIS set as
-   that contact's preferred calling account.
-4. Open **Calling accounts** from the companion app and enable **J.A.R.V.I.S.**
-   once. Leave the SIM as the default outgoing account; do not select Ask every
-   time and do not make JARVIS the global default.
-5. Keep the JARVIS Termux process running. The companion's foreground bridge
+3. Tap **Enable JARVIS call routing** and accept Android's call-redirection
+   role prompt. This role lets JARVIS inspect outgoing call destinations.
+4. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
+   or updates a contact named **JARVIS**, with reserved virtual number
+   **+1 202-555-0147**.
+5. Open **Calling accounts** and enable **J.A.R.V.I.S.** once. Leave the SIM as
+   the default outgoing account. Do not select Ask every time and do not make
+   JARVIS the global default.
+6. Keep the JARVIS Termux process running. The companion's foreground bridge
    service must remain enabled for incoming call alerts.
-
-Android's ContactsContract supports a preferred PhoneAccountHandle on an
-individual phone-number row. Android Telecom consults that preference when
-resolving an outgoing contact call, so JARVIS can be selected for this contact
-without changing the account used for other contacts.
 
 ### Calling JARVIS from the Phone app
 
 - Open the normal Phone app, search for **JARVIS**, and tap Call.
+- Android's call-redirection service recognizes only the reserved JARVIS
+  virtual number and hands that call to JARVIS's local Telecom PhoneAccount.
+- All other numbers are passed through unchanged to the user's normal
+  outgoing account.
+- If the JARVIS calling account is disabled, the virtual-number call is
+  canceled rather than allowed to fall through to the SIM.
 
-The contact uses the reserved fictional NANP number **+1 202-555-0147**.
-The JARVIS ConnectionService accepts only this destination (including its
-national-format equivalent) and rejects every other number. Its preferred
-calling account routes the contact to the local service; ordinary phone
-numbers continue to use the SIM/default account. Do not manually dial this
-virtual number or use it as a real phone contact destination.
+The number **+1 202-555-0147** is a routing token for this local app, not a
+real telephone destination. Do not manually dial it while call routing is
+disabled. No carrier call should be placed for this number.
 
 ### JARVIS calling you
 
@@ -78,8 +78,8 @@ overnight research completion callback is already connected as an example.
 ### Operational limits
 
 - The Termux JARVIS process must be running to transcribe speech and generate
-  spoken replies. If it is stopped, the Phone app may still show the call
-  account, but no assistant audio endpoint is available.
+  spoken replies. If it is stopped, Telecom can still show the calling account,
+  but no assistant audio endpoint is available.
 - The Android companion must have microphone permission and its calling bridge
   foreground service must be running.
 - Android may clear scheduled alarms on reboot; wake-up alarms must be
