@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from agents.ai_provider import AIProviderRouter, compact_local_context
 
@@ -16,6 +17,10 @@ class AIProviderTests(unittest.TestCase):
         self.assertIn("USER: second", packed)
         self.assertIn("What did I ask you to remember?", packed)
         self.assertNotIn("USER: first", packed)
+
+    def test_setup_entrypoint_is_valid_python(self):
+        setup_path = Path(__file__).resolve().parents[1] / "setup"
+        compile(setup_path.read_text(encoding="utf-8"), str(setup_path), "exec")
 
     def test_unknown_provider_defaults_to_groq(self):
         self.assertEqual(AIProviderRouter({"JARVIS_AI_PROVIDER": "unknown"}).active_provider(), "groq")
