@@ -390,10 +390,11 @@ def step_ai(env):
     current = (env.get("JARVIS_AI_PROVIDER", "groq") or "groq").strip().lower()
     print("  1) Groq (recommended; full tool calling)")
     print("  2) Local AI (Ollama / OpenAI-compatible local server)")
-    print("  3) Custom OpenAI-compatible AI")
-    choices = {"1": "groq", "2": "local", "3": "custom",
-               "groq": "groq", "local": "local", "custom": "custom"}
-    default = {"groq": "1", "local": "2", "custom": "3"}.get(current, "1")
+    print("  3) OmniRoute (existing local gateway)")
+    print("  4) Custom OpenAI-compatible AI")
+    choices = {"1": "groq", "2": "local", "3": "omniroute", "4": "custom",
+               "groq": "groq", "local": "local", "omniroute": "omniroute", "custom": "custom"}
+    default = {"groq": "1", "local": "2", "omniroute": "3", "custom": "4"}.get(current, "1")
     selected = choices.get(ask("Select the primary chat provider", default=default).lower(), current)
     if selected not in {"groq", "local", "custom"}:
         selected = "groq"
@@ -404,6 +405,25 @@ def step_ai(env):
         env.set("JARVIS_AI_PROVIDER", "groq")
         env.save()
         ok("Groq selected as the primary agent.")
+    elif selected == "omniroute":
+        base_url = ask("OmniRoute base URL", default=env.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1"), allow_empty=False).rstrip("/")
+        model = ask("OmniRoute model ID", default=env.get("OMNIROUTE_COMPLEX_MODEL", "auto/best-reasoning"), allow_empty=False)
+        api_key = ask("OmniRoute API key (hidden; Enter keeps current)", default=env.get("OMNIROUTE_API_KEY", "any-string"), secret=True)
+        good, detail = test_compatible_ai(base_url, model, api_key)
+        if good:
+            ok(f"OmniRoute endpoint responded ({detail}).")
+        elif good is None:
+            warn(f"Could not verify OmniRoute ({detail}). Saving the configuration anyway.")
+        else:
+            warn(f"OmniRoute test failed ({detail}).")
+            if not yes_no("Save this provider anyway?", default=False):
+                return
+        env.set("OMNIROUTE_BASE_URL", base_url)
+        env.set("OMNIROUTE_COMPLEX_MODEL", model)
+        env.set("OMNIROUTE_API_KEY", api_key)
+        env.set("JARVIS_AI_PROVIDER", "omniroute")
+        env.save()
+        ok("OmniRoute selected for primary chat. Tool actions remain routed through Groq.")
     else:
         prefix = "JARVIS_LOCAL_AI" if selected == "local" else "JARVIS_CUSTOM_AI"
         default_url = "http://127.0.0.1:11434/v1" if selected == "local" else "https://api.example.com/v1"
