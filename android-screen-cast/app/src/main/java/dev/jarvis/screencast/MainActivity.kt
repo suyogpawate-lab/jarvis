@@ -30,14 +30,13 @@ class MainActivity : Activity() {
         }
         status = TextView(this).apply {
             text = "JARVIS Android companion\n\n" +
-                "Calls use Android Telecom and the normal Phone app interface.\n\n" +
+                "JARVIS calls use Android's Phone app interface as a local call provider.\n" +
+                "Carrier SIM calls remain directly managed by Android and are never routed through JARVIS.\n\n" +
                 "One-time setup:\n" +
                 "1. Enable JARVIS Phone calls and allow microphone access.\n" +
                 "2. Enable J.A.R.V.I.S. in Android calling-account settings.\n" +
-                "3. Select J.A.R.V.I.S. as the SIM call manager in system calling settings.\n" +
-                "4. Keep your SIM as the default outgoing account.\n" +
-                "5. Create the JARVIS Phone contact and allow contacts access.\n\n" +
-                "JARVIS handles its own contact locally. All other incoming and outgoing SIM calls are passed through to the original SIM account.\n\n" +
+                "3. Keep your SIM selected as the default outgoing account. Do NOT select J.A.R.V.I.S. as SIM call manager.\n" +
+                "4. Create the JARVIS Phone contact and allow contacts access.\n\n" +
                 "Local audio bridge: 127.0.0.1:21344"
             textSize = 16f
             setPadding(0, 0, 0, 24)
@@ -59,10 +58,7 @@ class MainActivity : Activity() {
             status.text = "Screen cast stopped."
         })
         setContentView(layout)
-        // Do not register a PhoneAccount during Activity startup. Some Android
-        // builds (including tablets without Telecom voice-call support) throw
-        // UnsupportedOperationException here, which would crash the entire app.
-        // Calling support is initialized only after the user explicitly enables it.
+        // Never initialize Telecom during Activity startup.
     }
 
     private fun openPhoneDialerForJarvis() {
@@ -83,7 +79,7 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_SETTINGS))
             Toast.makeText(
                 this,
-                "Open Calling accounts, enable J.A.R.V.I.S., and select it as SIM call manager. Keep your SIM as the default outgoing account.",
+                "Enable the JARVIS local call account if available. Keep your SIM as the default outgoing account. Do not select JARVIS as SIM call manager.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -123,11 +119,8 @@ class MainActivity : Activity() {
                 action = OwnerCallBridgeService.ACTION_START
             }
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
-            Toast.makeText(
-                this,
-                "JARVIS calling service enabled. Select J.A.R.V.I.S. as SIM call manager in system calling settings.",
-                Toast.LENGTH_LONG
-            ).show()
+            status.text = "JARVIS local calling is enabled. Keep your SIM as the default outgoing account. JARVIS does not manage or proxy carrier calls."
+            Toast.makeText(this, "JARVIS local calling enabled. Carrier calls remain on your SIM.", Toast.LENGTH_LONG).show()
         } catch (error: Exception) {
             showCallingUnavailable("Android could not start the JARVIS calling service.")
             android.util.Log.e("JARVIS-CALL", "Could not start the calling service.", error)
@@ -156,7 +149,7 @@ class MainActivity : Activity() {
             val created = JarvisContact.ensure(this)
             val detail = if (created) "Created the JARVIS contact with its local virtual number."
                 else "Updated the existing JARVIS contact."
-            status.text = detail + "\n\nSelect J.A.R.V.I.S. as SIM call manager, but keep your SIM as the default outgoing account. The JARVIS destination is handled locally; other calls are proxied to the SIM."
+            status.text = detail + "\n\nUse the JARVIS local call account only for the JARVIS contact. Keep your SIM as the default outgoing account. JARVIS never intercepts carrier calls."
             Toast.makeText(this, detail, Toast.LENGTH_LONG).show()
         } catch (error: Exception) {
             android.util.Log.e("JARVIS-CONTACT", "Could not create JARVIS contact", error)
