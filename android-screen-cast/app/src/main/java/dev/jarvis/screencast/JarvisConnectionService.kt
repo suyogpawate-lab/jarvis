@@ -147,7 +147,7 @@ class JarvisConnectionService : ConnectionService() {
             )
             activeConnection = connection
             connection.setAddress(
-                Uri.fromParts(PhoneAccount.SCHEME_TEL, "+" + JARVIS_NANP, null),
+                Uri.fromParts(PhoneAccount.SCHEME_TEL, "+12025550147", null),
                 TelecomManager.PRESENTATION_ALLOWED
             )
             Handler(Looper.getMainLooper()).postDelayed({
