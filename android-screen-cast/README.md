@@ -15,7 +15,7 @@ local call provider and a SIM call manager.
 
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
-3. Tap **Open calling-account settings** and enable **J.A.R.A.V.I.S.**
+3. Tap **Open calling-account settings** and enable **J.A.R.V.I.S.**
 4. In Android's system calling settings, select **J.A.R.V.I.S.** as the
    **SIM call manager** (the wording/location varies by manufacturer).
 5. Keep your SIM as the default outgoing phone account. Do not set JARVIS as
