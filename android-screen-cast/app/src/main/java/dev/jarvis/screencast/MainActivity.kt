@@ -34,7 +34,7 @@ class MainActivity : Activity() {
                 "1. Enable JARVIS Phone calls and allow microphone access.\n" +
                 "2. Create the JARVIS Phone contact below and allow contacts access.\n" +
                 "3. Enable J.A.R.V.I.S. once in calling-account settings. Keep your SIM as the default account.\n\n" +
-                "Then dial 0 or find JARVIS in Phone contacts and tap Call. Android uses the JARVIS contact's preferred calling account; ordinary contacts continue using your SIM.\n\n" +
+                "Find JARVIS in Phone contacts and tap Call. Its reserved virtual number is routed to the local JARVIS calling account; ordinary contacts continue using your SIM.\n\n" +
                 "Local audio bridge: 127.0.0.1:21344"
             textSize = 16f
             setPadding(0, 0, 0, 24)
@@ -108,7 +108,7 @@ class MainActivity : Activity() {
     private fun createJarvisContact() {
         try {
             val created = JarvisContact.ensure(this)
-            val detail = if (created) "Created the JARVIS contact with local number 0."
+            val detail = if (created) "Created the JARVIS contact with its local virtual number."
                 else "Updated the existing JARVIS contact."
             status.text = "$detail\n\nEnable J.A.R.V.I.S. once in calling-account settings. Keep your SIM as the default outgoing account."
             Toast.makeText(this, detail, Toast.LENGTH_LONG).show()
