@@ -6,7 +6,9 @@ class AIProviderTests(unittest.TestCase):
     def test_context_pack_keeps_memory_latest_turns_and_current_request(self):
         prompt = (
             "RELEVANT JARVIS MEMORY:\nUser prefers concise answers.\n\n"
-            "CONVERSATION HISTORY:\nUSER: first\nJARVIS: one\nUSER: second\nJARVIS: two\n\n"
+            "CONVERSATION HISTORY:\nUSER: first\nJARVIS: one\nUSER: second\nJARVIS: two\n"
+            "USER: third\nJARVIS: three\nUSER: fourth\nJARVIS: four\n"
+            "USER: fifth\nJARVIS: five\nUSER: sixth\nJARVIS: six\n"
             "CURRENT USER REQUEST:\nWhat did I ask you to remember?"
         )
         packed = compact_local_context(prompt)
@@ -37,11 +39,16 @@ class AIProviderTests(unittest.TestCase):
             })
         self.assertIs(result, fake)
         kwargs = post.call_args.kwargs
-        self.assertTrue(kwargs["url"].endswith("/chat/completions"))
+        self.assertTrue(post.call_args.args[0].endswith("/chat/completions"))
         self.assertEqual(kwargs["json"]["model"], "lfm2.5-350m")
         self.assertNotIn("tools", kwargs["json"])
         self.assertNotIn("reasoning_effort", kwargs["json"])
         self.assertIn("CURRENT USER REQUEST", kwargs["json"]["messages"][1]["content"])
+
+
+    def test_local_provider_request_never_includes_tool_schemas_by_default(self):
+        router = AIProviderRouter({"JARVIS_AI_PROVIDER": "local"})
+        self.assertFalse(router.supports_tools("local"))
 
     def test_custom_tool_calling_is_explicit(self):
         self.assertTrue(AIProviderRouter({
