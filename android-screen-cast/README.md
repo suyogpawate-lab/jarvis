@@ -13,8 +13,9 @@ carrier number, public VoIP service, or remote call provider.
 
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
-3. Open the device's Phone app settings, find **Calling accounts**, and enable
-   **J.A.R.V.I.S.**. The exact menu wording varies by dialer/OEM.
+3. Tap **Open calling-account settings** in the companion app. In the system
+   calling-account screen, enable **J.A.R.V.I.S.** and set outgoing calls to
+   **Ask every time** (wording varies by dialer/OEM).
 4. Keep the JARVIS Termux process running. The companion's foreground bridge
    service must remain enabled for incoming call alerts.
 
@@ -24,11 +25,16 @@ supplies the incoming and in-call interface.
 
 ### Calling JARVIS from the Phone app
 
-1. Open the Phone app.
-2. Dial **0**.
-3. Choose **J.A.R.V.I.S.** as the calling account if the dialer asks.
-4. The Phone app opens the JARVIS call. No Call JARVIS button in this
+1. Open the Phone app and dial **0**.
+2. Tap the call button. When Android asks which account to use, choose
+   **J.A.R.V.I.S.** (not the SIM).
+3. The Phone app opens the JARVIS call. No Call JARVIS button in this
    companion app is used.
+
+If you choose the SIM, its telephony service interprets **0** as an MMI/short
+code and may show **Invalid MMI code**. Keep **Ask every time** selected so
+normal telephone numbers can still use your SIM and only the single-digit
+**0** call is routed through J.A.R.V.I.S.
 
 The 0 dial string is a local route selector only; it is not sent to a
 carrier and is not a public telephone number.
