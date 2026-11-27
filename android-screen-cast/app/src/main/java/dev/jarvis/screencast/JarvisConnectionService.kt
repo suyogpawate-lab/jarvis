@@ -2,26 +2,29 @@ package dev.jarvis.screencast
 
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.telecom.CallAudioState
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
 import android.telecom.ConnectionService
 import android.telecom.DisconnectCause
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
+import android.telecom.RemoteConnection
+import android.telecom.StatusHints
 import android.telecom.TelecomManager
 import java.util.UUID
 
 /**
- * System-managed JARVIS VoIP provider.
+ * JARVIS is both a local call provider and an optional SIM call manager.
  *
- * The stock Phone app handles calls. ContactsContract's preferred-account
- * fields route the JARVIS contact to this provider without changing the
- * user's default SIM account or showing an account chooser on each call.
+ * When selected by the user as the SIM call manager, Telecom sends outgoing
+ * SIM calls here first. The reserved JARVIS contact is handled locally;
+ * every other call is proxied to the originally selected SIM account through
+ * createRemoteOutgoingConnection(). Incoming SIM calls are proxied likewise.
  */
 class JarvisConnectionService : ConnectionService() {
     companion object {
@@ -30,6 +33,8 @@ class JarvisConnectionService : ConnectionService() {
         private const val ACCOUNT_ID = "jarvis-local-owner"
         private const val PREFS = "jarvis_owner_calls"
         private const val TOKEN_KEY = "audio_token"
+        private const val JARVIS_NANP = "12025550147"
+        private const val JARVIS_LOCAL = "2025550147"
 
         @Volatile var activeConnection: OwnerConnection? = null
 
@@ -39,16 +44,14 @@ class JarvisConnectionService : ConnectionService() {
         fun registerAccount(context: Context) {
             val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
             val account = PhoneAccount.builder(accountHandle(context), "J.A.R.V.I.S.")
-                .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
+                .setCapabilities(
+                    PhoneAccount.CAPABILITY_CALL_PROVIDER or
+                        PhoneAccount.CAPABILITY_CONNECTION_MANAGER
+                )
                 .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
-                .setShortDescription("Local JARVIS voice assistant")
+                .setShortDescription("Local JARVIS voice assistant and SIM call manager")
                 .build()
             telecom.registerPhoneAccount(account)
-        }
-
-        fun isAccountEnabled(context: Context): Boolean {
-            val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-            return telecom.callCapablePhoneAccounts.contains(accountHandle(context))
         }
 
         fun incomingCall(context: Context, message: String, reason: String): Boolean {
@@ -71,7 +74,8 @@ class JarvisConnectionService : ConnectionService() {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val existing = prefs.getString(TOKEN_KEY, null)
             if (!existing.isNullOrBlank()) return existing
-            val created = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "")
+            val created = UUID.randomUUID().toString().replace("-", "") +
+                UUID.randomUUID().toString().replace("-", "")
             prefs.edit().putString(TOKEN_KEY, created).apply()
             return created
         }
@@ -106,6 +110,15 @@ class JarvisConnectionService : ConnectionService() {
         connectionManagerPhoneAccount: PhoneAccountHandle?,
         request: ConnectionRequest
     ): Connection {
+        val isJarvisAccount = request.accountHandle == accountHandle(this)
+        if (connectionManagerPhoneAccount != null && !isJarvisAccount) {
+            android.util.Log.i("JARVIS-CALL", "Proxying incoming SIM call through the selected SIM call manager.")
+            return proxyRemoteConnection(
+                createRemoteIncomingConnection(connectionManagerPhoneAccount, request),
+                "Could not proxy incoming SIM call"
+            )
+        }
+
         val message = request.extras?.getString(EXTRA_MESSAGE)
             .orEmpty().ifBlank { "JARVIS has an update." }
         return OwnerConnection(this, message, incoming = true).also {
@@ -120,23 +133,56 @@ class JarvisConnectionService : ConnectionService() {
         val address = request.address
         val dialString = address?.schemeSpecificPart.orEmpty()
         val normalizedNumber = dialString.filter { it.isDigit() }
-        val isJarvisDestination = normalizedNumber == "12025550147" || normalizedNumber == "2025550147"
-        val connection = OwnerConnection(this, "Hello. J.A.R.V.I.S. is ready. How can I help?", incoming = false)
-        activeConnection = connection
-        if (address?.scheme != PhoneAccount.SCHEME_TEL || !isJarvisDestination) {
-            connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR))
-            connection.destroy()
-            activeConnection = null
+        val isJarvisDestination =
+            normalizedNumber == JARVIS_NANP || normalizedNumber == JARVIS_LOCAL
+
+        if (isJarvisDestination) {
+            if (address?.scheme != PhoneAccount.SCHEME_TEL) {
+                return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
+            }
+            val connection = OwnerConnection(
+                this,
+                "Hello. J.A.R.V.I.S. is ready. How can I help?",
+                incoming = false
+            )
+            activeConnection = connection
+            connection.setAddress(
+                Uri.fromParts(PhoneAccount.SCHEME_TEL, "+12025550147", null),
+                TelecomManager.PRESENTATION_ALLOWED
+            )
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
+                    startAudio(this, connection.message)
+                }
+            }, 300L)
+            android.util.Log.i("JARVIS-CALL", "Handling JARVIS destination locally; no SIM call is created.")
             return connection
         }
-        connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "+12025550147", null),
-            TelecomManager.PRESENTATION_ALLOWED)
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
-                startAudio(this, connection.message)
-            }
-        }, 300L)
-        return connection
+
+        if (connectionManagerPhoneAccount != null) {
+            android.util.Log.i("JARVIS-CALL", "Proxying ordinary outgoing call to the originally selected SIM account.")
+            return proxyRemoteConnection(
+                createRemoteOutgoingConnection(connectionManagerPhoneAccount, request),
+                "Could not proxy outgoing SIM call"
+            )
+        }
+
+        android.util.Log.e("JARVIS-CALL", "Ordinary outgoing call reached JARVIS without a SIM call-manager request; refusing to reroute it.")
+        return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
+    }
+
+    private fun proxyRemoteConnection(remote: RemoteConnection?, failureMessage: String): Connection {
+        if (remote == null) {
+            android.util.Log.e("JARVIS-CALL", failureMessage + ": Telecom returned no RemoteConnection.")
+            return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
+        }
+        if (remote.state == Connection.STATE_DISCONNECTED) {
+            android.util.Log.e("JARVIS-CALL", failureMessage + ": " + remote.disconnectCause)
+            return Connection.createFailedConnection(
+                remote.disconnectCause ?: DisconnectCause(DisconnectCause.ERROR)
+            )
+        }
+        return SimCallProxyConnection(remote)
     }
 
     override fun onCreateOutgoingConnectionFailed(
@@ -144,7 +190,7 @@ class JarvisConnectionService : ConnectionService() {
         request: ConnectionRequest
     ) {
         super.onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount, request)
-        android.util.Log.w("JARVIS-CALL", "The Phone app could not create a JARVIS call.")
+        android.util.Log.w("JARVIS-CALL", "Telecom could not create an outgoing connection.")
     }
 
     override fun onCreateIncomingConnectionFailed(
@@ -152,7 +198,181 @@ class JarvisConnectionService : ConnectionService() {
         request: ConnectionRequest
     ) {
         super.onCreateIncomingConnectionFailed(connectionManagerPhoneAccount, request)
-        android.util.Log.w("JARVIS-CALL", "Telecom could not deliver the incoming JARVIS call.")
+        android.util.Log.w("JARVIS-CALL", "Telecom could not create an incoming connection.")
+    }
+
+    /**
+     * Mirrors a RemoteConnection into the local Connection returned to Telecom.
+     * User controls and audio-state changes are forwarded to the real SIM call.
+     */
+    private class SimCallProxyConnection(
+        private val remote: RemoteConnection
+    ) : Connection() {
+        private var finished = false
+
+        private val callback = object : RemoteConnection.Callback() {
+            override fun onStateChanged(connection: RemoteConnection, state: Int) {
+                syncState(state)
+            }
+
+            override fun onDisconnected(
+                connection: RemoteConnection,
+                disconnectCause: DisconnectCause
+            ) {
+                finish(disconnectCause)
+            }
+
+            override fun onDestroyed(connection: RemoteConnection) {
+                finish(connection.disconnectCause ?: DisconnectCause(DisconnectCause.ERROR))
+            }
+
+            override fun onAddressChanged(
+                connection: RemoteConnection,
+                address: Uri,
+                presentation: Int
+            ) {
+                setAddress(address, presentation)
+            }
+
+            override fun onCallerDisplayNameChanged(
+                connection: RemoteConnection,
+                callerDisplayName: String,
+                presentation: Int
+            ) {
+                setCallerDisplayName(callerDisplayName, presentation)
+            }
+
+            override fun onConnectionCapabilitiesChanged(
+                connection: RemoteConnection,
+                connectionCapabilities: Int
+            ) {
+                setConnectionCapabilities(connectionCapabilities)
+            }
+
+            override fun onConnectionPropertiesChanged(
+                connection: RemoteConnection,
+                connectionProperties: Int
+            ) {
+                setConnectionProperties(connectionProperties)
+            }
+
+            override fun onStatusHintsChanged(connection: RemoteConnection, statusHints: StatusHints) {
+                setStatusHints(statusHints)
+            }
+
+            override fun onRingbackRequested(connection: RemoteConnection, ringback: Boolean) {
+                setRingbackRequested(ringback)
+            }
+
+            override fun onVoipAudioChanged(connection: RemoteConnection, isVoip: Boolean) {
+                setAudioModeIsVoip(isVoip)
+            }
+
+            override fun onExtrasChanged(connection: RemoteConnection, extras: Bundle?) {
+                if (extras != null) setExtras(extras)
+            }
+
+            override fun onPostDialChar(connection: RemoteConnection, nextChar: Char) {
+                setNextPostDialChar(nextChar)
+            }
+
+            override fun onPostDialWait(connection: RemoteConnection, remainingPostDialSequence: String) {
+                setPostDialWait(remainingPostDialSequence)
+            }
+        }
+
+        private var callbackRegistered = false
+
+        init {
+            setAddress(remote.address, remote.addressPresentation)
+            setCallerDisplayName(
+                remote.callerDisplayName?.toString(),
+                remote.callerDisplayNamePresentation
+            )
+            setConnectionCapabilities(remote.connectionCapabilities)
+            setConnectionProperties(remote.connectionProperties)
+            setStatusHints(remote.statusHints)
+            setAudioModeIsVoip(remote.isVoipAudioMode)
+            setRingbackRequested(remote.isRingbackRequested)
+            remote.extras?.let { setExtras(it) }
+            remote.registerCallback(callback)
+            callbackRegistered = true
+            syncState(remote.state)
+        }
+
+        private fun syncState(remoteState: Int) {
+            if (finished) return
+            when (remoteState) {
+                STATE_INITIALIZING -> setInitializing()
+                STATE_NEW -> setInitialized()
+                STATE_RINGING -> setRinging()
+                STATE_DIALING -> setDialing()
+                STATE_ACTIVE -> setActive()
+                STATE_HOLDING -> setOnHold()
+                STATE_DISCONNECTED -> finish(
+                    remote.disconnectCause ?: DisconnectCause(DisconnectCause.ERROR)
+                )
+            }
+        }
+
+        private fun finish(cause: DisconnectCause) {
+            if (finished) return
+            finished = true
+            if (state != STATE_DISCONNECTED) setDisconnected(cause)
+            unregisterRemoteCallback()
+            destroy()
+        }
+
+        private fun unregisterRemoteCallback() {
+            if (callbackRegistered) {
+                callbackRegistered = false
+                remote.unregisterCallback(callback)
+            }
+        }
+
+        override fun onAnswer() {
+            remote.answer()
+        }
+
+        override fun onReject() {
+            remote.reject()
+            finish(DisconnectCause(DisconnectCause.REJECTED))
+        }
+
+        override fun onDisconnect() {
+            remote.disconnect()
+            finish(DisconnectCause(DisconnectCause.LOCAL))
+        }
+
+        override fun onHold() {
+            remote.hold()
+        }
+
+        override fun onUnhold() {
+            remote.unhold()
+        }
+
+        override fun onAbort() {
+            remote.abort()
+            finish(DisconnectCause(DisconnectCause.CANCELED))
+        }
+
+        override fun onPlayDtmfTone(digit: Char) {
+            remote.playDtmfTone(digit)
+        }
+
+        override fun onStopDtmfTone() {
+            remote.stopDtmfTone()
+        }
+
+        override fun onPostDialContinue(proceed: Boolean) {
+            remote.postDialContinue(proceed)
+        }
+
+        override fun onCallAudioStateChanged(state: CallAudioState) {
+            remote.setCallAudioState(state)
+        }
+
     }
 
     class OwnerConnection(
@@ -162,8 +382,10 @@ class JarvisConnectionService : ConnectionService() {
     ) : Connection() {
         init {
             setCallerDisplayName("J.A.R.V.I.S.", TelecomManager.PRESENTATION_ALLOWED)
-            setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "+12025550147", null),
-                TelecomManager.PRESENTATION_ALLOWED)
+            setAddress(
+                Uri.fromParts(PhoneAccount.SCHEME_TEL, "+" + JARVIS_NANP, null),
+                TelecomManager.PRESENTATION_ALLOWED
+            )
             setAudioModeIsVoip(true)
             setConnectionProperties(0)
             if (incoming) setRinging() else setDialing()

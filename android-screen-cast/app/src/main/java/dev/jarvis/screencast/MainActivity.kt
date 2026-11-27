@@ -1,11 +1,11 @@
 package dev.jarvis.screencast
 
 import android.app.Activity
-import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -19,7 +19,6 @@ class MainActivity : Activity() {
     private val projectionRequest = 7021
     private val callPermissionRequest = 7022
     private val contactsPermissionRequest = 7023
-    private val redirectionRoleRequest = 7024
     private lateinit var status: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,22 +30,23 @@ class MainActivity : Activity() {
         }
         status = TextView(this).apply {
             text = "JARVIS Android companion\n\n" +
-                "Calls use the normal Android Phone app.\n\n" +
+                "Calls use Android Telecom and the normal Phone app interface.\n\n" +
                 "One-time setup:\n" +
                 "1. Enable JARVIS Phone calls and allow microphone access.\n" +
-                "2. Enable JARVIS call routing in the system role prompt.\n" +
-                "3. Create the JARVIS Phone contact and allow contacts access.\n" +
-                "4. Enable J.A.R.V.I.S. in calling-account settings. Keep your SIM as the default account.\n\n" +
-                "Search for JARVIS in the Phone app and tap Call. Only the JARVIS virtual number is routed locally; other calls remain unchanged.\n\n" +
+                "2. Enable J.A.R.V.I.S. in Android calling-account settings.\n" +
+                "3. Select J.A.R.V.I.S. as the SIM call manager in system calling settings.\n" +
+                "4. Keep your SIM as the default outgoing account.\n" +
+                "5. Create the JARVIS Phone contact and allow contacts access.\n\n" +
+                "JARVIS handles its own contact locally. All other incoming and outgoing SIM calls are passed through to the original SIM account.\n\n" +
                 "Local audio bridge: 127.0.0.1:21344"
             textSize = 16f
             setPadding(0, 0, 0, 24)
         }
         layout.addView(status)
         layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
-        layout.addView(button("Enable JARVIS call routing") { requestCallRedirectionRole() })
         layout.addView(button("Create JARVIS Phone contact") { setupJarvisContact() })
         layout.addView(button("Open calling-account settings") { openCallingAccountSettings() })
+        layout.addView(button("Open Phone app with JARVIS number") { openPhoneDialerForJarvis() })
         layout.addView(button("Enable screen control") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
@@ -62,25 +62,14 @@ class MainActivity : Activity() {
         JarvisConnectionService.registerAccount(this)
     }
 
-    private fun requestCallRedirectionRole() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Toast.makeText(this, "JARVIS call routing requires Android 10 or newer.", Toast.LENGTH_LONG).show()
-            return
+    private fun openPhoneDialerForJarvis() {
+        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", "+12025550147", null))
+        try {
+            startActivity(dialIntent)
+        } catch (error: Exception) {
+            Toast.makeText(this, "No Phone app is available to open the JARVIS number.", Toast.LENGTH_LONG).show()
+            android.util.Log.e("JARVIS-CALL", "Could not open the Phone app", error)
         }
-        val roles = getSystemService(Context.ROLE_SERVICE) as RoleManager
-        if (!roles.isRoleAvailable(RoleManager.ROLE_CALL_REDIRECTION)) {
-            Toast.makeText(this, "This Android build does not expose the call-redirection role.", Toast.LENGTH_LONG).show()
-            return
-        }
-        if (roles.isRoleHeld(RoleManager.ROLE_CALL_REDIRECTION)) {
-            status.text = "JARVIS already has the call-redirection role."
-            Toast.makeText(this, "JARVIS call routing is enabled.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        startActivityForResult(
-            roles.createRequestRoleIntent(RoleManager.ROLE_CALL_REDIRECTION),
-            redirectionRoleRequest
-        )
     }
 
     private fun openCallingAccountSettings() {
@@ -91,7 +80,7 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_SETTINGS))
             Toast.makeText(
                 this,
-                "Open Calling accounts and enable J.A.R.V.I.S. Leave your SIM as the default outgoing account.",
+                "Open Calling accounts, enable J.A.R.V.I.S., and select it as SIM call manager. Keep your SIM as the default outgoing account.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -113,7 +102,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
         Toast.makeText(
             this,
-            "JARVIS calling service enabled. Enable its calling account once in Android settings.",
+            "JARVIS calling service enabled. Select J.A.R.V.I.S. as SIM call manager in system calling settings.",
             Toast.LENGTH_LONG
         ).show()
     }
@@ -135,11 +124,11 @@ class MainActivity : Activity() {
             val created = JarvisContact.ensure(this)
             val detail = if (created) "Created the JARVIS contact with its local virtual number."
                 else "Updated the existing JARVIS contact."
-            status.text = "$detail\n\nConfirm JARVIS call routing is enabled and enable J.A.R.V.I.S. in calling-account settings. Keep your SIM as the default outgoing account."
+            status.text = detail + "\n\nSelect J.A.R.V.I.S. as SIM call manager, but keep your SIM as the default outgoing account. The JARVIS destination is handled locally; other calls are proxied to the SIM."
             Toast.makeText(this, detail, Toast.LENGTH_LONG).show()
         } catch (error: Exception) {
             android.util.Log.e("JARVIS-CONTACT", "Could not create JARVIS contact", error)
-            Toast.makeText(this, "Could not set up the JARVIS contact: ${error.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Could not set up the JARVIS contact: " + error.javaClass.simpleName, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -173,17 +162,6 @@ class MainActivity : Activity() {
     @Deprecated("Activity result API retained for Android 10 compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == redirectionRoleRequest) {
-            val roles = getSystemService(Context.ROLE_SERVICE) as RoleManager
-            val enabled = roles.isRoleHeld(RoleManager.ROLE_CALL_REDIRECTION)
-            status.text = if (enabled) {
-                "JARVIS call routing enabled. Calls to the JARVIS contact will be handed to its local calling account."
-            } else {
-                "Call routing was not enabled. The JARVIS virtual number must not be called until routing is enabled."
-            }
-            Toast.makeText(this, if (enabled) "JARVIS call routing enabled." else "JARVIS call routing not enabled.", Toast.LENGTH_LONG).show()
-            return
-        }
         if (requestCode != projectionRequest) return
         if (resultCode != RESULT_OK || data == null) {
             Toast.makeText(this, "Screen-capture permission was not granted.", Toast.LENGTH_SHORT).show()

@@ -1,42 +1,51 @@
 # JARVIS Android companion
 
 This Android 10+ companion provides live screen casting/control and a local
-Telecom calling provider. **Calls use the device's existing Phone app UI**;
-the companion app is only for one-time setup and background services.
+Telecom calling provider. Calls use Android Telecom's normal Phone app UI;
+the companion is used for one-time setup and background audio services.
 
 ## Local JARVIS calling
 
-The calling path is entirely on this Android device. It does not use a SIM,
-carrier number, public VoIP service, or remote call provider.
+The calling path is entirely on this Android device. It does not use a SIM
+for the JARVIS conversation, a carrier number, a public VoIP service, or a
+remote call provider. JARVIS registers a Telecom ConnectionService as both a
+local call provider and a SIM call manager.
 
 ### One-time setup
 
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
-3. Tap **Enable JARVIS call routing** and accept Android's call-redirection
-   role prompt. This role lets JARVIS inspect outgoing call destinations.
-4. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
+3. Tap **Open calling-account settings** and enable **J.A.R.V.I.S.**
+4. In Android's system calling settings, select **J.A.R.V.I.S.** as the
+   **SIM call manager** (the wording/location varies by manufacturer).
+5. Keep your SIM as the default outgoing phone account. Do not set JARVIS as
+   the global outgoing account.
+6. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
    or updates a contact named **JARVIS**, with reserved virtual number
    **+1 202-555-0147**.
-5. Open **Calling accounts** and enable **J.A.R.V.I.S.** once. Leave the SIM as
-   the default outgoing account. Do not select Ask every time and do not make
-   JARVIS the global default.
-6. Keep the JARVIS Termux process running. The companion's foreground bridge
+7. Keep the JARVIS Termux process running. The companion's foreground bridge
    service must remain enabled for incoming call alerts.
 
 ### Calling JARVIS from the Phone app
 
 - Open the normal Phone app, search for **JARVIS**, and tap Call.
-- Android's call-redirection service recognizes only the reserved JARVIS
-  virtual number and hands that call to JARVIS's local Telecom PhoneAccount.
-- All other numbers are passed through unchanged to the user's normal
-  outgoing account.
-- If the JARVIS calling account is disabled, the virtual-number call is
-  canceled rather than allowed to fall through to the SIM.
+- When JARVIS is selected as the SIM call manager, Telecom sends outgoing
+  SIM calls through the JARVIS ConnectionService first.
+- Calls to the reserved JARVIS virtual number are handled locally by JARVIS;
+  they do not get sent to the SIM.
+- Every other outgoing call is delegated to the originally selected SIM via
+  Telecom's createRemoteOutgoingConnection API.
+- Incoming SIM calls are delegated back to the SIM via
+  createRemoteIncomingConnection. JARVIS-originated incoming calls continue
+  to use the local JARVIS call connection.
+- The companion's **Open Phone app with JARVIS number** shortcut opens the
+  stock dialer with the local number prefilled; it does not place the call.
 
-The number **+1 202-555-0147** is a routing token for this local app, not a
-real telephone destination. Do not manually dial it while call routing is
-disabled. No carrier call should be placed for this number.
+Android's ConnectionService API explicitly supports this connection-manager
+pattern: the manager receives the original SIM PhoneAccount in the request
+and can create a RemoteConnection to proxy the call to that SIM. This avoids
+the unsupported CallRedirectionService.redirectCall() path, which cannot
+target an app-provided VoIP PhoneAccount.
 
 ### JARVIS calling you
 
