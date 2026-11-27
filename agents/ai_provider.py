@@ -106,11 +106,12 @@ class AIProviderRouter:
         if not self.supports_tools(provider):
             body.pop("tools", None)
             body.pop("tool_choice", None)
-            if messages and messages[0].get("role") == "system":
-                messages[0]["content"] = LOCAL_SYSTEM_PROMPT
-            for item in messages:
-                if item.get("role") == "user" and isinstance(item.get("content"), str):
-                    item["content"] = compact_local_context(item["content"])
+            if provider == "local":
+                if messages and messages[0].get("role") == "system":
+                    messages[0]["content"] = LOCAL_SYSTEM_PROMPT
+                for item in messages:
+                    if item.get("role") == "user" and isinstance(item.get("content"), str):
+                        item["content"] = compact_local_context(item["content"])
         body["messages"] = messages
         headers = {"Content-Type": "application/json"}
         if config["api_key"]:
