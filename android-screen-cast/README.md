@@ -14,7 +14,7 @@ carrier number, public VoIP service, or remote call provider.
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
 3. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
-   a contact named **JARVIS**, with local dial string **0** and JARVIS set as
+   a contact named **JARVIS**, with reserved virtual number **+1 202-555-0147** and JARVIS set as
    that contact's preferred calling account.
 4. Open **Calling accounts** from the companion app and enable **J.A.R.V.I.S.**
    once. Leave the SIM as the default outgoing account; do not select Ask every
@@ -29,17 +29,14 @@ without changing the account used for other contacts.
 
 ### Calling JARVIS from the Phone app
 
-- Open the normal Phone app and dial **0**, then tap Call; or
-- Search for **JARVIS** in the Phone app's contacts/dial-pad search and tap Call.
+- Open the normal Phone app, search for **JARVIS**, and tap Call.
 
-Both paths use the JARVIS contact's preferred calling account. No account
-chooser should appear for this contact. Ordinary phone numbers continue to
-use the SIM/default account. If the dialer does not resolve the single-digit
-number to the contact on this device, call **JARVIS** from the contact search;
-OEM dialers can differ in short-number lookup behavior.
-
-The 0 dial string is a local route selector only; it is not sent to a carrier
-when Telecom resolves the JARVIS contact preference.
+The contact uses the reserved fictional NANP number **+1 202-555-0147**.
+The JARVIS ConnectionService accepts only this destination (including its
+national-format equivalent) and rejects every other number. Its preferred
+calling account routes the contact to the local service; ordinary phone
+numbers continue to use the SIM/default account. Do not manually dial this
+virtual number or use it as a real phone contact destination.
 
 ### JARVIS calling you
 
