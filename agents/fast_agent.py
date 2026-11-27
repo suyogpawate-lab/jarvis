@@ -20,6 +20,7 @@ class FastAgent:
         # Keep API keys outside source code. Set GROQ_API_KEYS or GROQ_API_KEY.
         self.api_keys = get_groq_api_keys()
         self.current_key_index = 0
+        self._ai_provider_router = AIProviderRouter()
 
         # FIX: Swapped to the correct official API subdomain
         self.base_url = "https://api.groq.com/openai/v1"
