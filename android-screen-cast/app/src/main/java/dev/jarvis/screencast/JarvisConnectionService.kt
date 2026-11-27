@@ -281,6 +281,14 @@ class JarvisConnectionService : ConnectionService() {
             }
         }
 
+        private var callbackRegistered = false
+        private val localListener = object : Connection.Listener() {
+            override fun onDestroyed(connection: Connection) {
+                unregisterRemoteCallback()
+                removeConnectionListener(this)
+            }
+        }
+
         init {
             setAddress(remote.address, remote.addressPresentation)
             setCallerDisplayName(
@@ -294,6 +302,8 @@ class JarvisConnectionService : ConnectionService() {
             setRingbackRequested(remote.isRingbackRequested)
             remote.extras?.let { setExtras(it) }
             remote.registerCallback(callback)
+            callbackRegistered = true
+            addConnectionListener(localListener)
             syncState(remote.state)
         }
 
@@ -316,8 +326,15 @@ class JarvisConnectionService : ConnectionService() {
             if (finished) return
             finished = true
             if (state != STATE_DISCONNECTED) setDisconnected(cause)
-            remote.unregisterCallback(callback)
+            unregisterRemoteCallback()
             destroy()
+        }
+
+        private fun unregisterRemoteCallback() {
+            if (callbackRegistered) {
+                callbackRegistered = false
+                remote.unregisterCallback(callback)
+            }
         }
 
         override fun onAnswer() {
@@ -360,13 +377,6 @@ class JarvisConnectionService : ConnectionService() {
             remote.setCallAudioState(state)
         }
 
-        override fun onDestroy() {
-            if (!finished) {
-                finished = true
-                remote.unregisterCallback(callback)
-            }
-            super.onDestroy()
-        }
     }
 
     class OwnerConnection(
