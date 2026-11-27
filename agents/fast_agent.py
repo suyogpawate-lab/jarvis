@@ -12,6 +12,7 @@ from social import manager as social_manager
 from tools import progress
 from monitoring.token_meter import request_started, request_completed, request_failed
 from agents.groq_keys import get_groq_api_keys
+from agents.ai_provider import AIProviderRouter
 
 class FastAgent:
 
@@ -46,6 +47,36 @@ class FastAgent:
                 composio_mcp.start_all_async()
             except Exception as exc:
                 print(f"[JARVIS TOOLS] extension load failed: {exc}")
+
+    def _chat_post(self, payload, timeout=30, provider_override=None, allow_local_fallback=False):
+        """Route a request without replaying actions across providers."""
+        router = getattr(self, "_ai_provider_router", None) or AIProviderRouter()
+        provider = provider_override or router.active_provider()
+        if provider == "groq":
+            try:
+                response = self._groq_post(payload, timeout=timeout)
+            except Exception:
+                if allow_local_fallback and router.fallback_provider() == "local":
+                    return router.post(payload, provider="local", timeout=min(timeout, 15))
+                raise
+            if response.status_code != 200 and allow_local_fallback and router.fallback_provider() == "local":
+                return router.post(payload, provider="local", timeout=min(timeout, 15))
+            return response
+        return router.post(payload, provider=provider, timeout=min(timeout, 30))
+
+    @staticmethod
+    def _request_requires_tools(prompt):
+        """Conservatively identify requests that may cause external side effects."""
+        text = FastAgent._live_user_request(prompt)
+        return bool(re.search(
+            r"\b(send|whatsapp|email|call|set alarm|set timer|launch|open app|"
+            r"tap|click|swipe|screen control|install|uninstall|delete|remove|"
+            r"create file|edit file|modify|execute|run command|terminal|termux|"
+            r"schedule|cancel|restart|start service|stop service|build|compile|"
+            r"git|repository|repo|write code|fix code|debug|configure|backup|"
+            r"copy file|move file|download|upload)\b",
+            text, re.IGNORECASE,
+        ))
 
     def _omniroute_request(self, messages, system_prompt=None, max_tokens=512, temperature=0.1, timeout=30):
         """Send complex reasoning requests exclusively through OmniRoute."""
@@ -2768,15 +2799,16 @@ class FastAgent:
             "max_tokens": 256,
             "reasoning_effort": "low",
         }
-        response = self._groq_post(payload, timeout=15)
+        response = self._chat_post(payload, timeout=15, allow_local_fallback=True)
         if response.status_code == 200:
             try:
                 return str(response.json()["choices"][0]["message"].get("content") or "").strip()
             except (KeyError, IndexError, TypeError, ValueError):
-                return "[ERROR] Groq returned an invalid simple-answer response."
-        if response.status_code == 429:
+                return "[ERROR] The selected AI provider returned an invalid simple-answer response."
+        provider = (getattr(self, "_ai_provider_router", None) or AIProviderRouter()).active_provider()
+        if provider == "groq":
             return self._groq_limit_message(response)
-        return self._groq_limit_message(response)
+        return f"[ERROR] {provider.title()} AI returned HTTP {response.status_code}."
 
     def ask(self, prompt):
         """Return a complete answer; compact long output only when safe."""
@@ -2867,28 +2899,45 @@ class FastAgent:
                     )
                 return f"I could not submit the form, sir. {result.get('error', '')}"
 
-        # Groq is the sole primary router. It can explicitly call
-        # delegate_to_omniroute when specialist reasoning is warranted.
+        router = getattr(self, "_ai_provider_router", None) or AIProviderRouter()
+        selected_provider = router.active_provider()
+        requires_tools = self._request_requires_tools(prompt)
+        request_provider = selected_provider
+        if selected_provider in {"local", "custom"} and not router.supports_tools(selected_provider):
+            if requires_tools:
+                if not self.api_keys:
+                    return (
+                        f"[ERROR] {selected_provider.title()} AI is chat-only, and no Groq key "
+                        "is available for tool execution. Configure a tool-capable provider with jarvis-setup ai."
+                    )
+                request_provider = "groq"
+                print(f"[JARVIS ROUTER] {selected_provider.title()} is chat-only; routing this action through Groq.", flush=True)
+            else:
+                try:
+                    return self._answer_simple_direct(prompt, allow_omniroute_fallback=False)
+                except Exception as exc:
+                    return f"[ERROR] {selected_provider.title()} AI request failed ({type(exc).__name__}: {exc})"
+
         direct_question = self._simple_direct_request(prompt)
         if direct_question is not None:
             try:
                 return self._answer_simple_direct(direct_question, allow_omniroute_fallback=False)
             except Exception as exc:
-                return f"[ERROR] Simple Groq request failed ({type(exc).__name__}: {exc})"
+                return f"[ERROR] AI request failed ({type(exc).__name__}: {exc})"
 
-        total_keys = len(self.api_keys)
+        total_keys = len(self.api_keys) if request_provider == "groq" else 1
         attempts = 0
 
         while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index]
+            active_key = self.api_keys[self.current_key_index] if request_provider == "groq" else "compatible-provider"
 
-            if not active_key:
-                self.current_key_index = (self.current_key_index + 1) % total_keys
+            if request_provider == "groq" and not active_key:
+                self.current_key_index = (self.current_key_index + 1) % max(1, total_keys)
                 attempts += 1
                 continue
 
             try:
-                response = self._groq_post(
+                response = self._chat_post(
                     {
                         "stream": False,
                         "model": self.model,
@@ -2909,6 +2958,8 @@ class FastAgent:
                         "tool_choice": "auto",
                     },
                     timeout=30,
+                    provider_override=request_provider,
+                    allow_local_fallback=not requires_tools,
                 )
 
                 if response.status_code in (413, 429):
@@ -3039,7 +3090,10 @@ class FastAgent:
                         "stream": False,
                     }
 
-                    final_response = self._groq_post(final_payload, timeout=30)
+                    final_response = self._chat_post(
+                        final_payload, timeout=30, provider_override=request_provider,
+                        allow_local_fallback=False,
+                    )
 
                     if final_response.status_code in (413, 429):
                         # The action tools have already run. Prefer a deterministic
@@ -3070,9 +3124,9 @@ class FastAgent:
                     "[ERROR] JARVIS reached the maximum number "
                     "of tool rounds."
                 )
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 # Do not loop: restarting would re-run tools that already executed.
-                print(f" Network problem: {e}")
-                return f"[ERROR] Network problem while talking to Groq: {e}"
+                print(f" Network problem with {request_provider}: {type(e).__name__}: {e}")
+                return f"[ERROR] Network problem while talking to {request_provider}: {type(e).__name__}: {e}"
 
         raise RuntimeError(" All configured GROQ API keys are exhausted or failing.")
