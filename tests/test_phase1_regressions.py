@@ -60,6 +60,13 @@ class Phase1IntegrationTests(unittest.TestCase):
         self.assertIn("_cli_pending_text", prompt_reader)
         self.assertNotIn('input("YOU  > ")', prompt_reader)
 
+    def test_terminal_header_is_reused_after_clear(self):
+        root = __import__("pathlib").Path(__file__).resolve().parents[1]
+        source = (root / "jarvis.py").read_text(encoding="utf-8")
+        self.assertIn("def print_terminal_header(web_url=", source)
+        self.assertIn("if clear_scrollback():\n                        print_terminal_header(web_url)", source)
+        self.assertIn("print_terminal_header(web_url)", source)
+
     def test_wake_phrase_preroll_is_not_sent_to_command_stt(self):
         root = __import__("pathlib").Path(__file__).resolve().parents[1]
         source = (root / "voice" / "listener.py").read_text(encoding="utf-8")
