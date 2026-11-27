@@ -1478,7 +1478,7 @@ def show_status():
     selected_ai = (env.get("JARVIS_AI_PROVIDER", "groq") or "groq").lower()
     info(f"Primary AI provider: {selected_ai}")
     if selected_ai == "local":
-        info(f"Local model: {env.get('JARVIS_LOCAL_AI_MODEL', 'lfm2.5-350m')} at {env.get('JARVIS_LOCAL_AI_BASE_URL', 'http://127.0.0.1:11434/v1')}")
+        info(f"Local model: {env.get('JARVIS_LOCAL_AI_MODEL', 'jarvis-lfm')} at {env.get('JARVIS_LOCAL_AI_BASE_URL', 'http://127.0.0.1:11434/v1')}")
         info(f"Local tool calling: {'enabled' if env.get('JARVIS_LOCAL_AI_TOOL_CALLING', '0') == '1' else 'disabled (chat only)'}")
     elif selected_ai == "custom":
         info(f"Custom model: {env.get('JARVIS_CUSTOM_AI_MODEL', '(not set)')} at {env.get('JARVIS_CUSTOM_AI_BASE_URL', '(not set)')}")
