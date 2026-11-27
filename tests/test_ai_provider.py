@@ -29,6 +29,16 @@ class AIProviderTests(unittest.TestCase):
         config = AIProviderRouter({"JARVIS_AI_PROVIDER": "local"}).config("local")
         self.assertEqual(config["model"], "jarvis-lfm")
 
+    def test_omniroute_is_available_but_chat_only(self):
+        router = AIProviderRouter({
+            "JARVIS_AI_PROVIDER": "omniroute",
+            "OMNIROUTE_BASE_URL": "http://127.0.0.1:20128/v1",
+            "OMNIROUTE_COMPLEX_MODEL": "auto/best-reasoning",
+        })
+        self.assertEqual(router.active_provider(), "omniroute")
+        self.assertFalse(router.supports_tools("omniroute"))
+        self.assertEqual(router.config("omniroute")["model"], "auto/best-reasoning")
+
     def test_local_tool_calling_is_off_by_default(self):
         self.assertFalse(AIProviderRouter({"JARVIS_AI_PROVIDER": "local"}).supports_tools())
 
