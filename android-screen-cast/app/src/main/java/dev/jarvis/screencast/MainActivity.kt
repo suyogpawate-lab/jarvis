@@ -46,7 +46,7 @@ class MainActivity : Activity() {
         layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
         layout.addView(button("Create JARVIS Phone contact") { setupJarvisContact() })
         layout.addView(button("Open calling-account settings") { openCallingAccountSettings() })
-        layout.addView(button("Open Phone app with JARVIS number") { openPhoneDialerForJarvis() })
+        layout.addView(button("Call JARVIS (local Phone UI)") { openPhoneDialerForJarvis() })
         layout.addView(button("Enable screen control") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
