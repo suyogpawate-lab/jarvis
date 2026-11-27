@@ -72,7 +72,7 @@ class AIProviderRouter:
                 "name": "Local AI",
                 "base_url": str(self.environ.get("JARVIS_LOCAL_AI_BASE_URL", "http://127.0.0.1:11434/v1")).strip().rstrip("/"),
                 "api_key": str(self.environ.get("JARVIS_LOCAL_AI_API_KEY", "ollama") or "ollama").strip(),
-                "model": str(self.environ.get("JARVIS_LOCAL_AI_MODEL", "lfm2.5-350m") or "lfm2.5-350m").strip(),
+                "model": str(self.environ.get("JARVIS_LOCAL_AI_MODEL", "jarvis-lfm") or "jarvis-lfm").strip(),
             }
         if provider == "custom":
             return {
