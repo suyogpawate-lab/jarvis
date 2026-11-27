@@ -45,7 +45,7 @@ def compact_local_context(prompt: str, max_chars: int = 5200) -> str:
 
 class AIProviderRouter:
     """Read provider settings dynamically; changes apply after JARVIS restarts."""
-    PROVIDERS = {"groq", "local", "custom"}
+    PROVIDERS = {"groq", "local", "omniroute", "custom"}
 
     def __init__(self, environ=None):
         self.environ = os.environ if environ is None else environ
@@ -62,6 +62,8 @@ class AIProviderRouter:
         provider = provider or self.active_provider()
         if provider == "groq":
             return True
+        if provider == "omniroute":
+            return False
         key = "JARVIS_LOCAL_AI_TOOL_CALLING" if provider == "local" else "JARVIS_CUSTOM_AI_TOOL_CALLING"
         return str(self.environ.get(key, "0")).strip().lower() in {"1", "true", "yes", "on"}
 
@@ -74,6 +76,13 @@ class AIProviderRouter:
                 "api_key": str(self.environ.get("JARVIS_LOCAL_AI_API_KEY", "ollama") or "ollama").strip(),
                 "model": str(self.environ.get("JARVIS_LOCAL_AI_MODEL", "jarvis-lfm") or "jarvis-lfm").strip(),
             }
+        if provider == "omniroute":
+            return {
+                "name": "OmniRoute",
+                "base_url": str(self.environ.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")).strip().rstrip("/"),
+                "api_key": str(self.environ.get("OMNIROUTE_API_KEY", "any-string") or "any-string").strip(),
+                "model": str(self.environ.get("OMNIROUTE_COMPLEX_MODEL", "auto/best-reasoning") or "auto/best-reasoning").strip(),
+            }
         if provider == "custom":
             return {
                 "name": "Custom AI",
@@ -85,7 +94,7 @@ class AIProviderRouter:
 
     def post(self, payload: dict[str, Any], provider=None, timeout=15):
         provider = provider or self.active_provider()
-        if provider not in {"local", "custom"}:
+        if provider not in {"local", "omniroute", "custom"}:
             raise ValueError(f"Unsupported compatible provider: {provider}")
         config = self.config(provider)
         if not config["base_url"] or not config["model"]:
