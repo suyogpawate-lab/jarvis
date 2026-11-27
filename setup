@@ -408,7 +408,7 @@ def step_ai(env):
     elif selected == "omniroute":
         base_url = ask("OmniRoute base URL", default=env.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1"), allow_empty=False).rstrip("/")
         model = ask("OmniRoute model ID", default=env.get("OMNIROUTE_COMPLEX_MODEL", "auto/best-reasoning"), allow_empty=False)
-        api_key = ask("OmniRoute API key (hidden; Enter keeps current)", default=env.get("OMNIROUTE_API_KEY", "any-string"), secret=True)
+        api_key = ask("OmniRoute API key (hidden; Enter keeps current)", default=(env.get("OMNIROUTE_API_KEY", "") or "any-string"), secret=True)
         good, detail = test_compatible_ai(base_url, model, api_key)
         if good:
             ok(f"OmniRoute endpoint responded ({detail}).")
