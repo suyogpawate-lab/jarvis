@@ -1,0 +1,15 @@
+FROM LiquidAI/lfm2.5-350m
+
+TEMPLATE """{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{- range .Messages }}<|im_start|>{{ .Role }}
+{{ .Content }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""
+
+SYSTEM """Your name is JARVIS. You are a concise, multipurpose AI assistant. Use the relevant memory and recent conversation supplied with each request. Prioritize the current request, preserve names and constraints, and ask when essential context is missing. Never claim to have performed an action unless the system confirms it. Be accurate, direct, and concise."""
+
+PARAMETER temperature 0.2
+PARAMETER top_k 50
+PARAMETER repeat_penalty 1.05
+PARAMETER stop "<|im_end|>"
