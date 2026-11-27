@@ -88,6 +88,7 @@ class WhatsAppAutoReplyWorker:
         self._stop_event = threading.Event()
         self._thread = None
         self._lock = threading.Lock()
+        self._log_lock = threading.Lock()
 
         self.context = self._load_json(
             self.context_file,
@@ -131,6 +132,17 @@ class WhatsAppAutoReplyWorker:
                     "type": "REPLY_REVIEW",
                     **pending,
                 })
+
+    def _log(self, *values, sep=" ", end="\n", **_kwargs):
+        """Persist worker diagnostics without writing into the interactive CLI."""
+        message = sep.join(str(value) for value in values)
+        try:
+            with self._log_lock:
+                with (self.data_dir / "worker.log").open("a", encoding="utf-8") as log:
+                    log.write(message + end)
+        except OSError:
+            # Logging must never interrupt message processing or acknowledgements.
+            pass
 
     @staticmethod
     def _load_json(path, default):
@@ -432,7 +444,7 @@ class WhatsAppAutoReplyWorker:
         try:
             self.whatsapp.acknowledge_messages(ids)
         except Exception as exc:
-            print(f"[WHATSAPP AUTO] Ack retry failed: {exc}", flush=True)
+            self._log(f"[WHATSAPP AUTO] Ack retry failed: {exc}", flush=True)
             return
         self.pending_ack_ids.difference_update(ids)
         self._save_state()
@@ -474,7 +486,7 @@ class WhatsAppAutoReplyWorker:
                 chat_jid, limit=min(50, self.context_limit + len(excluded))
             )
         except Exception as exc:
-            print(
+            self._log(
                 f"[WHATSAPP AUTO] History retrieval failed for {chat_jid}: {exc}; "
                 "using local fallback context.",
                 flush=True,
@@ -1274,12 +1286,12 @@ class WhatsAppAutoReplyWorker:
                     gif_playback=gif_playback,
                 )
                 sent += 1
-                print(
+                self._log(
                     f"[WHATSAPP AUTO] Sent file: {file_name}",
                     flush=True,
                 )
             except Exception as exc:
-                print(
+                self._log(
                     f"[WHATSAPP AUTO ERROR] File send failed "
                     f"({meta.get('name')}): {exc}",
                     flush=True,
@@ -1341,7 +1353,7 @@ class WhatsAppAutoReplyWorker:
         )
 
         if self._rate_limited(chat_jid):
-            print(
+            self._log(
                 f"[WHATSAPP AUTO] Hourly reply cap reached for {sender}; "
                 f"skipping.",
                 flush=True,
@@ -1358,7 +1370,7 @@ class WhatsAppAutoReplyWorker:
                 message_id=self._message_id(message),
             )
 
-        print(
+        self._log(
             f"[WHATSAPP AUTO] Incoming from {sender}: {incoming}",
             flush=True,
         )
@@ -1404,7 +1416,7 @@ class WhatsAppAutoReplyWorker:
                 self.pending_reply_reviews[review_id] = pending
                 self._save_state()
                 self._events.put({"type": "REPLY_REVIEW", **pending})
-                print(
+                self._log(
                     f"[WHATSAPP AUTO] Needs owner decision for {sender} "
                     f"(review {review_id}): {pending['reason']}",
                     flush=True,
@@ -1413,7 +1425,7 @@ class WhatsAppAutoReplyWorker:
                 return False
 
             if action == "skip":
-                print(
+                self._log(
                     f"[WHATSAPP AUTO] No reply sent to {sender}: "
                     f"{decision.get('reason') or 'silence preferred.'}",
                     flush=True,
@@ -1427,7 +1439,7 @@ class WhatsAppAutoReplyWorker:
 
             self.whatsapp.send(chat_jid, reply)
             self._remember(chat_jid, "outgoing", "JARVIS", reply)
-            print(f"[WHATSAPP AUTO] Sent grounded reply: {reply}", flush=True)
+            self._log(f"[WHATSAPP AUTO] Sent grounded reply: {reply}", flush=True)
 
             if attachments:
                 self._send_attachments(chat_jid, attachments)
@@ -1440,7 +1452,7 @@ class WhatsAppAutoReplyWorker:
             return True
 
         except Exception as exc:
-            print(f"[WHATSAPP AUTO ERROR] {exc}", flush=True)
+            self._log(f"[WHATSAPP AUTO ERROR] {exc}", flush=True)
 
             # Provider throttling is temporary. Keep the message unacknowledged
             # and defer it until Groq's reported reset instead of counting it
@@ -1449,7 +1461,7 @@ class WhatsAppAutoReplyWorker:
                 deadline = self._last_groq_retry_at
                 for message_id in ids:
                     self._retry_after_by_message[message_id] = deadline
-                print(
+                self._log(
                     f"[WHATSAPP AUTO] Groq rate-limited; preserving {len(ids)} message(s) "
                     f"for retry in about {deadline - time.time():.0f}s.",
                     flush=True,
@@ -1465,7 +1477,7 @@ class WhatsAppAutoReplyWorker:
                 self._failures[message_id] = tries
 
             if tries >= 3:
-                print(
+                self._log(
                     "[WHATSAPP AUTO] Giving up on these messages after "
                     "3 failed attempts.",
                     flush=True,
@@ -1510,7 +1522,7 @@ class WhatsAppAutoReplyWorker:
         return processed
 
     def _run(self):
-        print(
+        self._log(
             "[WHATSAPP AUTO] Worker started.",
             flush=True,
         )
@@ -1522,7 +1534,7 @@ class WhatsAppAutoReplyWorker:
                 self.run_once()
 
                 if last_error is not None:
-                    print(
+                    self._log(
                         "[WHATSAPP AUTO] Bridge connection restored.",
                         flush=True,
                     )
@@ -1531,7 +1543,7 @@ class WhatsAppAutoReplyWorker:
             except Exception as exc:
                 # Report each distinct problem once, not every poll.
                 if str(exc) != last_error:
-                    print(
+                    self._log(
                         f"[WHATSAPP AUTO ERROR] Queue poll failed: {exc}",
                         flush=True,
                     )
@@ -1541,7 +1553,7 @@ class WhatsAppAutoReplyWorker:
                 self.poll_interval
             )
 
-        print(
+        self._log(
             "[WHATSAPP AUTO] Worker stopped.",
             flush=True,
         )
