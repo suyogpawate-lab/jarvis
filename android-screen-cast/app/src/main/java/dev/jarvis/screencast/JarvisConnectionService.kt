@@ -104,11 +104,13 @@ class JarvisConnectionService : ConnectionService() {
         connectionManagerPhoneAccount: PhoneAccountHandle?,
         request: ConnectionRequest
     ): Connection {
-        // A non-null manager handle means Android is trying to route a carrier
-        // call through this app. Refuse safely rather than proxying SIM calls.
+        // This parameter identifies an optional Telecom connection manager; it
+        // does NOT identify the destination SIM account. A legitimate managed
+        // call can therefore have a non-null value. Never reject a JARVIS call
+        // based on it; SIM isolation is enforced by registering only our
+        // CALL_PROVIDER account and validating the JARVIS destination below.
         if (connectionManagerPhoneAccount != null) {
-            android.util.Log.e("JARVIS-CALL", "Refusing SIM call-manager routing; JARVIS is local-call-only.")
-            return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
+            android.util.Log.i("JARVIS-CALL", "Telecom supplied a connection-manager handle for the local JARVIS call.")
         }
 
         val message = request.extras?.getString(EXTRA_MESSAGE)
@@ -122,9 +124,11 @@ class JarvisConnectionService : ConnectionService() {
         connectionManagerPhoneAccount: PhoneAccountHandle?,
         request: ConnectionRequest
     ): Connection {
+        // connectionManagerPhoneAccount is not a SIM-routing indicator.
+        // The explicit JARVIS PhoneAccountHandle and destination validation
+        // below keep this provider isolated from ordinary carrier calls.
         if (connectionManagerPhoneAccount != null) {
-            android.util.Log.e("JARVIS-CALL", "Refusing SIM call-manager routing; JARVIS is local-call-only.")
-            return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
+            android.util.Log.i("JARVIS-CALL", "Telecom supplied a connection-manager handle for the local JARVIS call.")
         }
 
         val address = request.address
