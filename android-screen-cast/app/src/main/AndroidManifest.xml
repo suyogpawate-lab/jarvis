@@ -37,6 +37,14 @@
                 <action android:name="android.telecom.ConnectionService" />
             </intent-filter>
         </service>
+        <service
+            android:name=".JarvisCallRedirectionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_CALL_REDIRECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallRedirectionService" />
+            </intent-filter>
+        </service>
         <receiver
             android:name=".OwnerCallAlarmReceiver"
             android:exported="false" />
