@@ -1583,6 +1583,27 @@ def read_prompt(working=False):
 # MAIN (plain terminal CLI)   -   the fancy UI is: python jarvis_ui.py
 # ==============================================================
 
+def print_terminal_header(web_url="http://127.0.0.1:8765"):
+    """Render the persistent CLI header after startup or a terminal clear."""
+    if is_float_mode():
+        print(f"{_J}JARVIS FLOAT ONLINE{_R}")
+        print(f"{_DIM}Commands: /memory | /clear | exit{_R}")
+    else:
+        print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
+        print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Online{_R}        {_B}{_BCYAN}┃{_R}")
+        print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/memory')}    {_c(_DIM, 'Inspect memory')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/clear')}     {_c(_DIM, 'Clear terminal')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/history')}   {_c(_DIM, 'Chat sessions')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/resume')}    {_c(_DIM, 'Resume a chat  (+ CODE)')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/newchat')}   {_c(_DIM, 'Start fresh session')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/btw')}       {_c(_DIM, 'Side question while working')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/update')}    {_c(_DIM, 'Check for updates')}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'Jarvis Web')} {_c(_DIM, web_url)}")
+        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'exit')}       {_c(_DIM, 'Shut down')}")
+    print()
+
+
 def main():
 
     # Preload the supplied ZIP voice server only when Alan/Bryce is selected.
@@ -1600,11 +1621,8 @@ def main():
     start_auto_updater()
     time.sleep(1.2)
 
-    if is_float_mode():
-        print(f"{_J}JARVIS FLOAT ONLINE{_R}")
-        print(f"{_DIM}Commands: /memory | /clear | exit{_R}")
-    else:
-        web_url = "http://127.0.0.1:8765"
+    web_url = "http://127.0.0.1:8765"
+    if not is_float_mode():
         try:
             import jarvis_ui, jarvis_web
             url = jarvis_web.start(jarvis_ui, sys.modules[__name__])
@@ -1613,23 +1631,10 @@ def main():
         except Exception as exc:
             print(f"{_tag('WEB UI DISABLED', _WARN)} {exc}")
 
-        # Startup diagnostics are useful while services initialize, but the
-        # interactive terminal should begin with one clean, persistent banner.
-        clear_scrollback()
-
-        print(f"\n{_B}{_BCYAN}    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓{_R}")
-        print(f"{_B}{_BCYAN}    ┃{_R}  {_B}{_WHITE}J.A.R.V.I.S.{_R}  {_DIM}System Online{_R}        {_B}{_BCYAN}┃{_R}")
-        print(f"{_B}{_BCYAN}    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛{_R}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/memory')}    {_c(_DIM, 'Inspect memory')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/clear')}     {_c(_DIM, 'Clear terminal')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/history')}   {_c(_DIM, 'Chat sessions')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/resume')}    {_c(_DIM, 'Resume a chat  (+ CODE)')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/newchat')}   {_c(_DIM, 'Start fresh session')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/btw')}       {_c(_DIM, 'Side question while working')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, '/update')}    {_c(_DIM, 'Check for updates')}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'Jarvis Web')} {_c(_DIM, web_url)}")
-        print(f"  {_c(_DIM, '▸')} {_c(_BCYAN, 'exit')}       {_c(_DIM, 'Shut down')}")
-    print()
+    # Startup diagnostics are useful during initialization; keep the
+    # interactive prompt clean once the terminal header is displayed.
+    clear_scrollback()
+    print_terminal_header(web_url)
 
     from concurrent.futures import ThreadPoolExecutor
     global _active_task_future, _auto_update_notified
@@ -1685,7 +1690,9 @@ def main():
 
                 # /clear is a terminal-display command, not a chat/database command.
                 if prompt.strip().lower() == "/clear":
-                    if not clear_scrollback():
+                    if clear_scrollback():
+                        print_terminal_header(web_url)
+                    else:
                         print(f"{_tag('CLEAR', _WARN)} This terminal does not support scrollback clearing.", flush=True)
                     continue
 

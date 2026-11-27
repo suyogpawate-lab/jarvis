@@ -31,7 +31,11 @@ _lock = threading.Lock()
 
 
 def _say(text):
-    print(f"[SERVICES] {text}", flush=True)
+    """Write service lifecycle details to a log, never over the live CLI prompt."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with _lock:
+        with (LOG_DIR / "services.log").open("a", encoding="utf-8") as log:
+            log.write(f"[SERVICES] {text}\n")
 
 
 def _port_open(port, timeout=0.5):

@@ -13,25 +13,33 @@ carrier number, public VoIP service, or remote call provider.
 
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
-3. Open the device's Phone app settings, find **Calling accounts**, and enable
-   **J.A.R.V.I.S.**. The exact menu wording varies by dialer/OEM.
-4. Keep the JARVIS Termux process running. The companion's foreground bridge
+3. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
+   a contact named **JARVIS**, with local dial string **0** and JARVIS set as
+   that contact's preferred calling account.
+4. Open **Calling accounts** from the companion app and enable **J.A.R.V.I.S.**
+   once. Leave the SIM as the default outgoing account; do not select Ask every
+   time and do not make JARVIS the global default.
+5. Keep the JARVIS Termux process running. The companion's foreground bridge
    service must remain enabled for incoming call alerts.
 
-The companion registers a system-managed PhoneAccount with
-CAPABILITY_CALL_PROVIDER and the tel URI scheme. The system Phone app
-supplies the incoming and in-call interface.
+Android's ContactsContract supports a preferred PhoneAccountHandle on an
+individual phone-number row. Android Telecom consults that preference when
+resolving an outgoing contact call, so JARVIS can be selected for this contact
+without changing the account used for other contacts.
 
 ### Calling JARVIS from the Phone app
 
-1. Open the Phone app.
-2. Dial **0**.
-3. Choose **J.A.R.V.I.S.** as the calling account if the dialer asks.
-4. The Phone app opens the JARVIS call. No Call JARVIS button in this
-   companion app is used.
+- Open the normal Phone app and dial **0**, then tap Call; or
+- Search for **JARVIS** in the Phone app's contacts/dial-pad search and tap Call.
 
-The 0 dial string is a local route selector only; it is not sent to a
-carrier and is not a public telephone number.
+Both paths use the JARVIS contact's preferred calling account. No account
+chooser should appear for this contact. Ordinary phone numbers continue to
+use the SIM/default account. If the dialer does not resolve the single-digit
+number to the contact on this device, call **JARVIS** from the contact search;
+OEM dialers can differ in short-number lookup behavior.
+
+The 0 dial string is a local route selector only; it is not sent to a carrier
+when Telecom resolves the JARVIS contact preference.
 
 ### JARVIS calling you
 

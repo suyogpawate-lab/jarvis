@@ -17,6 +17,7 @@ import android.widget.Toast
 class MainActivity : Activity() {
     private val projectionRequest = 7021
     private val callPermissionRequest = 7022
+    private val contactsPermissionRequest = 7023
     private lateinit var status: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,19 +29,20 @@ class MainActivity : Activity() {
         }
         status = TextView(this).apply {
             text = "JARVIS Android companion\n\n" +
-                "Calls are handled by your existing Phone app.\n\n" +
+                "Calls use the normal Android Phone app.\n\n" +
                 "One-time setup:\n" +
-                "1. Tap Enable JARVIS Phone calls below.\n" +
-                "2. Allow microphone access.\n" +
-                "3. In Phone app settings, enable the J.A.R.V.I.S. calling account.\n\n" +
-                "To call JARVIS: open Phone, select the J.A.R.V.I.S. account, and dial 0.\n" +
-                "Incoming JARVIS calls will appear in the Phone app.\n\n" +
+                "1. Enable JARVIS Phone calls and allow microphone access.\n" +
+                "2. Create the JARVIS Phone contact below and allow contacts access.\n" +
+                "3. Enable J.A.R.V.I.S. once in calling-account settings. Keep your SIM as the default account.\n\n" +
+                "Then dial 0 or find JARVIS in Phone contacts and tap Call. Android uses the JARVIS contact's preferred calling account; ordinary contacts continue using your SIM.\n\n" +
                 "Local audio bridge: 127.0.0.1:21344"
             textSize = 16f
             setPadding(0, 0, 0, 24)
         }
         layout.addView(status)
         layout.addView(button("Enable JARVIS Phone calls") { enableCalling() })
+        layout.addView(button("Create JARVIS Phone contact") { setupJarvisContact() })
+        layout.addView(button("Open calling-account settings") { openCallingAccountSettings() })
         layout.addView(button("Enable screen control") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
@@ -54,6 +56,20 @@ class MainActivity : Activity() {
         })
         setContentView(layout)
         JarvisConnectionService.registerAccount(this)
+    }
+
+    private fun openCallingAccountSettings() {
+        val intent = Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+            Toast.makeText(
+                this,
+                "Open Calling accounts and enable J.A.R.V.I.S. Leave your SIM as the default outgoing account.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun enableCalling() {
@@ -72,9 +88,34 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
         Toast.makeText(
             this,
-            "JARVIS calling service enabled. Now enable J.A.R.V.I.S. in Phone app calling-account settings.",
+            "JARVIS calling service enabled. Enable its calling account once in Android settings.",
             Toast.LENGTH_LONG
         ).show()
+    }
+
+    private fun setupJarvisContact() {
+        val permissions = arrayOf(
+            android.Manifest.permission.READ_CONTACTS,
+            android.Manifest.permission.WRITE_CONTACTS
+        )
+        if (permissions.any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
+            requestPermissions(permissions, contactsPermissionRequest)
+            return
+        }
+        createJarvisContact()
+    }
+
+    private fun createJarvisContact() {
+        try {
+            val created = JarvisContact.ensure(this)
+            val detail = if (created) "Created the JARVIS contact with local number 0."
+                else "Updated the existing JARVIS contact."
+            status.text = "$detail\n\nEnable J.A.R.V.I.S. once in calling-account settings. Keep your SIM as the default outgoing account."
+            Toast.makeText(this, detail, Toast.LENGTH_LONG).show()
+        } catch (error: Exception) {
+            android.util.Log.e("JARVIS-CONTACT", "Could not create preferred-account contact", error)
+            Toast.makeText(this, "Could not set up the JARVIS contact: ${error.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -83,11 +124,20 @@ class MainActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == callPermissionRequest) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startCallingService()
-            } else {
-                Toast.makeText(this, "Microphone permission is required for two-way calls.", Toast.LENGTH_LONG).show()
+        when (requestCode) {
+            callPermissionRequest -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startCallingService()
+                } else {
+                    Toast.makeText(this, "Microphone permission is required for two-way calls.", Toast.LENGTH_LONG).show()
+                }
+            }
+            contactsPermissionRequest -> {
+                if (grantResults.size == 2 && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                    createJarvisContact()
+                } else {
+                    Toast.makeText(this, "Contacts permission is required to add JARVIS as a local calling contact.", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
