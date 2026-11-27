@@ -2816,6 +2816,9 @@ class FastAgent:
         answer = str(answer or "").strip()
         if not answer:
             return answer
+        # Do not require Groq for a local/custom primary provider's formatting pass.
+        if (getattr(self, "_ai_provider_router", None) or AIProviderRouter()).active_provider() != "groq":
+            return answer
         is_list = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer))
         is_heading = bool(re.search(r"(?m)^\s*#{1,6}\s+", answer))
         if len(answer.split()) <= 120 and not is_list and not is_heading:
@@ -2925,16 +2928,18 @@ class FastAgent:
             except Exception as exc:
                 return f"[ERROR] AI request failed ({type(exc).__name__}: {exc})"
 
-        total_keys = len(self.api_keys) if request_provider == "groq" else 1
+        total_keys = max(1, len(self.api_keys)) if request_provider == "groq" else 1
         attempts = 0
 
         while attempts < total_keys:
-            active_key = self.api_keys[self.current_key_index] if request_provider == "groq" else "compatible-provider"
+            active_key = self.api_keys[self.current_key_index] if self.api_keys else None
+            if request_provider != "groq":
+                active_key = "compatible-provider"
 
-            if request_provider == "groq" and not active_key:
-                self.current_key_index = (self.current_key_index + 1) % max(1, total_keys)
-                attempts += 1
-                continue
+            # With no Groq key, allow the safe text-only fallback to run. Never
+            # fall back for an action request that needs a tool-capable provider.
+            if request_provider == "groq" and not active_key and requires_tools:
+                return "[ERROR] No Groq API key is configured for tool execution."
 
             try:
                 response = self._chat_post(
@@ -2962,11 +2967,11 @@ class FastAgent:
                     allow_local_fallback=not requires_tools,
                 )
 
-                if response.status_code in (413, 429):
-                    return self._groq_limit_message(response)
-
                 if response.status_code != 200:
-                    return self._groq_limit_message(response)
+                    if request_provider == "groq":
+                        return self._groq_limit_message(response)
+                    detail = " ".join(str(getattr(response, "text", "")).split())[:240]
+                    return f"[ERROR] {request_provider.title()} AI returned HTTP {response.status_code}" + (f": {detail}" if detail else "")
 
                 data = response.json()
                 message = data["choices"][0]["message"]
@@ -3106,17 +3111,19 @@ class FastAgent:
                                 flush=True,
                             )
                             return local_reply
-                        return (
-                            self._groq_limit_message(final_response)
-                            + " The action step already ran and was not repeated."
-                        )
+                        if request_provider == "groq":
+                            detail = self._groq_limit_message(final_response)
+                        else:
+                            detail = f"{request_provider.title()} AI returned HTTP {final_response.status_code}."
+                        return detail + " The action step already ran and was not repeated."
 
                     if final_response.status_code != 200:
                         # Tools already ran. Never restart (that would run them again).
-                        return (
-                            self._groq_limit_message(final_response)
-                            + " The action step already ran and was not repeated."
-                        )
+                        if request_provider == "groq":
+                            detail = self._groq_limit_message(final_response)
+                        else:
+                            detail = f"{request_provider.title()} AI returned HTTP {final_response.status_code}."
+                        return detail + " The action step already ran and was not repeated."
 
                     message = final_response.json()["choices"][0]["message"]
 
