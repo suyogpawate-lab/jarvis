@@ -45,6 +45,26 @@ The installer pins KittenML 0.9.7 without its heavyweight PyTorch stack, uses Te
 
 This backend is optional because its Python frontend dependencies and model download are separate from the core JARVIS install. It uses the compact Pico ONNX model rather than KittenTTS's much larger PyTorch model family.
 
+## Local AI and provider switching
+
+Switch the primary chat model at any time with:
+
+```bash
+jarvis-setup ai
+```
+
+JARVIS supports Groq (default, full tool calling), a local OpenAI-compatible endpoint
+(such as Ollama), or a custom OpenAI-compatible API. Local and custom endpoints are
+chat-only by default; actions are routed through Groq unless tool calling is explicitly
+enabled for a model that has been verified to support it. The LFM2.5 350M preset is
+intended for lightweight conversation, not reliable tool execution.
+
+For the Ollama LFM2.5 350M preset, see [docs/local-ai.md](docs/local-ai.md) and
+`Modelfile.lfm2.5-350m`. JARVIS packs relevant persistent memory, recent turns, and
+the current request into a bounded context for small local models. This helps context
+continuity but cannot remove the reasoning limitations of a 350M-parameter model.
+Provider changes apply after restarting JARVIS.
+
 ## First-time setup and configuration
 
 The installer places `jarvis-setup` in Termux's command path, so it works from any directory. Run the guided setup with:
