@@ -75,7 +75,9 @@ class FastAgent:
             r"uninstall|delete|remove|create|edit|modify|execute|run|terminal|termux|"
             r"schedule|cancel|restart|start|stop|build|compile|git|repository|repo|"
             r"write code|fix code|debug|configure|backup|copy|move|download|upload|"
-            r"search the web|web search|deep research|research report)\b",
+            r"search|research|find|read|inspect|check|list|show|report|document|file|"
+            r"folder|notification|contact|battery|storage|wifi|bluetooth|volume|"
+            r"brightness|remind|wake me)\b",
             text, re.IGNORECASE,
         ))
 
