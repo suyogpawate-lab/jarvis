@@ -8,7 +8,7 @@ function calling. Provider selection is independent of speech recognition and TT
 Run \`jarvis-setup ai\` at any time, then restart JARVIS:
 
 - **Groq** — full tool-calling agent and default.
-- **Local AI** — any OpenAI-compatible local endpoint, including Ollama at
+- **OmniRoute** — the existing local gateway for primary chat (tool actions remain with Groq).\n- **Local AI** — any OpenAI-compatible local endpoint, including Ollama at
   \`http://127.0.0.1:11434/v1\`.
 - **Custom AI** — any reachable OpenAI-compatible endpoint and model.
 
