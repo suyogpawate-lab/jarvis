@@ -2907,7 +2907,7 @@ class FastAgent:
         selected_provider = router.active_provider()
         requires_tools = self._request_requires_tools(prompt)
         request_provider = selected_provider
-        if selected_provider in {"local", "custom"} and not router.supports_tools(selected_provider):
+        if selected_provider in {"local", "omniroute", "custom"} and not router.supports_tools(selected_provider):
             if requires_tools:
                 if not self.api_keys:
                     return (
