@@ -39,15 +39,25 @@ class OwnerAudioBridge:
         self._active_lock = threading.Lock()
         self._active_socket = None
         self._command_lock = threading.Lock()
+        self._ready = threading.Event()
+        self._startup_error = None
 
     def start(self):
         if self.running:
             return self
         if not self.model_path.is_file() or not self.needle.is_file():
             raise RuntimeError("Call audio requires whistle.cact and android-arm64/needle.")
+        self._ready.clear()
+        self._startup_error = None
         self.running = True
         self.thread = threading.Thread(target=self._serve, daemon=True, name="JarvisOwnerAudio")
         self.thread.start()
+        if not self._ready.wait(timeout=5.0):
+            self.running = False
+            raise RuntimeError("Call audio listener did not become ready within 5 seconds.")
+        if self._startup_error is not None:
+            self.running = False
+            raise RuntimeError(f"Call audio listener failed to start: {self._startup_error}") from self._startup_error
         return self
 
     def stop(self):
@@ -79,6 +89,7 @@ class OwnerAudioBridge:
             server.listen(2)
             server.settimeout(1.0)
             self.server = server
+            self._ready.set()
             print(f"[JARVIS CALL AUDIO] Listening on {self.host}:{self.port}", flush=True)
             while self.running:
                 try:
@@ -96,8 +107,10 @@ class OwnerAudioBridge:
                 )
                 worker.start()
         except OSError as exc:
-            if self.running:
-                print(f"[JARVIS CALL AUDIO] Listener failed: {exc}", flush=True)
+            self._startup_error = exc
+            self.running = False
+            self._ready.set()
+            print(f"[JARVIS CALL AUDIO] Listener failed: {exc}", flush=True)
         finally:
             try:
                 server.close()
