@@ -9,6 +9,8 @@ class FastAgentProviderRoutingTests(unittest.TestCase):
     def test_action_detection_routes_side_effects_away_from_chat_only_models(self):
         self.assertTrue(FastAgent._request_requires_tools("Send a WhatsApp message to Alex"))
         self.assertTrue(FastAgent._request_requires_tools("Set an alarm for 6 AM"))
+        self.assertTrue(FastAgent._request_requires_tools("Find my downloaded documents"))
+        self.assertTrue(FastAgent._request_requires_tools("Search the web for current results"))
         self.assertFalse(FastAgent._request_requires_tools("Explain why neutron stars are dense"))
 
     def test_local_provider_is_used_for_chat(self):
