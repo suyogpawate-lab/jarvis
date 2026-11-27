@@ -59,7 +59,10 @@ class MainActivity : Activity() {
             status.text = "Screen cast stopped."
         })
         setContentView(layout)
-        JarvisConnectionService.registerAccount(this)
+        // Do not register a PhoneAccount during Activity startup. Some Android
+        // builds (including tablets without Telecom voice-call support) throw
+        // UnsupportedOperationException here, which would crash the entire app.
+        // Calling support is initialized only after the user explicitly enables it.
     }
 
     private fun openPhoneDialerForJarvis() {
@@ -95,16 +98,45 @@ class MainActivity : Activity() {
     }
 
     private fun startCallingService() {
-        JarvisConnectionService.registerAccount(this)
-        val service = Intent(this, OwnerCallBridgeService::class.java).apply {
-            action = OwnerCallBridgeService.ACTION_START
+        try {
+            JarvisConnectionService.registerAccount(this)
+        } catch (error: UnsupportedOperationException) {
+            showCallingUnavailable("This Android build does not provide Telecom calling support.")
+            android.util.Log.w("JARVIS-CALL", "Telecom is unavailable on this device.", error)
+            return
+        } catch (error: SecurityException) {
+            showCallingUnavailable("Android denied registration of the JARVIS calling account.")
+            android.util.Log.e("JARVIS-CALL", "PhoneAccount registration was denied.", error)
+            return
+        } catch (error: IllegalArgumentException) {
+            showCallingUnavailable("Android rejected the JARVIS calling account configuration.")
+            android.util.Log.e("JARVIS-CALL", "PhoneAccount configuration was rejected.", error)
+            return
+        } catch (error: RuntimeException) {
+            showCallingUnavailable("Android could not initialize phone calling on this device.")
+            android.util.Log.e("JARVIS-CALL", "PhoneAccount registration failed.", error)
+            return
         }
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
-        Toast.makeText(
-            this,
-            "JARVIS calling service enabled. Select J.A.R.V.I.S. as SIM call manager in system calling settings.",
-            Toast.LENGTH_LONG
-        ).show()
+
+        try {
+            val service = Intent(this, OwnerCallBridgeService::class.java).apply {
+                action = OwnerCallBridgeService.ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
+            Toast.makeText(
+                this,
+                "JARVIS calling service enabled. Select J.A.R.V.I.S. as SIM call manager in system calling settings.",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (error: Exception) {
+            showCallingUnavailable("Android could not start the JARVIS calling service.")
+            android.util.Log.e("JARVIS-CALL", "Could not start the calling service.", error)
+        }
+    }
+
+    private fun showCallingUnavailable(message: String) {
+        status.text = message + "\n\nThe companion app remains available for screen casting and screen control."
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     private fun setupJarvisContact() {
