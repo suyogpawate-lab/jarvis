@@ -70,12 +70,12 @@ class FastAgent:
         """Conservatively identify requests that may cause external side effects."""
         text = FastAgent._live_user_request(prompt)
         return bool(re.search(
-            r"\b(send|whatsapp|email|call|set alarm|set timer|launch|open app|"
-            r"tap|click|swipe|screen control|install|uninstall|delete|remove|"
-            r"create file|edit file|modify|execute|run command|terminal|termux|"
-            r"schedule|cancel|restart|start service|stop service|build|compile|"
-            r"git|repository|repo|write code|fix code|debug|configure|backup|"
-            r"copy file|move file|download|upload)\b",
+            r"\b(send|whatsapp|email|call|set alarm|set timer|launch|open|play|pause|"
+            r"tap|click|swipe|screen control|turn on|turn off|enable|disable|install|"
+            r"uninstall|delete|remove|create|edit|modify|execute|run|terminal|termux|"
+            r"schedule|cancel|restart|start|stop|build|compile|git|repository|repo|"
+            r"write code|fix code|debug|configure|backup|copy|move|download|upload|"
+            r"search the web|web search|deep research|research report)\b",
             text, re.IGNORECASE,
         ))
 
