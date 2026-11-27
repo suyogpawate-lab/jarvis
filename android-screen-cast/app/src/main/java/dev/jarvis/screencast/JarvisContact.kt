@@ -15,7 +15,7 @@ import android.provider.ContactsContract.CommonDataKinds.StructuredName
  */
 object JarvisContact {
     private const val CONTACT_NAME = "JARVIS"
-    private const val LOCAL_NUMBER = "0"
+    private const val LOCAL_NUMBER = "+12025550147"
 
     /** @return true when a new contact was inserted, false when an existing one was updated. */
     fun ensure(context: Context): Boolean {
@@ -26,18 +26,20 @@ object JarvisContact {
         val resolver = context.contentResolver
 
         val projection = arrayOf(Phone._ID)
-        val selection = "${Phone.DISPLAY_NAME} = ? AND ${Phone.NUMBER} = ?"
+        val selection = "${Phone.DISPLAY_NAME} = ?"
         val cursor = resolver.query(
             Phone.CONTENT_URI,
             projection,
             selection,
-            arrayOf(CONTACT_NAME, LOCAL_NUMBER),
+            arrayOf(CONTACT_NAME),
             null
         )
+        var updatedExisting = false
         cursor?.use {
-            if (it.moveToFirst()) {
+            while (it.moveToNext()) {
                 val dataId = it.getLong(0)
                 val values = ContentValues().apply {
+                    put(Phone.NUMBER, LOCAL_NUMBER)
                     put(ContactsContract.Data.PREFERRED_PHONE_ACCOUNT_COMPONENT_NAME, componentName)
                     put(ContactsContract.Data.PREFERRED_PHONE_ACCOUNT_ID, accountId)
                 }
@@ -47,9 +49,10 @@ object JarvisContact {
                     null,
                     null
                 )
-                return false
+                updatedExisting = true
             }
         }
+        if (updatedExisting) return false
 
         val operations = arrayListOf(
             ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
