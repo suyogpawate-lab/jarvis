@@ -19,8 +19,9 @@ import java.util.UUID
 /**
  * System-managed JARVIS VoIP provider.
  *
- * The user's existing Phone app supplies all incoming and in-call UI. To call
- * JARVIS from that dialer, select the J.A.R.V.I.S. calling account and dial 0.
+ * The stock Phone app handles calls. ContactsContract's preferred-account
+ * fields route the JARVIS contact to this provider without changing the
+ * user's default SIM account or showing an account chooser on each call.
  */
 class JarvisConnectionService : ConnectionService() {
     companion object {
@@ -43,6 +44,11 @@ class JarvisConnectionService : ConnectionService() {
                 .setShortDescription("Local JARVIS voice assistant")
                 .build()
             telecom.registerPhoneAccount(account)
+        }
+
+        fun isAccountEnabled(context: Context): Boolean {
+            val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+            return telecom.callCapablePhoneAccounts.contains(accountHandle(context))
         }
 
         fun incomingCall(context: Context, message: String, reason: String): Boolean {
@@ -113,7 +119,7 @@ class JarvisConnectionService : ConnectionService() {
     ): Connection {
         val address = request.address
         val dialString = address?.schemeSpecificPart.orEmpty()
-        val connection = OwnerConnection(this, "Hello, sir. J.A.R.V.I.S. is ready. How can I help?", incoming = false)
+        val connection = OwnerConnection(this, "Hello. J.A.R.V.I.S. is ready. How can I help?", incoming = false)
         activeConnection = connection
         if (address?.scheme != PhoneAccount.SCHEME_TEL || dialString != "0") {
             connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR))
@@ -157,7 +163,6 @@ class JarvisConnectionService : ConnectionService() {
             setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "0", null),
                 TelecomManager.PRESENTATION_ALLOWED)
             setAudioModeIsVoip(true)
-            // This is a system-managed provider. Do not mark it SELF_MANAGED.
             setConnectionProperties(0)
             if (incoming) setRinging() else setDialing()
         }
