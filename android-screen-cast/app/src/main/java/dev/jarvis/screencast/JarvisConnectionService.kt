@@ -119,15 +119,17 @@ class JarvisConnectionService : ConnectionService() {
     ): Connection {
         val address = request.address
         val dialString = address?.schemeSpecificPart.orEmpty()
+        val normalizedNumber = dialString.filter { it.isDigit() }
+        val isJarvisDestination = normalizedNumber == "12025550147" || normalizedNumber == "2025550147"
         val connection = OwnerConnection(this, "Hello. J.A.R.V.I.S. is ready. How can I help?", incoming = false)
         activeConnection = connection
-        if (address?.scheme != PhoneAccount.SCHEME_TEL || dialString != "0") {
+        if (address?.scheme != PhoneAccount.SCHEME_TEL || !isJarvisDestination) {
             connection.setDisconnected(DisconnectCause(DisconnectCause.ERROR))
             connection.destroy()
             activeConnection = null
             return connection
         }
-        connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "0", null),
+        connection.setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "+12025550147", null),
             TelecomManager.PRESENTATION_ALLOWED)
         Handler(Looper.getMainLooper()).postDelayed({
             if (activeConnection === connection && connection.state == Connection.STATE_DIALING) {
@@ -160,7 +162,7 @@ class JarvisConnectionService : ConnectionService() {
     ) : Connection() {
         init {
             setCallerDisplayName("J.A.R.V.I.S.", TelecomManager.PRESENTATION_ALLOWED)
-            setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "0", null),
+            setAddress(Uri.fromParts(PhoneAccount.SCHEME_TEL, "+12025550147", null),
                 TelecomManager.PRESENTATION_ALLOWED)
             setAudioModeIsVoip(true)
             setConnectionProperties(0)
