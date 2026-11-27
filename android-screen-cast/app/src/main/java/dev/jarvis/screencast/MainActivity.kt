@@ -34,9 +34,10 @@ class MainActivity : Activity() {
                 "One-time setup:\n" +
                 "1. Enable JARVIS Phone calls and allow microphone access.\n" +
                 "2. Enable J.A.R.V.I.S. in Android calling-account settings.\n" +
-                "3. Set outgoing calls to Ask every time, if your Phone app offers that option.\n" +
-                "4. Create the JARVIS Phone contact and allow contacts access.\n\n" +
-                "From the Phone app, choose the J.A.R.V.I.S. calling account for the JARVIS contact. Choose your SIM for ordinary calls. The JARVIS number must never be sent through the SIM.\n\n" +
+                "3. Select J.A.R.V.I.S. as the SIM call manager in system calling settings.\n" +
+                "4. Keep your SIM as the default outgoing account.\n" +
+                "5. Create the JARVIS Phone contact and allow contacts access.\n\n" +
+                "JARVIS handles its own contact locally. All other incoming and outgoing SIM calls are passed through to the original SIM account.\n\n" +
                 "Local audio bridge: 127.0.0.1:21344"
             textSize = 16f
             setPadding(0, 0, 0, 24)
@@ -46,7 +47,9 @@ class MainActivity : Activity() {
         layout.addView(button("Create JARVIS Phone contact") { setupJarvisContact() })
         layout.addView(button("Open calling-account settings") { openCallingAccountSettings() })
         layout.addView(button("Open Phone app with JARVIS number") { openPhoneDialerForJarvis() })
-        layout.addView(button("Enable screen control") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
+        layout.addView(button("Enable screen control") {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        })
         layout.addView(button("Start live cast") {
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             startActivityForResult(manager.createScreenCaptureIntent(), projectionRequest)
@@ -75,7 +78,11 @@ class MainActivity : Activity() {
             startActivity(intent)
         } catch (_: Exception) {
             startActivity(Intent(Settings.ACTION_SETTINGS))
-            Toast.makeText(this, "Open Calling accounts, enable J.A.R.V.I.S., and keep your SIM available for normal calls.", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "Open Calling accounts, enable J.A.R.V.I.S., and select it as SIM call manager. Keep your SIM as the default outgoing account.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -89,13 +96,22 @@ class MainActivity : Activity() {
 
     private fun startCallingService() {
         JarvisConnectionService.registerAccount(this)
-        val service = Intent(this, OwnerCallBridgeService::class.java).apply { action = OwnerCallBridgeService.ACTION_START }
+        val service = Intent(this, OwnerCallBridgeService::class.java).apply {
+            action = OwnerCallBridgeService.ACTION_START
+        }
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
-        Toast.makeText(this, "JARVIS calling service enabled. Enable its calling account in Android settings.", Toast.LENGTH_LONG).show()
+        Toast.makeText(
+            this,
+            "JARVIS calling service enabled. Select J.A.R.V.I.S. as SIM call manager in system calling settings.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun setupJarvisContact() {
-        val permissions = arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.WRITE_CONTACTS)
+        val permissions = arrayOf(
+            android.Manifest.permission.READ_CONTACTS,
+            android.Manifest.permission.WRITE_CONTACTS
+        )
         if (permissions.any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
             requestPermissions(permissions, contactsPermissionRequest)
             return
@@ -106,25 +122,36 @@ class MainActivity : Activity() {
     private fun createJarvisContact() {
         try {
             val created = JarvisContact.ensure(this)
-            val detail = if (created) "Created the JARVIS contact with its local virtual number." else "Updated the existing JARVIS contact."
-            status.text = "$detail\n\nEnable J.A.R.V.I.S. in calling-account settings. For Phone-app calls, choose J.A.R.V.I.S. as the outgoing account for this contact and your SIM for ordinary calls."
+            val detail = if (created) "Created the JARVIS contact with its local virtual number."
+                else "Updated the existing JARVIS contact."
+            status.text = detail + "\n\nSelect J.A.R.V.I.S. as SIM call manager, but keep your SIM as the default outgoing account. The JARVIS destination is handled locally; other calls are proxied to the SIM."
             Toast.makeText(this, detail, Toast.LENGTH_LONG).show()
         } catch (error: Exception) {
             android.util.Log.e("JARVIS-CONTACT", "Could not create JARVIS contact", error)
-            Toast.makeText(this, "Could not set up the JARVIS contact: \${error.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Could not set up the JARVIS contact: " + error.javaClass.simpleName, Toast.LENGTH_LONG).show()
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             callPermissionRequest -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) startCallingService()
-                else Toast.makeText(this, "Microphone permission is required for two-way calls.", Toast.LENGTH_LONG).show()
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startCallingService()
+                } else {
+                    Toast.makeText(this, "Microphone permission is required for two-way calls.", Toast.LENGTH_LONG).show()
+                }
             }
             contactsPermissionRequest -> {
-                if (grantResults.size == 2 && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) createJarvisContact()
-                else Toast.makeText(this, "Contacts permission is required to add JARVIS as a local calling contact.", Toast.LENGTH_LONG).show()
+                if (grantResults.size == 2 && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                    createJarvisContact()
+                } else {
+                    Toast.makeText(this, "Contacts permission is required to add JARVIS as a local calling contact.", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
