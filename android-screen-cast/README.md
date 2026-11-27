@@ -1,47 +1,51 @@
 # JARVIS Android companion
 
 This Android 10+ companion provides live screen casting/control and a local
-Telecom calling provider. Calls use Android Telecom's normal system call UI;
+Telecom calling provider. Calls use Android Telecom's normal Phone app UI;
 the companion is used for one-time setup and background audio services.
 
 ## Local JARVIS calling
 
-The calling path is entirely on this Android device. It does not use a SIM,
-carrier number, public VoIP service, or remote call provider. JARVIS is a
-managed ConnectionService account exposed to Android as a separate calling
-method.
+The calling path is entirely on this Android device. It does not use a SIM
+for the JARVIS conversation, a carrier number, a public VoIP service, or a
+remote call provider. JARVIS registers a Telecom ConnectionService as both a
+local call provider and a SIM call manager.
 
 ### One-time setup
 
 1. Install and open this companion app.
 2. Tap **Enable JARVIS Phone calls** and grant microphone permission.
-3. Tap **Open calling-account settings** and enable **J.A.R.V.I.S.**
-4. In the Phone app's calling settings, select **Ask every time** for the
-   outgoing account if that option is available. This keeps the SIM available
-   for ordinary calls without making JARVIS the global default.
-5. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
+3. Tap **Open calling-account settings** and enable **J.A.R.A.V.I.S.**
+4. In Android's system calling settings, select **J.A.R.V.I.S.** as the
+   **SIM call manager** (the wording/location varies by manufacturer).
+5. Keep your SIM as the default outgoing phone account. Do not set JARVIS as
+   the global outgoing account.
+6. Tap **Create JARVIS Phone contact** and allow contacts access. This creates
    or updates a contact named **JARVIS**, with reserved virtual number
    **+1 202-555-0147**.
-6. Keep the JARVIS Termux process running. The companion's foreground bridge
+7. Keep the JARVIS Termux process running. The companion's foreground bridge
    service must remain enabled for incoming call alerts.
 
 ### Calling JARVIS from the Phone app
 
-- Open the normal Phone app and select the JARVIS contact.
-- When Android asks which calling account to use, choose **J.A.R.V.I.S.**
-  for this contact. Choose your SIM for ordinary phone calls.
+- Open the normal Phone app, search for **JARVIS**, and tap Call.
+- When JARVIS is selected as the SIM call manager, Telecom sends outgoing
+  SIM calls through the JARVIS ConnectionService first.
+- Calls to the reserved JARVIS virtual number are handled locally by JARVIS;
+  they do not get sent to the SIM.
+- Every other outgoing call is delegated to the originally selected SIM via
+  Telecom's createRemoteOutgoingConnection API.
+- Incoming SIM calls are delegated back to the SIM via
+  createRemoteIncomingConnection. JARVIS-originated incoming calls continue
+  to use the local JARVIS call connection.
 - The companion's **Open Phone app with JARVIS number** shortcut opens the
   stock dialer with the local number prefilled; it does not place the call.
-- Do not choose a SIM for the JARVIS virtual number. The number is a local
-  routing token, not a real telephone destination.
 
-Android's public CallRedirectionService.redirectCall() API cannot redirect
-a call to an arbitrary app-provided VoIP ConnectionService account; its
-target account is restricted to SIM-subscription accounts. Therefore JARVIS
-uses the supported Telecom calling-account selection path instead of trying
-to redirect a SIM call. The Phone app may ask which account to use; automatic
-contact-specific selection is OEM-dependent and is not guaranteed on Lenovo's
-Phone app.
+Android's ConnectionService API explicitly supports this connection-manager
+pattern: the manager receives the original SIM PhoneAccount in the request
+and can create a RemoteConnection to proxy the call to that SIM. This avoids
+the unsupported CallRedirectionService.redirectCall() path, which cannot
+target an app-provided VoIP PhoneAccount.
 
 ### JARVIS calling you
 
